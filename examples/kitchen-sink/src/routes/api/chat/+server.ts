@@ -1,9 +1,9 @@
 // API route: POST /api/chat
-// Demonstrates @utopia/ai with OpenAI adapter + SSE streaming
+// Demonstrates @matthesketh/utopia-ai with OpenAI adapter + SSE streaming
 
-import { createAI } from '@utopia/ai'
-import { openaiAdapter } from '@utopia/ai/openai'
-import { streamSSE } from '@utopia/ai'
+import { createAI } from '@matthesketh/utopia-ai'
+import { openaiAdapter } from '@matthesketh/utopia-ai/openai'
+import { streamSSE } from '@matthesketh/utopia-ai'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
 const ai = createAI(

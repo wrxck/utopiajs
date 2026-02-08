@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/runtime — Hydration
+// @matthesketh/utopia-runtime — Hydration
 // ============================================================================
 //
 // Cursor-based DOM walker that claims existing server-rendered nodes instead

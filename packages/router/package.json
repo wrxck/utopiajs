@@ -1,5 +1,5 @@
 {
-  "name": "@utopia/router",
+  "name": "@matthesketh/utopia-router",
   "version": "0.0.1",
   "description": "File-based routing for UtopiaJS",
   "type": "module",
@@ -31,7 +31,7 @@
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch"
   },
   "dependencies": {
-    "@utopia/core": "workspace:*",
-    "@utopia/runtime": "workspace:*"
+    "@matthesketh/utopia-core": "workspace:*",
+    "@matthesketh/utopia-runtime": "workspace:*"
   }
 }

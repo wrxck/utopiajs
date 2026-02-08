@@ -1,11 +1,11 @@
 /**
- * @utopia/runtime — Runtime directive implementations
+ * @matthesketh/utopia-runtime — Runtime directive implementations
  *
  * These functions are called by the code the compiler emits for control-flow
  * constructs (`@if`, `@for`) and child components in .utopia templates.
  */
 
-import { effect } from '@utopia/core';
+import { effect } from '@matthesketh/utopia-core';
 import { insertBefore, removeNode } from './dom.js';
 import { createComponentInstance } from './component.js';
 import type { ComponentDefinition } from './component.js';

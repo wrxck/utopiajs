@@ -6,7 +6,7 @@ import {
   createElement,
   appendChild,
   setAttr,
-} from '@utopia/server/ssr-runtime';
+} from '@matthesketh/utopia-server/ssr-runtime';
 
 const HEADING_SIZES: Record<number, string> = {
   1: '28px',

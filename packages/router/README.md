@@ -1,18 +1,18 @@
-# @utopia/router
+# @matthesketh/utopia-router
 
 File-based routing for UtopiaJS with History API, navigation guards, and reactive route state. SvelteKit-style file conventions (`+page.utopia`, `+layout.utopia`, `[param]`, `[...rest]`, `(group)`).
 
 ## Install
 
 ```bash
-pnpm add @utopia/router
+pnpm add @matthesketh/utopia-router
 ```
 
 ## Usage
 
 ```ts
-import { createRouter, currentRoute, navigate } from '@utopia/router';
-import { buildRouteTable } from '@utopia/router';
+import { createRouter, currentRoute, navigate } from '@matthesketh/utopia-router';
+import { buildRouteTable } from '@matthesketh/utopia-router';
 
 const routes = buildRouteTable(routeManifest);
 createRouter(routes);

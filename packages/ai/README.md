@@ -1,11 +1,11 @@
-# @utopia/ai
+# @matthesketh/utopia-ai
 
 AI adapters and MCP support for UtopiaJS. Unified interface for chat completions, streaming, embeddings, and agentic tool loops. Built-in support for OpenAI, Anthropic, Google Gemini, and Ollama. Includes a full MCP (Model Context Protocol) server and client implementation.
 
 ## Install
 
 ```bash
-pnpm add @utopia/ai
+pnpm add @matthesketh/utopia-ai
 ```
 
 Install a provider SDK as needed:
@@ -20,8 +20,8 @@ pnpm add @google/generative-ai  # for Google Gemini
 ## Usage
 
 ```ts
-import { createAI } from '@utopia/ai';
-import { openaiAdapter } from '@utopia/ai/openai';
+import { createAI } from '@matthesketh/utopia-ai';
+import { openaiAdapter } from '@matthesketh/utopia-ai/openai';
 
 const ai = createAI(openaiAdapter({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -56,9 +56,9 @@ const result = await ai.run({
 | `parseSSEStream(response)` | Parse SSE events from a fetch Response (browser) |
 | `collectStream(stream)` | Collect a stream into a single string |
 
-**Adapters:** `@utopia/ai/openai`, `@utopia/ai/anthropic`, `@utopia/ai/google`, `@utopia/ai/ollama`.
+**Adapters:** `@matthesketh/utopia-ai/openai`, `@matthesketh/utopia-ai/anthropic`, `@matthesketh/utopia-ai/google`, `@matthesketh/utopia-ai/ollama`.
 
-**MCP (`@utopia/ai/mcp`):** `createMCPServer`, `createMCPClient`, `createMCPHandler`.
+**MCP (`@matthesketh/utopia-ai/mcp`):** `createMCPServer`, `createMCPClient`, `createMCPHandler`.
 
 See [docs/ai.md](../../docs/ai.md) for full documentation on adapters, streaming, tool calling, MCP, and type reference.
 

@@ -1,17 +1,17 @@
-# @utopia/runtime
+# @matthesketh/utopia-runtime
 
 DOM renderer, directives, component lifecycle, scheduler, and hydration for UtopiaJS. This is the client-side runtime that compiled `.utopia` components import from.
 
 ## Install
 
 ```bash
-pnpm add @utopia/runtime
+pnpm add @matthesketh/utopia-runtime
 ```
 
 ## Usage
 
 ```ts
-import { mount } from '@utopia/runtime';
+import { mount } from '@matthesketh/utopia-runtime';
 import App from './App.utopia';
 
 mount(App, '#app');
@@ -20,7 +20,7 @@ mount(App, '#app');
 For hydrating server-rendered HTML:
 
 ```ts
-import { hydrate } from '@utopia/runtime';
+import { hydrate } from '@matthesketh/utopia-runtime';
 import App from './App.utopia';
 
 hydrate(App, '#app');
@@ -65,7 +65,7 @@ hydrate(App, '#app');
 | `queueJob(fn)` | Queue a microtask job |
 | `nextTick()` | Wait for the next flush |
 
-**Re-exports from `@utopia/core`:** `signal`, `computed`, `effect`, `batch`, `untrack`, `createEffect`.
+**Re-exports from `@matthesketh/utopia-core`:** `signal`, `computed`, `effect`, `batch`, `untrack`, `createEffect`.
 
 See [docs/architecture.md](../../docs/architecture.md) and [docs/ssr.md](../../docs/ssr.md) for full details.
 

@@ -1,13 +1,13 @@
 // ============================================================================
-// @utopia/server — SSR runtime
+// @matthesketh/utopia-server — SSR runtime
 // ============================================================================
 //
-// Drop-in replacement for @utopia/runtime that builds VNode trees instead of
+// Drop-in replacement for @matthesketh/utopia-runtime that builds VNode trees instead of
 // real DOM nodes. The same compiled .utopia code runs on both client and
 // server — only the runtime import is swapped via a Vite alias.
 // ============================================================================
 
-import { signal, computed, batch, untrack } from '@utopia/core';
+import { signal, computed, batch, untrack } from '@matthesketh/utopia-core';
 import type { VElement, VText, VComment, VNode } from './vnode.js';
 
 // Re-export reactivity primitives (these work identically on the server).

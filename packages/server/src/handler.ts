@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/server — HTTP request handler
+// @matthesketh/utopia-server — HTTP request handler
 // ============================================================================
 
 import type { IncomingMessage, ServerResponse } from 'node:http';

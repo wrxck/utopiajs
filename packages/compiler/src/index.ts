@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// index.ts — Main entry point for @utopia/compiler
+// index.ts — Main entry point for @matthesketh/utopia-compiler
 // ---------------------------------------------------------------------------
 // Provides the top-level `compile()` function that orchestrates SFC parsing,
 // template compilation, and style compilation into a single result.
@@ -50,7 +50,7 @@ export interface CompileResult {
  *
  * The generated JS module has the shape:
  * ```js
- * import { ... } from '@utopia/runtime'
+ * import { ... } from '@matthesketh/utopia-runtime'
  *
  * // <script> block contents (user code) inlined here
  *
@@ -136,7 +136,7 @@ export function compile(source: string, options: CompileOptions = {}): CompileRe
  */
 function splitModuleParts(moduleCode: string): { imports: string; body: string } {
   // The template compiler generates code in the form:
-  //   import { ... } from '@utopia/runtime'
+  //   import { ... } from '@matthesketh/utopia-runtime'
   //
   //   export default function render(_ctx) { ... }
   //

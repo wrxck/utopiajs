@@ -1,5 +1,5 @@
 import type { Plugin, UserConfig, ViteDevServer, ModuleNode, HmrContext } from 'vite'
-import { compile, parse } from '@utopia/compiler'
+import { compile, parse, type SFCBlock } from '@matthesketh/utopia-compiler'
 import { createFilter, type FilterPattern } from 'vite'
 import path from 'node:path'
 
@@ -23,12 +23,6 @@ export interface UtopiaPluginOptions {
    */
   exclude?: FilterPattern
 
-  /**
-   * Whether to generate source maps.
-   * Defaults to `true` in development mode.
-   * @default true (in dev)
-   */
-  sourceMap?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +100,7 @@ function cssIdToUtopiaId(cssId: string): string {
 /**
  * Vite plugin for UtopiaJS.
  *
- * Transforms `.utopia` single-file components using `@utopia/compiler`,
+ * Transforms `.utopia` single-file components using `@matthesketh/utopia-compiler`,
  * extracts and injects CSS through Vite's virtual module pipeline, and
  * provides granular HMR support (style-only hot updates when only the
  * `<style>` block changes).
@@ -114,7 +108,7 @@ function cssIdToUtopiaId(cssId: string): string {
  * @example
  * ```ts
  * // vite.config.ts
- * import utopia from '@utopia/vite-plugin'
+ * import utopia from '@matthesketh/utopia-vite-plugin'
  *
  * export default {
  *   plugins: [utopia()],
@@ -131,7 +125,6 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
   } = options
 
   let filter: (id: string) => boolean
-  let resolvedSourceMap: boolean
   let server: ViteDevServer | undefined
 
   /**
@@ -158,16 +151,15 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
         return {
           resolve: {
             alias: {
-              '@utopia/runtime': '@utopia/server/ssr-runtime',
+              '@matthesketh/utopia-runtime': '@matthesketh/utopia-server/ssr-runtime',
             },
           },
         }
       }
     },
 
-    configResolved(config) {
+    configResolved() {
       filter = createFilter(include, exclude)
-      resolvedSourceMap = options.sourceMap ?? config.command === 'serve'
     },
 
     // -------------------------------------------------------------------
@@ -184,10 +176,10 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
 
     resolveId(id, importer, options) {
       // During dev SSR (`ssrLoadModule`), env.isSsrBuild is false so the
-      // config hook alias does not apply. Intercept `@utopia/runtime`
+      // config hook alias does not apply. Intercept `@matthesketh/utopia-runtime`
       // imports when resolved for SSR and redirect to the SSR runtime.
-      if (options?.ssr && id === '@utopia/runtime') {
-        return this.resolve('@utopia/server/ssr-runtime', importer, {
+      if (options?.ssr && id === '@matthesketh/utopia-runtime') {
+        return this.resolve('@matthesketh/utopia-server/ssr-runtime', importer, {
           skipSelf: true,
           ...options,
         })
@@ -239,7 +231,6 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
 
       const result = compile(code, {
         filename: id,
-        sourceMap: resolvedSourceMap,
       })
 
       // Cache the extracted CSS for the virtual module.
@@ -251,7 +242,7 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
 
       // Store the parsed descriptor for HMR diffing.
       try {
-        const descriptor = parse(code, { filename: id })
+        const descriptor = parse(code, id)
         prevDescriptors.set(id, descriptor)
       } catch {
         // Parsing failures are non-fatal for the descriptor cache –
@@ -269,7 +260,7 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
 
       return {
         code: output,
-        map: result.map ?? null,
+        map: null,
       }
     },
 
@@ -290,7 +281,7 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
         // ------------------------------------------------------------------
         let newDescriptor: ReturnType<typeof parse>
         try {
-          newDescriptor = parse(source, { filename: file })
+          newDescriptor = parse(source, file)
         } catch {
           // If parsing fails, fall through to a full update so the user
           // sees the compile error in the browser overlay.
@@ -323,7 +314,6 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
           // Re-compile to refresh the CSS cache.
           const result = compile(source, {
             filename: file,
-            sourceMap: resolvedSourceMap,
           })
 
           if (result.css) {
@@ -360,7 +350,6 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
         if (styleChanged) {
           const result = compile(source, {
             filename: file,
-            sourceMap: resolvedSourceMap,
           })
 
           if (result.css) {
@@ -386,11 +375,6 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
 // ---------------------------------------------------------------------------
 // Block comparison helper
 // ---------------------------------------------------------------------------
-
-interface SFCBlock {
-  content?: string
-  [key: string]: unknown
-}
 
 /**
  * Shallow comparison of SFC blocks.  Returns `true` when the content of
@@ -418,7 +402,7 @@ function didBlockChange(
  * @example
  * ```ts
  * // vite.config.ts
- * import { defineConfig } from '@utopia/vite-plugin'
+ * import { defineConfig } from '@matthesketh/utopia-vite-plugin'
  *
  * export default defineConfig({
  *   // your overrides here
@@ -466,14 +450,14 @@ export function defineConfig(userConfig: UserConfig = {}): UserConfig {
       // they go through the normal plugin pipeline.
       exclude: mergeUnique(
         userOptimizeDeps?.exclude ?? [],
-        ['@utopia/core', '@utopia/runtime', '@utopia/router', '@utopia/server'],
+        ['@matthesketh/utopia-core', '@matthesketh/utopia-runtime', '@matthesketh/utopia-router', '@matthesketh/utopia-server'],
       ),
     },
 
     ssr: {
       // Ensure UtopiaJS packages are bundled during SSR builds so the
       // runtime swap alias is applied correctly.
-      noExternal: ['@utopia/core', '@utopia/runtime', '@utopia/router', '@utopia/server'],
+      noExternal: ['@matthesketh/utopia-core', '@matthesketh/utopia-runtime', '@matthesketh/utopia-router', '@matthesketh/utopia-server'],
     },
   }
 }
@@ -490,8 +474,3 @@ function mergeUnique(base: string[], additions: string[]): string[] {
   return [...set]
 }
 
-// ---------------------------------------------------------------------------
-// Re-exports for convenience
-// ---------------------------------------------------------------------------
-
-export type { UtopiaPluginOptions }

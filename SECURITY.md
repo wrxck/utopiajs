@@ -37,12 +37,12 @@ We follow coordinated disclosure. Once a fix is released, we will:
 
 This policy applies to all packages in the UtopiaJS monorepo:
 
-- `@utopia/core`
-- `@utopia/compiler`
-- `@utopia/runtime`
-- `@utopia/server`
-- `@utopia/vite-plugin`
-- `@utopia/router`
-- `@utopia/email`
-- `@utopia/ai`
+- `@matthesketh/utopia-core`
+- `@matthesketh/utopia-compiler`
+- `@matthesketh/utopia-runtime`
+- `@matthesketh/utopia-server`
+- `@matthesketh/utopia-vite-plugin`
+- `@matthesketh/utopia-router`
+- `@matthesketh/utopia-email`
+- `@matthesketh/utopia-ai`
 - `create-utopia`

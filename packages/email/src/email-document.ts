@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/email — Email Document Wrapper
+// @matthesketh/utopia-email — Email Document Wrapper
 // ============================================================================
 
 export interface WrapEmailDocumentOptions {

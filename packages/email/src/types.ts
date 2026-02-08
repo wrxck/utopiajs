@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/email — Shared types
+// @matthesketh/utopia-email — Shared types
 // ============================================================================
 
 export interface RenderEmailOptions {

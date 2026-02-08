@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/ai — Streaming helpers
+// @matthesketh/utopia-ai — Streaming helpers
 // ============================================================================
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -13,9 +13,9 @@ import type { ChatChunk } from './types.js';
  *
  * ```ts
  * // +server.ts (API route)
- * import { createAI } from '@utopia/ai';
- * import { openaiAdapter } from '@utopia/ai/openai';
- * import { streamSSE } from '@utopia/ai';
+ * import { createAI } from '@matthesketh/utopia-ai';
+ * import { openaiAdapter } from '@matthesketh/utopia-ai/openai';
+ * import { streamSSE } from '@matthesketh/utopia-ai';
  *
  * const ai = createAI(openaiAdapter({ apiKey: process.env.OPENAI_API_KEY }));
  *

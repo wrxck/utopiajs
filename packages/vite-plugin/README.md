@@ -1,11 +1,11 @@
-# @utopia/vite-plugin
+# @matthesketh/utopia-vite-plugin
 
 Vite plugin for UtopiaJS. Transforms `.utopia` single-file components, extracts and injects CSS through Vite's virtual module pipeline, provides granular HMR support (style-only hot updates), and handles the SSR runtime swap.
 
 ## Install
 
 ```bash
-pnpm add -D @utopia/vite-plugin
+pnpm add -D @matthesketh/utopia-vite-plugin
 ```
 
 Requires `vite` ^6.0.0 as a peer dependency.
@@ -14,7 +14,7 @@ Requires `vite` ^6.0.0 as a peer dependency.
 
 ```ts
 // vite.config.ts
-import { defineConfig } from '@utopia/vite-plugin';
+import { defineConfig } from '@matthesketh/utopia-vite-plugin';
 
 export default defineConfig();
 ```
@@ -24,7 +24,7 @@ Or with the plugin directly:
 ```ts
 // vite.config.ts
 import { defineConfig } from 'vite';
-import utopia from '@utopia/vite-plugin';
+import utopia from '@matthesketh/utopia-vite-plugin';
 
 export default defineConfig({
   plugins: [utopia()],
@@ -48,10 +48,10 @@ export default defineConfig({
 
 **Features:**
 
-- Compiles `.utopia` files via `@utopia/compiler`
+- Compiles `.utopia` files via `@matthesketh/utopia-compiler`
 - Extracts CSS to virtual modules processed by Vite's CSS pipeline
 - Granular HMR: style-only changes skip component re-render
-- SSR alias: swaps `@utopia/runtime` to `@utopia/server/ssr-runtime` in SSR builds and dev SSR
+- SSR alias: swaps `@matthesketh/utopia-runtime` to `@matthesketh/utopia-server/ssr-runtime` in SSR builds and dev SSR
 - Resolves `.utopia` as a file extension for bare imports
 
 See [docs/architecture.md](../../docs/architecture.md) and [docs/ssr.md](../../docs/ssr.md) for details.

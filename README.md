@@ -36,14 +36,14 @@ pnpm dev
 
 | Package | Description |
 |---------|-------------|
-| `@utopia/core` | Signals reactivity system |
-| `@utopia/compiler` | SFC parser + template compiler + scoped CSS |
-| `@utopia/runtime` | DOM helpers, directives, component lifecycle, scheduler, hydration |
-| `@utopia/server` | SSR: renderToString, renderToStream, server router, handler |
-| `@utopia/vite-plugin` | Vite transform for .utopia files, HMR, SSR alias resolution |
-| `@utopia/router` | File-based routing with History API, navigation guards |
-| `@utopia/email` | Template-based email rendering with adapter pattern |
-| `@utopia/ai` | AI adapters (OpenAI, Anthropic, Google, Ollama) + MCP |
+| `@matthesketh/utopia-core` | Signals reactivity system |
+| `@matthesketh/utopia-compiler` | SFC parser + template compiler + scoped CSS |
+| `@matthesketh/utopia-runtime` | DOM helpers, directives, component lifecycle, scheduler, hydration |
+| `@matthesketh/utopia-server` | SSR: renderToString, renderToStream, server router, handler |
+| `@matthesketh/utopia-vite-plugin` | Vite transform for .utopia files, HMR, SSR alias resolution |
+| `@matthesketh/utopia-router` | File-based routing with History API, navigation guards |
+| `@matthesketh/utopia-email` | Template-based email rendering with adapter pattern |
+| `@matthesketh/utopia-ai` | AI adapters (OpenAI, Anthropic, Google, Ollama) + MCP |
 | `create-utopia` | CLI scaffolding tool |
 
 ## Example
@@ -59,7 +59,7 @@ A minimal `.utopia` component using signals:
 </template>
 
 <script>
-import { signal } from '@utopia/core'
+import { signal } from '@matthesketh/utopia-core'
 
 const count = signal(0)
 function increment() { count.update(n => n + 1) }

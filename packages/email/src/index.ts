@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/email — Public API
+// @matthesketh/utopia-email — Public API
 // ============================================================================
 
 export { renderEmail } from './render-email.js';

@@ -168,7 +168,7 @@ function scaffoldProject(root: string, options: ProjectOptions): void {
   const devDeps = pkg['devDependencies'] as Record<string, string> | undefined
 
   if (!useRouter && deps) {
-    delete deps['@utopia/router']
+    delete deps['@matthesketh/utopia-router']
   }
 
   if (language === 'javascript' && devDeps) {
@@ -184,12 +184,12 @@ function scaffoldProject(root: string, options: ProjectOptions): void {
 
   // Add email dependency
   if (useEmail && deps) {
-    deps['@utopia/email'] = '^0.0.1'
+    deps['@matthesketh/utopia-email'] = '^0.0.1'
   }
 
   // Add AI dependency
   if (useAI && deps) {
-    deps['@utopia/ai'] = '^0.0.1'
+    deps['@matthesketh/utopia-ai'] = '^0.0.1'
   }
 
   fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8')
@@ -213,7 +213,7 @@ function scaffoldProject(root: string, options: ProjectOptions): void {
     const ssrPkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8')) as Record<string, unknown>
     const ssrDeps = ssrPkg['dependencies'] as Record<string, string>
     const ssrDevDeps = ssrPkg['devDependencies'] as Record<string, string>
-    ssrDeps['@utopia/server'] = '^0.0.1'
+    ssrDeps['@matthesketh/utopia-server'] = '^0.0.1'
     ssrDeps['express'] = '^4.21.0'
     // Move vite to dependencies for the SSR server
     if (ssrDevDeps['vite']) {
@@ -294,7 +294,7 @@ h1 {
 
     // Simplify main entry — remove router imports
     const mainPath = path.join(root, 'src', language === 'typescript' ? 'main.ts' : 'main.js')
-    const simpleMain = `import { mount } from '@utopia/runtime'
+    const simpleMain = `import { mount } from '@matthesketh/utopia-runtime'
 import App from './App.utopia'
 
 mount(App, '#app')
@@ -312,9 +312,9 @@ mount(App, '#app')
 
     // Write the example chat API endpoint
     const serverFile = path.join(apiChatDir, `+server.${ext}`)
-    const serverContent = `import { createAI } from '@utopia/ai';
-import { openaiAdapter } from '@utopia/ai/openai';
-import { streamSSE } from '@utopia/ai';
+    const serverContent = `import { createAI } from '@matthesketh/utopia-ai';
+import { openaiAdapter } from '@matthesketh/utopia-ai/openai';
+import { streamSSE } from '@matthesketh/utopia-ai';
 
 const ai = createAI(openaiAdapter({
   apiKey: process.env.OPENAI_API_KEY!,

@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/email — SendGrid Adapter
+// @matthesketh/utopia-email — SendGrid Adapter
 // ============================================================================
 
 import type { EmailAdapter, EmailMessage, EmailResult, SendGridConfig } from '../types.js';
@@ -21,7 +21,7 @@ export function sendgridAdapter(config: SendGridConfig): EmailAdapter {
       sgMail = mod.default ?? mod;
     } catch {
       throw new Error(
-        '@utopia/email: "@sendgrid/mail" package is required for the SendGrid adapter. ' +
+        '@matthesketh/utopia-email: "@sendgrid/mail" package is required for the SendGrid adapter. ' +
         'Install it with: npm install @sendgrid/mail',
       );
     }

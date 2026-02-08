@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/ai — OpenAI Adapter
+// @matthesketh/utopia-ai — OpenAI Adapter
 // ============================================================================
 
 import type {
@@ -22,8 +22,8 @@ import type {
  * Requires `openai` as a peer dependency.
  *
  * ```ts
- * import { createAI } from '@utopia/ai';
- * import { openaiAdapter } from '@utopia/ai/openai';
+ * import { createAI } from '@matthesketh/utopia-ai';
+ * import { openaiAdapter } from '@matthesketh/utopia-ai/openai';
  *
  * const ai = createAI(openaiAdapter({ apiKey: process.env.OPENAI_API_KEY }));
  * ```
@@ -40,7 +40,7 @@ export function openaiAdapter(config: OpenAIConfig): AIAdapter {
       OpenAI = mod.OpenAI ?? mod.default;
     } catch {
       throw new Error(
-        '@utopia/ai: "openai" package is required for the OpenAI adapter. ' +
+        '@matthesketh/utopia-ai: "openai" package is required for the OpenAI adapter. ' +
         'Install it with: npm install openai',
       );
     }

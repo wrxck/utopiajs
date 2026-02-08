@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/email — Resend Adapter
+// @matthesketh/utopia-email — Resend Adapter
 // ============================================================================
 
 import type { EmailAdapter, EmailMessage, EmailResult, ResendConfig } from '../types.js';
@@ -21,7 +21,7 @@ export function resendAdapter(config: ResendConfig): EmailAdapter {
       Resend = mod.Resend ?? mod.default;
     } catch {
       throw new Error(
-        '@utopia/email: "resend" package is required for the Resend adapter. ' +
+        '@matthesketh/utopia-email: "resend" package is required for the Resend adapter. ' +
         'Install it with: npm install resend',
       );
     }

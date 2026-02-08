@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/core — Fine-grained signals reactivity system
+// @matthesketh/utopia-core — Fine-grained signals reactivity system
 // ============================================================================
 //
 // A compiler-first reactivity primitive layer inspired by SolidJS and Preact

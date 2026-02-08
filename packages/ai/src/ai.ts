@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/ai — AI abstraction (like createMailer for email)
+// @matthesketh/utopia-ai — AI abstraction (like createMailer for email)
 // ============================================================================
 
 import type {
@@ -65,8 +65,8 @@ export interface CreateAIOptions {
  *
  * Usage:
  * ```ts
- * import { createAI } from '@utopia/ai';
- * import { openaiAdapter } from '@utopia/ai/openai';
+ * import { createAI } from '@matthesketh/utopia-ai';
+ * import { openaiAdapter } from '@matthesketh/utopia-ai/openai';
  *
  * const ai = createAI(openaiAdapter({ apiKey: process.env.OPENAI_API_KEY }));
  *
@@ -135,7 +135,7 @@ export function createAI(adapter: AIAdapter, options?: CreateAIOptions): AI {
 
     embeddings(request: EmbeddingRequest): Promise<EmbeddingResponse> {
       if (!adapter.embeddings) {
-        throw new Error('@utopia/ai: This adapter does not support embeddings.');
+        throw new Error('@matthesketh/utopia-ai: This adapter does not support embeddings.');
       }
       return adapter.embeddings(request);
     },

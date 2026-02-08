@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/ai — MCP Handler & Client Tests
+// @matthesketh/utopia-ai — MCP Handler & Client Tests
 // ============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

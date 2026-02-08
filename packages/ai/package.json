@@ -1,5 +1,5 @@
 {
-  "name": "@utopia/ai",
+  "name": "@matthesketh/utopia-ai",
   "version": "0.0.1",
   "description": "AI adapters and MCP support for UtopiaJS",
   "type": "module",
@@ -11,9 +11,22 @@
     "directory": "packages/ai"
   },
   "homepage": "https://github.com/wrxck/utopiajs/tree/main/packages/ai",
-  "keywords": ["ai", "llm", "openai", "anthropic", "mcp", "streaming", "tool-calling", "utopiajs"],
-  "engines": { "node": ">=20.0.0" },
-  "publishConfig": { "access": "public" },
+  "keywords": [
+    "ai",
+    "llm",
+    "openai",
+    "anthropic",
+    "mcp",
+    "streaming",
+    "tool-calling",
+    "utopiajs"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "sideEffects": false,
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -50,18 +63,31 @@
       "require": "./dist/mcp/index.cjs"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup src/index.ts src/adapters/openai.ts src/adapters/anthropic.ts src/adapters/google.ts src/adapters/ollama.ts src/mcp/index.ts --format esm,cjs --dts"
   },
   "peerDependencies": {
-    "openai": "^4.0.0",
     "@anthropic-ai/sdk": "^0.30.0",
-    "@google/generative-ai": "^0.21.0"
+    "@google/generative-ai": "^0.21.0",
+    "openai": "^4.0.0"
   },
   "peerDependenciesMeta": {
-    "openai": { "optional": true },
-    "@anthropic-ai/sdk": { "optional": true },
-    "@google/generative-ai": { "optional": true }
+    "openai": {
+      "optional": true
+    },
+    "@anthropic-ai/sdk": {
+      "optional": true
+    },
+    "@google/generative-ai": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.74.0",
+    "@google/generative-ai": "^0.24.1",
+    "openai": "^6.18.0"
   }
 }

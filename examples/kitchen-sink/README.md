@@ -51,12 +51,12 @@ pnpm dev
 |-----|------|----------|
 | `/` | Home | signal, computed, effect, batch, untrack, u-if, u-for, u-model |
 | `/dashboard` | Dashboard | Computed signals, effects, u-for, dynamic :class |
-| `/chat` | AI Chat | SSE streaming, fetch API, @utopia/ai |
+| `/chat` | AI Chat | SSE streaming, fetch API, @matthesketh/utopia-ai |
 | `/blog/hello-world` | Blog | Dynamic [slug] param, computed |
 | `/login` | Login | Route groups (auth), u-model, u-if, form handling |
-| `POST /api/chat` | API | OpenAI streaming via @utopia/ai |
-| `POST /api/email` | API | SMTP email via @utopia/email |
-| `POST /api/mcp` | API | MCP server via @utopia/ai/mcp |
+| `POST /api/chat` | API | OpenAI streaming via @matthesketh/utopia-ai |
+| `POST /api/email` | API | SMTP email via @matthesketh/utopia-email |
+| `POST /api/mcp` | API | MCP server via @matthesketh/utopia-ai/mcp |
 
 ## License
 

@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/ai — MCP Server
+// @matthesketh/utopia-ai — MCP Server
 // ============================================================================
 
 import type {
@@ -23,7 +23,7 @@ export interface MCPServer {
  * Create an MCP server that exposes tools, resources, and prompts.
  *
  * ```ts
- * import { createMCPServer } from '@utopia/ai/mcp';
+ * import { createMCPServer } from '@matthesketh/utopia-ai/mcp';
  *
  * const mcp = createMCPServer({
  *   name: 'my-app',

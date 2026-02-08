@@ -1,11 +1,11 @@
-# @utopia/email
+# @matthesketh/utopia-email
 
 Template-based email rendering for UtopiaJS. Render `.utopia` components to email-safe HTML with CSS inlining and plain text fallback. Adapter pattern for sending via SMTP, Resend, or SendGrid.
 
 ## Install
 
 ```bash
-pnpm add @utopia/email
+pnpm add @matthesketh/utopia-email
 ```
 
 Install a provider SDK as needed:
@@ -19,8 +19,8 @@ pnpm add @sendgrid/mail # for SendGrid
 ## Usage
 
 ```ts
-import { createMailer } from '@utopia/email';
-import { smtpAdapter } from '@utopia/email/smtp';
+import { createMailer } from '@matthesketh/utopia-email';
+import { smtpAdapter } from '@matthesketh/utopia-email/smtp';
 import WelcomeEmail from './emails/Welcome.utopia';
 
 const mailer = createMailer(smtpAdapter({
@@ -49,7 +49,7 @@ await mailer.send({
 
 **Built-in components:** `EmailLayout`, `EmailButton`, `EmailCard`, `EmailDivider`, `EmailHeading`, `EmailText`, `EmailImage`, `EmailColumns`, `EmailSpacer`.
 
-**Adapters:** `@utopia/email/smtp`, `@utopia/email/resend`, `@utopia/email/sendgrid`.
+**Adapters:** `@matthesketh/utopia-email/smtp`, `@matthesketh/utopia-email/resend`, `@matthesketh/utopia-email/sendgrid`.
 
 See [docs/email.md](../../docs/email.md) for the full rendering pipeline, component reference, and type documentation.
 

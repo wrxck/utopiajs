@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/server — VNode types for SSR
+// @matthesketh/utopia-server — VNode types for SSR
 // ============================================================================
 
 export interface VElement {

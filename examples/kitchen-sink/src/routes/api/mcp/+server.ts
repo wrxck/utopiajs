@@ -1,7 +1,7 @@
 // API route: POST /api/mcp
-// Demonstrates @utopia/ai MCP server with tools, resources, and prompts
+// Demonstrates @matthesketh/utopia-ai MCP server with tools, resources, and prompts
 
-import { createMCPServer, createMCPHandler } from '@utopia/ai/mcp'
+import { createMCPServer, createMCPHandler } from '@matthesketh/utopia-ai/mcp'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
 const mcp = createMCPServer({

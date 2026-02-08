@@ -1,8 +1,8 @@
 // ============================================================================
-// @utopia/email — renderEmail (core orchestrator)
+// @matthesketh/utopia-email — renderEmail (core orchestrator)
 // ============================================================================
 
-import { renderToString } from '@utopia/server';
+import { renderToString } from '@matthesketh/utopia-server';
 import { inlineCSS } from './css-inliner.js';
 import { htmlToText } from './html-to-text.js';
 import { wrapEmailDocument } from './email-document.js';

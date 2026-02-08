@@ -1,8 +1,8 @@
 // API route: POST /api/email
-// Demonstrates @utopia/email with SMTP adapter
+// Demonstrates @matthesketh/utopia-email with SMTP adapter
 
-import { createMailer } from '@utopia/email'
-import { smtpAdapter } from '@utopia/email/smtp'
+import { createMailer } from '@matthesketh/utopia-email'
+import { smtpAdapter } from '@matthesketh/utopia-email/smtp'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
 const mailer = createMailer(

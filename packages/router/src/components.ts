@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/router — Router components (render functions)
+// @matthesketh/utopia-router — Router components (render functions)
 // ============================================================================
 //
 // These are vanilla DOM render functions since we don't have compiled Utopia
@@ -8,7 +8,7 @@
 //
 // ============================================================================
 
-import { effect } from '@utopia/core';
+import { effect } from '@matthesketh/utopia-core';
 import { currentRoute, navigate } from './router.js';
 import type { RouteMatch } from './types.js';
 

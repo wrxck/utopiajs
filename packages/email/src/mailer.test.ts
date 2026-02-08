@@ -5,7 +5,7 @@ import {
   createTextNode,
   appendChild,
   setAttr,
-} from '@utopia/server/ssr-runtime';
+} from '@matthesketh/utopia-server/ssr-runtime';
 import type { EmailAdapter, EmailMessage, EmailResult } from './types.js';
 
 // Simple test component

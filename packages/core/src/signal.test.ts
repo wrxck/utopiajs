@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/core — Reactivity system test suite
+// @matthesketh/utopia-core — Reactivity system test suite
 // ============================================================================
 
 import { describe, it, expect, vi } from 'vitest';

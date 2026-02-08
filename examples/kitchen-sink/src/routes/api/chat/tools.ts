@@ -1,10 +1,10 @@
-// Demonstrates @utopia/ai tool-calling loop + MCP client bridge
+// Demonstrates @matthesketh/utopia-ai tool-calling loop + MCP client bridge
 // This file can be imported into the chat API route for agentic capabilities
 
-import { createAI } from '@utopia/ai'
-import { openaiAdapter } from '@utopia/ai/openai'
-import { createMCPClient } from '@utopia/ai/mcp'
-import type { ToolHandler } from '@utopia/ai'
+import { createAI } from '@matthesketh/utopia-ai'
+import { openaiAdapter } from '@matthesketh/utopia-ai/openai'
+import { createMCPClient } from '@matthesketh/utopia-ai/mcp'
+import type { ToolHandler } from '@matthesketh/utopia-ai'
 
 const ai = createAI(
   openaiAdapter({

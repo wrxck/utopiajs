@@ -1,9 +1,9 @@
 // ============================================================================
-// @utopia/server — Test suite
+// @matthesketh/utopia-server — Test suite
 // ============================================================================
 
 import { describe, it, expect } from 'vitest';
-import { signal } from '@utopia/core';
+import { signal } from '@matthesketh/utopia-core';
 import type { VElement, VText, VComment, VNode } from './vnode.js';
 import {
   createElement,

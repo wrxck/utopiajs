@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/ai — MCP HTTP Handler
+// @matthesketh/utopia-ai — MCP HTTP Handler
 // ============================================================================
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -16,8 +16,8 @@ import type { JsonRpcRequest } from './types.js';
  *
  * ```ts
  * import http from 'node:http';
- * import { createMCPServer } from '@utopia/ai/mcp';
- * import { createMCPHandler } from '@utopia/ai/mcp';
+ * import { createMCPServer } from '@matthesketh/utopia-ai/mcp';
+ * import { createMCPHandler } from '@matthesketh/utopia-ai/mcp';
  *
  * const mcp = createMCPServer({ name: 'my-app', tools: [...] });
  * const handler = createMCPHandler(mcp);

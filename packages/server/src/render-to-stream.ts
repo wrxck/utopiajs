@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/server — renderToStream
+// @matthesketh/utopia-server — renderToStream
 // ============================================================================
 
 import { Readable } from 'node:stream';

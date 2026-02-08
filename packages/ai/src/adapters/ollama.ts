@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/ai — Ollama Adapter (local models, no SDK needed)
+// @matthesketh/utopia-ai — Ollama Adapter (local models, no SDK needed)
 // ============================================================================
 
 import type {
@@ -21,8 +21,8 @@ import type {
  * No external dependencies required — uses native fetch.
  *
  * ```ts
- * import { createAI } from '@utopia/ai';
- * import { ollamaAdapter } from '@utopia/ai/ollama';
+ * import { createAI } from '@matthesketh/utopia-ai';
+ * import { ollamaAdapter } from '@matthesketh/utopia-ai/ollama';
  *
  * const ai = createAI(ollamaAdapter({ defaultModel: 'llama3.2' }));
  * ```

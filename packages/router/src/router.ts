@@ -1,9 +1,9 @@
 // ============================================================================
-// @utopia/router — Client-side History API router
+// @matthesketh/utopia-router — Client-side History API router
 // ============================================================================
 //
 // Provides SPA routing using the browser History API. Route state is exposed
-// as reactive signals from @utopia/core so UI components automatically update
+// as reactive signals from @matthesketh/utopia-core so UI components automatically update
 // when navigation occurs.
 //
 // Features:
@@ -15,7 +15,7 @@
 //
 // ============================================================================
 
-import { signal } from '@utopia/core';
+import { signal } from '@matthesketh/utopia-core';
 import { matchRoute } from './matcher.js';
 import type { Route, RouteMatch, BeforeNavigateHook } from './types.js';
 

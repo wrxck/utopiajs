@@ -32,7 +32,7 @@ A `.utopia` single-file component:
 </template>
 
 <script>
-import { signal } from '@utopia/core'
+import { signal } from '@matthesketh/utopia-core'
 const count = signal(0)
 function increment() { count.update(n => n + 1) }
 </script>
@@ -46,10 +46,10 @@ Compiles to:
 
 ```js
 import { createElement, createTextNode, createEffect, setText, setAttr,
-         addEventListener, appendChild } from '@utopia/runtime'
+         addEventListener, appendChild } from '@matthesketh/utopia-runtime'
 
 // --- User script (from <script> block) ---
-import { signal } from '@utopia/core'
+import { signal } from '@matthesketh/utopia-core'
 const count = signal(0)
 function increment() { count.update(n => n + 1) }
 
@@ -76,7 +76,7 @@ Key aspects:
 - **Scoped styles** use data attributes (`data-u-xxxx`) applied to each element
 - **Expression resolution** — template references are prefixed with `_ctx.` to access the component context; `u-for` item variables are bare (local scope)
 
-## Reactivity System (`@utopia/core`)
+## Reactivity System (`@matthesketh/utopia-core`)
 
 The signals system provides five primitives:
 
@@ -104,7 +104,7 @@ Implementation details:
 | `u-for="item in list()"` | List rendering | `createComment('u-for')` + `createFor(anchor, () => list, renderFn)` |
 | `u-model="sig"` | Two-way binding | `createEffect(() => setAttr(el, 'value', sig()))` + `addEventListener(el, 'input', ...)` |
 
-## File-Based Routing (`@utopia/router`)
+## File-Based Routing (`@matthesketh/utopia-router`)
 
 SvelteKit-style conventions:
 
@@ -129,7 +129,7 @@ The router:
 
 See [docs/ssr.md](./ssr.md) for full details.
 
-Summary: The Vite plugin swaps `@utopia/runtime` for `@utopia/server/ssr-runtime` during SSR builds and dev SSR. The SSR runtime builds a VNode tree instead of real DOM, serialized via `renderToString()`. On the client, `hydrate()` claims the existing DOM nodes with a cursor-based walker.
+Summary: The Vite plugin swaps `@matthesketh/utopia-runtime` for `@matthesketh/utopia-server/ssr-runtime` during SSR builds and dev SSR. The SSR runtime builds a VNode tree instead of real DOM, serialized via `renderToString()`. On the client, `hydrate()` claims the existing DOM nodes with a cursor-based walker.
 
 ## Component Lifecycle
 

@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/email — Component exports
+// @matthesketh/utopia-email — Component exports
 // ============================================================================
 
 export { EmailLayout } from './email-layout.js';

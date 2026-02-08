@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/ai — Google Gemini Adapter
+// @matthesketh/utopia-ai — Google Gemini Adapter
 // ============================================================================
 
 import type {
@@ -21,8 +21,8 @@ import type {
  * Requires `@google/generative-ai` as a peer dependency.
  *
  * ```ts
- * import { createAI } from '@utopia/ai';
- * import { googleAdapter } from '@utopia/ai/google';
+ * import { createAI } from '@matthesketh/utopia-ai';
+ * import { googleAdapter } from '@matthesketh/utopia-ai/google';
  *
  * const ai = createAI(googleAdapter({ apiKey: process.env.GOOGLE_API_KEY }));
  * ```
@@ -39,7 +39,7 @@ export function googleAdapter(config: GoogleConfig): AIAdapter {
       GoogleGenerativeAI = mod.GoogleGenerativeAI;
     } catch {
       throw new Error(
-        '@utopia/ai: "@google/generative-ai" package is required for the Google adapter. ' +
+        '@matthesketh/utopia-ai: "@google/generative-ai" package is required for the Google adapter. ' +
         'Install it with: npm install @google/generative-ai',
       );
     }

@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/email — SMTP Adapter (nodemailer)
+// @matthesketh/utopia-email — SMTP Adapter (nodemailer)
 // ============================================================================
 
 import type { EmailAdapter, EmailMessage, EmailResult, SmtpConfig } from '../types.js';
@@ -20,7 +20,7 @@ export function smtpAdapter(config: SmtpConfig): EmailAdapter {
       nodemailer = await import('nodemailer');
     } catch {
       throw new Error(
-        '@utopia/email: "nodemailer" package is required for the SMTP adapter. ' +
+        '@matthesketh/utopia-email: "nodemailer" package is required for the SMTP adapter. ' +
         'Install it with: npm install nodemailer',
       );
     }

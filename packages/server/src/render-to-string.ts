@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/server — renderToString
+// @matthesketh/utopia-server — renderToString
 // ============================================================================
 
 import type { VNode, VElement } from './vnode.js';

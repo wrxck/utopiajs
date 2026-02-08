@@ -1,5 +1,5 @@
 {
-  "name": "@utopia/compiler",
+  "name": "@matthesketh/utopia-compiler",
   "version": "0.0.1",
   "description": "Compiler for .utopia single-file components",
   "type": "module",
@@ -31,6 +31,6 @@
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch"
   },
   "dependencies": {
-    "@utopia/core": "workspace:*"
+    "@matthesketh/utopia-core": "workspace:*"
   }
 }

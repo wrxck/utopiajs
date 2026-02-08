@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/email — CSS Inliner (zero dependencies)
+// @matthesketh/utopia-email — CSS Inliner (zero dependencies)
 // ============================================================================
 //
 // Inlines CSS declarations into `style=""` attributes on HTML elements.

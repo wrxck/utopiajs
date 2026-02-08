@@ -5,7 +5,7 @@ import {
   createTextNode,
   appendChild,
   setAttr,
-} from '@utopia/server/ssr-runtime';
+} from '@matthesketh/utopia-server/ssr-runtime';
 
 describe('renderEmail', () => {
   it('renders a simple component to email HTML', () => {

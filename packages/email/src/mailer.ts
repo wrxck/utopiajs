@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/email — Mailer abstraction
+// @matthesketh/utopia-email — Mailer abstraction
 // ============================================================================
 
 import { renderEmail } from './render-email.js';

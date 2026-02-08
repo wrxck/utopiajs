@@ -1,5 +1,5 @@
 /**
- * @utopia/runtime — Microtask-based update scheduler
+ * @matthesketh/utopia-runtime — Microtask-based update scheduler
  *
  * Batches DOM update jobs so that multiple signal changes within the same
  * synchronous tick only trigger a single DOM update pass.

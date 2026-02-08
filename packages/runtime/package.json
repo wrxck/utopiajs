@@ -1,5 +1,5 @@
 {
-  "name": "@utopia/runtime",
+  "name": "@matthesketh/utopia-runtime",
   "version": "0.0.1",
   "description": "DOM renderer and component lifecycle for UtopiaJS",
   "type": "module",
@@ -31,6 +31,6 @@
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch"
   },
   "dependencies": {
-    "@utopia/core": "workspace:*"
+    "@matthesketh/utopia-core": "workspace:*"
   }
 }

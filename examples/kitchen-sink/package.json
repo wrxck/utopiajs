@@ -11,17 +11,17 @@
     "preview": "NODE_ENV=production node server.js"
   },
   "dependencies": {
-    "@utopia/core": "^0.0.1",
-    "@utopia/runtime": "^0.0.1",
-    "@utopia/router": "^0.0.1",
-    "@utopia/server": "^0.0.1",
-    "@utopia/email": "^0.0.1",
-    "@utopia/ai": "^0.0.1",
+    "@matthesketh/utopia-core": "^0.0.1",
+    "@matthesketh/utopia-runtime": "^0.0.1",
+    "@matthesketh/utopia-router": "^0.0.1",
+    "@matthesketh/utopia-server": "^0.0.1",
+    "@matthesketh/utopia-email": "^0.0.1",
+    "@matthesketh/utopia-ai": "^0.0.1",
     "express": "^4.21.0",
     "vite": "^6.0.0"
   },
   "devDependencies": {
-    "@utopia/vite-plugin": "^0.0.1",
+    "@matthesketh/utopia-vite-plugin": "^0.0.1",
     "typescript": "^5.7.0"
   }
 }

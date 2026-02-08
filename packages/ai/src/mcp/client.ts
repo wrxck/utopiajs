@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/ai — MCP Client
+// @matthesketh/utopia-ai — MCP Client
 // ============================================================================
 
 import type {
@@ -42,7 +42,7 @@ export interface MCPClient {
  * Create an MCP client that connects to an MCP server over HTTP.
  *
  * ```ts
- * import { createMCPClient } from '@utopia/ai/mcp';
+ * import { createMCPClient } from '@matthesketh/utopia-ai/mcp';
  *
  * const client = createMCPClient({ url: 'http://localhost:3001/mcp' });
  * await client.initialize();

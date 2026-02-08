@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/router — Route matching and file-system convention mapping
+// @matthesketh/utopia-router — Route matching and file-system convention mapping
 // ============================================================================
 //
 // SvelteKit-style file-based routing:

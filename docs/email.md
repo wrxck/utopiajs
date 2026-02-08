@@ -1,16 +1,16 @@
 # Email Templates
 
-`@utopia/email` provides template-based email rendering using UtopiaJS components. Render `.utopia` components to email-safe HTML with automatic CSS inlining and plain text fallback generation. Adapter pattern for sending via SMTP, Resend, or SendGrid.
+`@matthesketh/utopia-email` provides template-based email rendering using UtopiaJS components. Render `.utopia` components to email-safe HTML with automatic CSS inlining and plain text fallback generation. Adapter pattern for sending via SMTP, Resend, or SendGrid.
 
 ## Quick Start
 
 ```bash
-pnpm add @utopia/email
+pnpm add @matthesketh/utopia-email
 ```
 
 ```ts
-import { createMailer } from '@utopia/email';
-import { smtpAdapter } from '@utopia/email/smtp';
+import { createMailer } from '@matthesketh/utopia-email';
+import { smtpAdapter } from '@matthesketh/utopia-email/smtp';
 import WelcomeEmail from './emails/Welcome.utopia';
 
 const mailer = createMailer(smtpAdapter({
@@ -57,7 +57,7 @@ await mailer.send({
 ### `renderEmail(component, props?, options?)`
 
 ```ts
-import { renderEmail } from '@utopia/email';
+import { renderEmail } from '@matthesketh/utopia-email';
 import WelcomeEmail from './emails/Welcome.utopia';
 
 const { html, text, subject } = renderEmail(WelcomeEmail, { name: 'Alice' }, {
@@ -88,9 +88,9 @@ const { html, text, subject } = renderEmail(WelcomeEmail, { name: 'Alice' }, {
 
 | Provider | Import Path | Config Type | Peer Dependency |
 |----------|-------------|-------------|-----------------|
-| SMTP | `@utopia/email/smtp` | `SmtpConfig` | `nodemailer` |
-| Resend | `@utopia/email/resend` | `ResendConfig` | `resend` |
-| SendGrid | `@utopia/email/sendgrid` | `SendGridConfig` | `@sendgrid/mail` |
+| SMTP | `@matthesketh/utopia-email/smtp` | `SmtpConfig` | `nodemailer` |
+| Resend | `@matthesketh/utopia-email/resend` | `ResendConfig` | `resend` |
+| SendGrid | `@matthesketh/utopia-email/sendgrid` | `SendGridConfig` | `@sendgrid/mail` |
 
 All provider SDKs are optional peer dependencies. Install only the one you need.
 
@@ -116,8 +116,8 @@ interface SendGridConfig {
 ### Adapter Example
 
 ```ts
-import { createMailer } from '@utopia/email';
-import { resendAdapter } from '@utopia/email/resend';
+import { createMailer } from '@matthesketh/utopia-email';
+import { resendAdapter } from '@matthesketh/utopia-email/resend';
 
 const mailer = createMailer(resendAdapter({
   apiKey: process.env.RESEND_API_KEY!,
@@ -147,7 +147,7 @@ import {
   EmailCard,
   EmailHeading,
   EmailText,
-} from '@utopia/email';
+} from '@matthesketh/utopia-email';
 ```
 
 Use these inside `.utopia` email templates:
@@ -166,7 +166,7 @@ Use these inside `.utopia` email templates:
 </template>
 
 <script>
-import { signal } from '@utopia/core';
+import { signal } from '@matthesketh/utopia-core';
 const props = defineProps<{ name: string }>();
 const name = signal(props.name);
 </script>
@@ -185,7 +185,7 @@ The inliner:
 - Skips `@media` and other at-rules
 
 ```ts
-import { inlineCSS } from '@utopia/email';
+import { inlineCSS } from '@matthesketh/utopia-email';
 
 const html = '<div class="card"><p>Hello</p></div>';
 const css = '.card { padding: 20px; } .card p { color: #333; }';
@@ -209,7 +209,7 @@ Conversion rules:
 - Whitespace is collapsed and lines are trimmed
 
 ```ts
-import { htmlToText } from '@utopia/email';
+import { htmlToText } from '@matthesketh/utopia-email';
 
 const text = htmlToText(emailHtml);
 ```
@@ -268,7 +268,7 @@ Convert HTML to plain text.
 
 ## Type Reference
 
-All types are exported from `@utopia/email`.
+All types are exported from `@matthesketh/utopia-email`.
 
 | Type | Description |
 |------|-------------|

@@ -1,13 +1,13 @@
 /**
- * @utopia/runtime — Test suite
+ * @matthesketh/utopia-runtime — Test suite
  *
  * Uses vitest with jsdom (configured in the root vitest.config.ts).
- * The @utopia/core package is resolved via the vitest alias to its source,
+ * The @matthesketh/utopia-core package is resolved via the vitest alias to its source,
  * so no build step is required.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { signal, effect as coreEffect } from '@utopia/core';
+import { signal, effect as coreEffect } from '@matthesketh/utopia-core';
 
 import {
   createElement,

@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/ai — Anthropic Adapter
+// @matthesketh/utopia-ai — Anthropic Adapter
 // ============================================================================
 
 import type {
@@ -21,8 +21,8 @@ import type {
  * Requires `@anthropic-ai/sdk` as a peer dependency.
  *
  * ```ts
- * import { createAI } from '@utopia/ai';
- * import { anthropicAdapter } from '@utopia/ai/anthropic';
+ * import { createAI } from '@matthesketh/utopia-ai';
+ * import { anthropicAdapter } from '@matthesketh/utopia-ai/anthropic';
  *
  * const ai = createAI(anthropicAdapter({ apiKey: process.env.ANTHROPIC_API_KEY }));
  * ```
@@ -39,7 +39,7 @@ export function anthropicAdapter(config: AnthropicConfig): AIAdapter {
       Anthropic = mod.Anthropic ?? mod.default;
     } catch {
       throw new Error(
-        '@utopia/ai: "@anthropic-ai/sdk" package is required for the Anthropic adapter. ' +
+        '@matthesketh/utopia-ai: "@anthropic-ai/sdk" package is required for the Anthropic adapter. ' +
         'Install it with: npm install @anthropic-ai/sdk',
       );
     }

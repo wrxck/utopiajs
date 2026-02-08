@@ -1,5 +1,5 @@
 /**
- * @utopia/runtime — Component lifecycle
+ * @matthesketh/utopia-runtime — Component lifecycle
  *
  * Provides the primitives for instantiating and mounting compiled .utopia
  * component definitions.
@@ -117,7 +117,7 @@ export function createComponentInstance(
  *
  * ```ts
  * import App from './App.utopia'
- * import { mount } from '@utopia/runtime'
+ * import { mount } from '@matthesketh/utopia-runtime'
  *
  * mount(App, '#app')
  * ```

@@ -6,13 +6,13 @@ UtopiaJS supports server-side rendering through a **runtime swap** architecture.
 
 ### The Runtime Swap
 
-Compiled `.utopia` components import helpers from `@utopia/runtime`:
+Compiled `.utopia` components import helpers from `@matthesketh/utopia-runtime`:
 
 ```js
-import { createElement, createTextNode, appendChild, createEffect, ... } from '@utopia/runtime'
+import { createElement, createTextNode, appendChild, createEffect, ... } from '@matthesketh/utopia-runtime'
 ```
 
-On the **client**, these are real DOM operations. On the **server**, a Vite alias redirects the import to `@utopia/server/ssr-runtime`, which provides identical function signatures that build a **VNode tree** (virtual nodes) instead of real DOM nodes. The VNode tree is then serialized to an HTML string.
+On the **client**, these are real DOM operations. On the **server**, a Vite alias redirects the import to `@matthesketh/utopia-server/ssr-runtime`, which provides identical function signatures that build a **VNode tree** (virtual nodes) instead of real DOM nodes. The VNode tree is then serialized to an HTML string.
 
 This means:
 
@@ -28,10 +28,10 @@ This means:
                     [compiler]
                         |
                 compiled JS module
-                    (imports from @utopia/runtime)
+                    (imports from @matthesketh/utopia-runtime)
                    /                    \
           [client build]            [SSR build]
-          @utopia/runtime     @utopia/server/ssr-runtime
+          @matthesketh/utopia-runtime     @matthesketh/utopia-server/ssr-runtime
           (real DOM ops)        (VNode tree ops)
                |                        |
           interactive app         HTML string
@@ -44,7 +44,7 @@ This means:
 
 ## Packages
 
-### `@utopia/server`
+### `@matthesketh/utopia-server`
 
 The server-side rendering package. Provides:
 
@@ -55,13 +55,13 @@ The server-side rendering package. Provides:
 | `createServerRouter(routes, url)` | Match a URL against routes on the server |
 | `createHandler(options)` | Create a Node.js HTTP request handler |
 
-### `@utopia/server/ssr-runtime`
+### `@matthesketh/utopia-server/ssr-runtime`
 
-Drop-in replacement for `@utopia/runtime`. Not imported directly by user code — the Vite plugin handles the swap automatically. Exports the same function signatures as `@utopia/runtime`, operating on VNodes instead of DOM nodes.
+Drop-in replacement for `@matthesketh/utopia-runtime`. Not imported directly by user code — the Vite plugin handles the swap automatically. Exports the same function signatures as `@matthesketh/utopia-runtime`, operating on VNodes instead of DOM nodes.
 
 Key behavioral differences from the client runtime:
 
-| Behavior | Client (`@utopia/runtime`) | Server (`ssr-runtime`) |
+| Behavior | Client (`@matthesketh/utopia-runtime`) | Server (`ssr-runtime`) |
 |----------|---------------------------|------------------------|
 | `createElement('div')` | Returns `HTMLDivElement` | Returns `VElement { type: 1, tag: 'div', ... }` |
 | `addEventListener(el, 'click', fn)` | Attaches listener | No-op, returns `() => {}` |
@@ -103,13 +103,13 @@ If adding SSR to an existing project:
 **1. Install dependencies:**
 
 ```bash
-pnpm add @utopia/server express
+pnpm add @matthesketh/utopia-server express
 ```
 
 **2. Create `src/entry-server.ts`:**
 
 ```ts
-import { renderToString } from '@utopia/server'
+import { renderToString } from '@matthesketh/utopia-server'
 import App from './App.utopia'
 
 export function render(url: string): { html: string; css: string } {
@@ -120,7 +120,7 @@ export function render(url: string): { html: string; css: string } {
 **3. Create `src/entry-client.ts`:**
 
 ```ts
-import { hydrate } from '@utopia/runtime'
+import { hydrate } from '@matthesketh/utopia-runtime'
 import App from './App.utopia'
 
 hydrate(App, '#app')
@@ -247,7 +247,7 @@ After the server sends the rendered HTML, the client takes over by **hydrating**
 
 ```ts
 // entry-client.ts
-import { hydrate } from '@utopia/runtime'
+import { hydrate } from '@matthesketh/utopia-runtime'
 import App from './App.utopia'
 
 hydrate(App, '#app')
@@ -276,7 +276,7 @@ In dev mode, hydration mismatches produce console warnings:
 Render a component to an HTML string synchronously.
 
 ```ts
-import { renderToString } from '@utopia/server'
+import { renderToString } from '@matthesketh/utopia-server'
 import App from './App.utopia'
 
 const { html, css } = renderToString(App, { title: 'Hello' })
@@ -297,7 +297,7 @@ const { html, css } = renderToString(App, { title: 'Hello' })
 Render a component to a Node.js `Readable` stream. The stream emits collected CSS first (in a `<style>` tag), then the HTML chunks.
 
 ```ts
-import { renderToStream } from '@utopia/server'
+import { renderToStream } from '@matthesketh/utopia-server'
 import App from './App.utopia'
 
 const stream = renderToStream(App)
@@ -313,8 +313,8 @@ stream.pipe(res)
 Match a URL against a route table on the server.
 
 ```ts
-import { createServerRouter } from '@utopia/server'
-import { buildRouteTable } from '@utopia/router'
+import { createServerRouter } from '@matthesketh/utopia-server'
+import { buildRouteTable } from '@matthesketh/utopia-router'
 
 const routes = buildRouteTable(routeManifest)
 const match = createServerRouter(routes, '/blog/my-post')
@@ -336,7 +336,7 @@ Create a Node.js HTTP request handler for SSR.
 
 ```ts
 import http from 'node:http'
-import { createHandler } from '@utopia/server'
+import { createHandler } from '@matthesketh/utopia-server'
 
 const handler = createHandler({
   template: '<html>...<!--ssr-head-->...<!--ssr-outlet-->...</html>',
@@ -364,7 +364,7 @@ The handler replaces:
 Hydrate a server-rendered component on the client.
 
 ```ts
-import { hydrate } from '@utopia/runtime'
+import { hydrate } from '@matthesketh/utopia-runtime'
 import App from './App.utopia'
 
 hydrate(App, '#app')       // CSS selector
@@ -379,10 +379,10 @@ hydrate(App, document.getElementById('app'))  // DOM element
 
 ## Vite Plugin SSR Support
 
-The `@utopia/vite-plugin` automatically handles the runtime swap:
+The `@matthesketh/utopia-vite-plugin` automatically handles the runtime swap:
 
-- **SSR builds** (`vite build --ssr`): The `config` hook adds a resolve alias mapping `@utopia/runtime` to `@utopia/server/ssr-runtime`
-- **Dev SSR** (`vite.ssrLoadModule()`): The `resolveId` hook intercepts `@utopia/runtime` imports in SSR context and redirects them
+- **SSR builds** (`vite build --ssr`): The `config` hook adds a resolve alias mapping `@matthesketh/utopia-runtime` to `@matthesketh/utopia-server/ssr-runtime`
+- **Dev SSR** (`vite.ssrLoadModule()`): The `resolveId` hook intercepts `@matthesketh/utopia-runtime` imports in SSR context and redirects them
 
 The `defineConfig()` helper also sets `ssr.noExternal` for all UtopiaJS packages to ensure they are bundled (not treated as external Node modules) during SSR builds.
 
@@ -390,14 +390,14 @@ No configuration is needed beyond using the standard Utopia Vite plugin:
 
 ```ts
 // vite.config.ts
-import { defineConfig } from '@utopia/vite-plugin'
+import { defineConfig } from '@matthesketh/utopia-vite-plugin'
 
 export default defineConfig()
 ```
 
 ## VNode Types
 
-The SSR runtime builds a tree of VNodes, exported from `@utopia/server`:
+The SSR runtime builds a tree of VNodes, exported from `@matthesketh/utopia-server`:
 
 ```ts
 interface VElement {

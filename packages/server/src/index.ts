@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/server — Public API
+// @matthesketh/utopia-server — Public API
 // ============================================================================
 
 export { renderToString } from './render-to-string.js';

@@ -1,18 +1,18 @@
 # AI & MCP Support
 
-`@utopia/ai` provides adapter-based AI integration for UtopiaJS applications. Same factory pattern as email: `createAI(adapter)` returns a unified interface for chat completions, streaming, embeddings, and agentic tool loops. Supports OpenAI, Anthropic, Google Gemini, and Ollama out of the box.
+`@matthesketh/utopia-ai` provides adapter-based AI integration for UtopiaJS applications. Same factory pattern as email: `createAI(adapter)` returns a unified interface for chat completions, streaming, embeddings, and agentic tool loops. Supports OpenAI, Anthropic, Google Gemini, and Ollama out of the box.
 
 The package also includes a full MCP (Model Context Protocol) implementation -- server, client, and HTTP handler -- for tool interop between AI agents and external services.
 
 ## Quick Start
 
 ```bash
-pnpm add @utopia/ai openai
+pnpm add @matthesketh/utopia-ai openai
 ```
 
 ```ts
-import { createAI } from '@utopia/ai';
-import { openaiAdapter } from '@utopia/ai/openai';
+import { createAI } from '@matthesketh/utopia-ai';
+import { openaiAdapter } from '@matthesketh/utopia-ai/openai';
 
 const ai = createAI(openaiAdapter({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -31,10 +31,10 @@ Each adapter is imported from a separate entry point so unused providers are nev
 
 | Provider | Import Path | Config Type | Default Model | Features |
 |----------|-------------|-------------|---------------|----------|
-| OpenAI | `@utopia/ai/openai` | `OpenAIConfig` | `gpt-4o` | chat, stream, embeddings |
-| Anthropic | `@utopia/ai/anthropic` | `AnthropicConfig` | `claude-sonnet-4-5-20250929` | chat, stream |
-| Google Gemini | `@utopia/ai/google` | `GoogleConfig` | `gemini-2.0-flash` | chat, stream, embeddings |
-| Ollama | `@utopia/ai/ollama` | `OllamaConfig` | `llama3.2` | chat, stream, embeddings |
+| OpenAI | `@matthesketh/utopia-ai/openai` | `OpenAIConfig` | `gpt-4o` | chat, stream, embeddings |
+| Anthropic | `@matthesketh/utopia-ai/anthropic` | `AnthropicConfig` | `claude-sonnet-4-5-20250929` | chat, stream |
+| Google Gemini | `@matthesketh/utopia-ai/google` | `GoogleConfig` | `gemini-2.0-flash` | chat, stream, embeddings |
+| Ollama | `@matthesketh/utopia-ai/ollama` | `OllamaConfig` | `llama3.2` | chat, stream, embeddings |
 
 All adapters lazy-load their provider SDK on first use. The Ollama adapter requires no external SDK -- it uses native `fetch` against the local Ollama API.
 
@@ -68,8 +68,8 @@ interface OllamaConfig {
 ### Adapter Example
 
 ```ts
-import { createAI } from '@utopia/ai';
-import { anthropicAdapter } from '@utopia/ai/anthropic';
+import { createAI } from '@matthesketh/utopia-ai';
+import { anthropicAdapter } from '@matthesketh/utopia-ai/anthropic';
 
 const ai = createAI(anthropicAdapter({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -145,8 +145,8 @@ Stream `ChatChunk`s as Server-Sent Events over an HTTP response. Use this in API
 
 ```ts
 // Server — API route
-import { createAI, streamSSE } from '@utopia/ai';
-import { openaiAdapter } from '@utopia/ai/openai';
+import { createAI, streamSSE } from '@matthesketh/utopia-ai';
+import { openaiAdapter } from '@matthesketh/utopia-ai/openai';
 
 const ai = createAI(openaiAdapter({ apiKey: process.env.OPENAI_API_KEY! }));
 
@@ -262,7 +262,7 @@ Create an MCP server that exposes tools, resources, and prompts via the JSON-RPC
 **Example:**
 
 ```ts
-import { createMCPServer } from '@utopia/ai/mcp';
+import { createMCPServer } from '@matthesketh/utopia-ai/mcp';
 
 const mcp = createMCPServer({
   name: 'my-app',
@@ -332,9 +332,9 @@ HTTP client that connects to an MCP server.
 The `toToolHandlers()` method bridges MCP tools directly into the `ai.run()` tool-calling loop. This is the core interop pattern:
 
 ```ts
-import { createAI } from '@utopia/ai';
-import { openaiAdapter } from '@utopia/ai/openai';
-import { createMCPClient } from '@utopia/ai/mcp';
+import { createAI } from '@matthesketh/utopia-ai';
+import { openaiAdapter } from '@matthesketh/utopia-ai/openai';
+import { createMCPClient } from '@matthesketh/utopia-ai/mcp';
 
 // Connect to an MCP server
 const client = createMCPClient({ url: 'http://localhost:3001/mcp' });
@@ -366,7 +366,7 @@ CORS headers are set automatically. Use as a standalone server or as Express mid
 
 ```ts
 import http from 'node:http';
-import { createMCPServer, createMCPHandler } from '@utopia/ai/mcp';
+import { createMCPServer, createMCPHandler } from '@matthesketh/utopia-ai/mcp';
 
 const mcp = createMCPServer({
   name: 'my-app',
@@ -469,9 +469,9 @@ Default retry predicate retries on network errors, timeouts, and HTTP status cod
 
 ## Type Reference
 
-All types are exported from the main `@utopia/ai` entry point. MCP types are exported from `@utopia/ai/mcp`.
+All types are exported from the main `@matthesketh/utopia-ai` entry point. MCP types are exported from `@matthesketh/utopia-ai/mcp`.
 
-**Core types (`@utopia/ai`):**
+**Core types (`@matthesketh/utopia-ai`):**
 
 | Type | Description |
 |------|-------------|
@@ -503,7 +503,7 @@ All types are exported from the main `@utopia/ai` entry point. MCP types are exp
 | `AIHooks` | Middleware hooks |
 | `RetryConfig` | Retry configuration |
 
-**MCP types (`@utopia/ai/mcp`):**
+**MCP types (`@matthesketh/utopia-ai/mcp`):**
 
 | Type | Description |
 |------|-------------|

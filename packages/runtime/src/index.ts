@@ -1,5 +1,5 @@
 /**
- * @utopia/runtime — Public API
+ * @matthesketh/utopia-runtime — Public API
  *
  * Re-exports everything that compiled .utopia code and end-user application
  * code needs from the runtime.
@@ -53,9 +53,9 @@ export { queueJob, nextTick } from './scheduler.js';
 export { hydrate } from './hydration.js';
 
 // ---------------------------------------------------------------------------
-// Reactivity primitives (re-exported from @utopia/core)
+// Reactivity primitives (re-exported from @matthesketh/utopia-core)
 // ---------------------------------------------------------------------------
-export { signal, computed, effect, batch, untrack } from '@utopia/core';
+export { signal, computed, effect, batch, untrack } from '@matthesketh/utopia-core';
 
-// Alias: the compiler emits `createEffect` but @utopia/core exports `effect`.
-export { effect as createEffect } from '@utopia/core';
+// Alias: the compiler emits `createEffect` but @matthesketh/utopia-core exports `effect`.
+export { effect as createEffect } from '@matthesketh/utopia-core';

@@ -1,17 +1,17 @@
-# @utopia/core
+# @matthesketh/utopia-core
 
 Fine-grained signals reactivity system for UtopiaJS.
 
 ## Install
 
 ```bash
-pnpm add @utopia/core
+pnpm add @matthesketh/utopia-core
 ```
 
 ## Usage
 
 ```ts
-import { signal, computed, effect, batch, untrack } from '@utopia/core';
+import { signal, computed, effect, batch, untrack } from '@matthesketh/utopia-core';
 
 // Writable signal
 const count = signal(0);

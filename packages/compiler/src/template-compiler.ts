@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 // Turns raw HTML template content (from an SFC <template> block) into a
 // JavaScript function body that creates real DOM nodes using helpers exported
-// by @utopia/runtime.
+// by @matthesketh/utopia-runtime.
 //
 // The compiler works in two phases:
 //   1. **Parse** — recursive-descent parser turns the HTML into a lightweight
@@ -22,7 +22,7 @@ export interface TemplateCompileOptions {
 export interface TemplateCompileResult {
   /** The full ES-module source for the render function. */
   code: string
-  /** The set of @utopia/runtime helpers actually referenced. */
+  /** The set of @matthesketh/utopia-runtime helpers actually referenced. */
   helpers: Set<string>
 }
 
@@ -481,7 +481,7 @@ class CodeGenerator {
     const helperList = Array.from(this.helpers).sort()
     const importLine =
       helperList.length > 0
-        ? `import { ${helperList.join(', ')} } from '@utopia/runtime'\n\n`
+        ? `import { ${helperList.join(', ')} } from '@matthesketh/utopia-runtime'\n\n`
         : ''
 
     const fnBody = this.code.map((l) => `  ${l}`).join('\n')

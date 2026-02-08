@@ -1,17 +1,17 @@
-# @utopia/compiler
+# @matthesketh/utopia-compiler
 
 Compiler for `.utopia` single-file components. Parses SFC blocks (template, script, style), compiles templates to direct DOM operations, and applies scoped CSS.
 
 ## Install
 
 ```bash
-pnpm add @utopia/compiler
+pnpm add @matthesketh/utopia-compiler
 ```
 
 ## Usage
 
 ```ts
-import { compile } from '@utopia/compiler';
+import { compile } from '@matthesketh/utopia-compiler';
 
 const source = `
 <template>
@@ -19,7 +19,7 @@ const source = `
 </template>
 
 <script>
-import { signal } from '@utopia/core'
+import { signal } from '@matthesketh/utopia-core'
 const count = signal(0)
 </script>
 

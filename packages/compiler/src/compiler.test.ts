@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// compiler.test.ts — Tests for the @utopia/compiler package
+// compiler.test.ts — Tests for the @matthesketh/utopia-compiler package
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest'
@@ -434,9 +434,9 @@ describe('Template Compilation', () => {
     expect(result.code).not.toContain('addEventListener')
   })
 
-  it('generates valid import statement from @utopia/runtime', () => {
+  it('generates valid import statement from @matthesketh/utopia-runtime', () => {
     const result = compileTemplate('<div>{{ x() }}</div>')
-    expect(result.code).toContain("from '@utopia/runtime'")
+    expect(result.code).toContain("from '@matthesketh/utopia-runtime'")
   })
 
   it('handles a complex template with all features', () => {
@@ -614,7 +614,7 @@ describe('compile() integration', () => {
 </template>
 
 <script>
-import { signal } from '@utopia/core'
+import { signal } from '@matthesketh/utopia-core'
 
 const count = signal(0)
 
@@ -635,11 +635,11 @@ h1 { color: blue; }
     // Code should contain the render function.
     expect(result.code).toContain('export default function render(_ctx)')
     // Code should contain the user script.
-    expect(result.code).toContain("import { signal } from '@utopia/core'")
+    expect(result.code).toContain("import { signal } from '@matthesketh/utopia-core'")
     expect(result.code).toContain('const count = signal(0)')
     expect(result.code).toContain('function increment()')
     // Code should contain runtime imports.
-    expect(result.code).toContain("from '@utopia/runtime'")
+    expect(result.code).toContain("from '@matthesketh/utopia-runtime'")
 
     // CSS should be scoped.
     expect(result.css).toContain('.counter[data-u-')
@@ -708,7 +708,7 @@ const x = 1
 </template>
 
 <script>
-import { signal } from '@utopia/core'
+import { signal } from '@matthesketh/utopia-core'
 const message = signal('hello')
 function handleClick() {}
 </script>
@@ -727,7 +727,7 @@ function handleClick() {}
 </template>
 
 <script>
-import { signal } from '@utopia/core'
+import { signal } from '@matthesketh/utopia-core'
 const items = signal(['a', 'b', 'c'])
 </script>
 `
@@ -757,7 +757,7 @@ const items = signal(['a', 'b', 'c'])
 </template>
 
 <script>
-import { signal, computed } from '@utopia/core'
+import { signal, computed } from '@matthesketh/utopia-core'
 const count = signal(0)
 const name = signal('')
 const show = signal(true)

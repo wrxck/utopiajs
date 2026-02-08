@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/email — HTML to Plain Text Converter
+// @matthesketh/utopia-email — HTML to Plain Text Converter
 // ============================================================================
 
 const ENTITY_MAP: Record<string, string> = {

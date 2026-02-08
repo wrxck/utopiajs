@@ -1,5 +1,5 @@
 /**
- * @utopia/runtime — Low-level DOM helpers
+ * @matthesketh/utopia-runtime — Low-level DOM helpers
  *
  * These thin wrappers are the only layer between compiled .utopia template
  * output and the real DOM. Keeping them minimal makes tree-shaking effective

@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/ai — Tests
+// @matthesketh/utopia-ai — Tests
 // ============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

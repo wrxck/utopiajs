@@ -1,5 +1,5 @@
 {
-  "name": "@utopia/server",
+  "name": "@matthesketh/utopia-server",
   "version": "0.0.1",
   "description": "Server-side rendering for UtopiaJS",
   "type": "module",
@@ -36,7 +36,7 @@
     "dev": "tsup src/index.ts src/ssr-runtime.ts --format esm,cjs --dts --watch"
   },
   "dependencies": {
-    "@utopia/core": "workspace:*",
-    "@utopia/router": "workspace:*"
+    "@matthesketh/utopia-core": "workspace:*",
+    "@matthesketh/utopia-router": "workspace:*"
   }
 }

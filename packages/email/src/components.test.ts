@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { renderToString } from '@utopia/server';
+import { renderToString } from '@matthesketh/utopia-server';
 import {
   createElement,
   createTextNode,
   appendChild,
   createComponent,
-} from '@utopia/server/ssr-runtime';
-import type { VElement, VNode } from '@utopia/server';
+} from '@matthesketh/utopia-server/ssr-runtime';
+import type { VElement, VNode } from '@matthesketh/utopia-server';
 import {
   EmailLayout,
   EmailButton,

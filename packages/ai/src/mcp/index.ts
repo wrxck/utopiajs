@@ -1,5 +1,5 @@
 // ============================================================================
-// @utopia/ai — MCP Public API
+// @matthesketh/utopia-ai — MCP Public API
 // ============================================================================
 
 export { createMCPServer } from './server.js';

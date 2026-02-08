@@ -1,5 +1,5 @@
 {
-  "name": "@utopia/core",
+  "name": "@matthesketh/utopia-core",
   "version": "0.0.1",
   "description": "Fine-grained signals reactivity system for UtopiaJS",
   "type": "module",

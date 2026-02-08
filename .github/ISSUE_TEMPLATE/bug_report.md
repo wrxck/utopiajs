@@ -27,7 +27,7 @@ What actually happened. Include error messages or console output if applicable.
 - **Node.js version**:
 - **OS**:
 - **Browser** (if applicable):
-- **Package and version** (e.g. `@utopia/core@0.1.0`):
+- **Package and version** (e.g. `@matthesketh/utopia-core@0.1.0`):
 
 ## Additional Context
 

@@ -6,7 +6,7 @@ import {
   createElement,
   appendChild,
   setAttr,
-} from '@utopia/server/ssr-runtime';
+} from '@matthesketh/utopia-server/ssr-runtime';
 
 export const EmailText = {
   setup: (props: Record<string, any>) => ({
