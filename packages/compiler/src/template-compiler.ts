@@ -570,7 +570,8 @@ class CodeGenerator {
     if (!node.content) return null
     this.helpers.add('createTextNode')
     const v = this.freshVar()
-    this.emit(`const ${v} = createTextNode(${JSON.stringify(node.content)})`)
+    const decoded = decodeEntities(node.content)
+    this.emit(`const ${v} = createTextNode(${JSON.stringify(decoded)})`)
     return v
   }
 
@@ -775,6 +776,28 @@ function isComponentTag(tag: string): boolean {
 
 function escapeStr(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+}
+
+/**
+ * Decode common HTML entities to their literal characters so that
+ * `createTextNode` produces the correct output.
+ */
+const ENTITY_MAP: Record<string, string> = {
+  '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'",
+  '&apos;': "'", '&nbsp;': '\u00A0', '&mdash;': '\u2014', '&ndash;': '\u2013',
+  '&lsquo;': '\u2018', '&rsquo;': '\u2019', '&ldquo;': '\u201C', '&rdquo;': '\u201D',
+  '&bull;': '\u2022', '&hellip;': '\u2026', '&copy;': '\u00A9', '&reg;': '\u00AE',
+  '&trade;': '\u2122', '&rarr;': '\u2192', '&larr;': '\u2190', '&uarr;': '\u2191',
+  '&darr;': '\u2193', '&times;': '\u00D7', '&divide;': '\u00F7',
+}
+
+function decodeEntities(text: string): string {
+  return text.replace(/&(?:#(\d+)|#x([0-9a-fA-F]+)|(\w+));/g, (match, dec, hex, named) => {
+    if (dec) return String.fromCodePoint(parseInt(dec, 10))
+    if (hex) return String.fromCodePoint(parseInt(hex, 16))
+    if (named) return ENTITY_MAP[`&${named};`] ?? match
+    return match
+  })
 }
 
 // ---- Main generate entry ---------------------------------------------------

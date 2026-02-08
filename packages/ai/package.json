@@ -1,6 +1,6 @@
 {
   "name": "@matthesketh/utopia-ai",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "AI adapters and MCP support for UtopiaJS",
   "type": "module",
   "license": "MIT",

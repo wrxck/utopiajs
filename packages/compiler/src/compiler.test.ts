@@ -316,7 +316,7 @@ describe('Template Compilation', () => {
     expect(result.code).toContain("setAttr(")
     expect(result.code).toContain("'class', 'app'")
     expect(result.code).toContain("createTextNode(")
-    expect(result.code).toContain('export default function render(_ctx)')
+    expect(result.code).toContain('function __render()')
     expect(result.helpers.has('createElement')).toBe(true)
     expect(result.helpers.has('setAttr')).toBe(true)
   })
@@ -326,7 +326,8 @@ describe('Template Compilation', () => {
     expect(result.code).toContain("createTextNode('')")
     expect(result.code).toContain('createEffect(')
     expect(result.code).toContain('setText(')
-    expect(result.code).toContain('_ctx.count()')
+    expect(result.code).toContain('count()')
+    expect(result.code).not.toContain('_ctx.')
     expect(result.helpers.has('createEffect')).toBe(true)
     expect(result.helpers.has('setText')).toBe(true)
   })
@@ -335,7 +336,8 @@ describe('Template Compilation', () => {
     const result = compileTemplate('<button @click="increment">+1</button>')
     expect(result.code).toContain("addEventListener(")
     expect(result.code).toContain("'click'")
-    expect(result.code).toContain('_ctx.increment')
+    expect(result.code).toContain('increment')
+    expect(result.code).not.toContain('_ctx.')
     expect(result.helpers.has('addEventListener')).toBe(true)
   })
 
@@ -343,7 +345,8 @@ describe('Template Compilation', () => {
     const result = compileTemplate('<button u-on:click="handler">Go</button>')
     expect(result.code).toContain("addEventListener(")
     expect(result.code).toContain("'click'")
-    expect(result.code).toContain('_ctx.handler')
+    expect(result.code).toContain(', handler)')
+    expect(result.code).not.toContain('_ctx.')
   })
 
   it('compiles u-bind:attr with reactive effect', () => {
@@ -351,13 +354,15 @@ describe('Template Compilation', () => {
     expect(result.code).toContain('createEffect(')
     expect(result.code).toContain("setAttr(")
     expect(result.code).toContain("'value'")
-    expect(result.code).toContain('_ctx.name()')
+    expect(result.code).toContain('name()')
+    expect(result.code).not.toContain('_ctx.')
   })
 
   it('compiles :attr shorthand', () => {
     const result = compileTemplate('<img :src="imageUrl()" />')
     expect(result.code).toContain("'src'")
-    expect(result.code).toContain('_ctx.imageUrl()')
+    expect(result.code).toContain('imageUrl()')
+    expect(result.code).not.toContain('_ctx.')
   })
 
   it('compiles u-if with conditional rendering', () => {
@@ -365,7 +370,8 @@ describe('Template Compilation', () => {
     expect(result.code).toContain("createComment('u-if')")
     expect(result.code).toContain('createIf(')
     expect(result.code).toContain('Boolean(')
-    expect(result.code).toContain('_ctx.show()')
+    expect(result.code).toContain('show()')
+    expect(result.code).not.toContain('_ctx.')
     // The element creation should be inside a function.
     expect(result.code).toContain("createElement('div')")
     expect(result.helpers.has('createIf')).toBe(true)
@@ -376,10 +382,11 @@ describe('Template Compilation', () => {
     const result = compileTemplate('<li u-for="item in items()">{{ item }}</li>')
     expect(result.code).toContain("createComment('u-for')")
     expect(result.code).toContain('createFor(')
-    expect(result.code).toContain('_ctx.items()')
+    expect(result.code).toContain('items()')
+    expect(result.code).not.toContain('_ctx.')
     // The item should be a function parameter.
     expect(result.code).toContain('(item, _index)')
-    // Inside the for body, `item` should be used directly (not _ctx.item).
+    // Inside the for body, `item` should be used directly.
     expect(result.code).toContain('String(item)')
     expect(result.helpers.has('createFor')).toBe(true)
     expect(result.helpers.has('createComment')).toBe(true)
@@ -390,11 +397,12 @@ describe('Template Compilation', () => {
     // Bind direction: reactive attribute.
     expect(result.code).toContain("setAttr(")
     expect(result.code).toContain("'value'")
-    expect(result.code).toContain('_ctx.name()')
+    expect(result.code).toContain('name()')
     // Event direction: set on input.
     expect(result.code).toContain("addEventListener(")
     expect(result.code).toContain("'input'")
-    expect(result.code).toContain('_ctx.name.set(')
+    expect(result.code).toContain('name.set(')
+    expect(result.code).not.toContain('_ctx.')
   })
 
   it('compiles nested elements', () => {
@@ -409,8 +417,9 @@ describe('Template Compilation', () => {
 
   it('compiles PascalCase component references', () => {
     const result = compileTemplate('<MyComponent title="hello" />')
-    expect(result.code).toContain('_ctx.MyComponent(')
+    expect(result.code).toContain('createComponent(MyComponent,')
     expect(result.code).toContain("title: 'hello'")
+    expect(result.code).not.toContain('_ctx.')
   })
 
   it('applies scope ID to all elements when provided', () => {
@@ -454,7 +463,8 @@ describe('Template Compilation', () => {
     `
     const result = compileTemplate(template)
     // Should compile without error.
-    expect(result.code).toContain('export default function render(_ctx)')
+    expect(result.code).toContain('function __render()')
+    expect(result.code).not.toContain('_ctx.')
     // Check all helpers are imported.
     expect(result.helpers.has('createElement')).toBe(true)
     expect(result.helpers.has('createTextNode')).toBe(true)
@@ -632,8 +642,9 @@ h1 { color: blue; }
   it('produces code and css from a complete SFC', () => {
     const result = compile(fullSFC, { filename: 'Counter.utopia' })
 
-    // Code should contain the render function.
-    expect(result.code).toContain('export default function render(_ctx)')
+    // Code should contain the render function and ComponentDefinition export.
+    expect(result.code).toContain('function __render()')
+    expect(result.code).toContain('export default { render: __render }')
     // Code should contain the user script.
     expect(result.code).toContain("import { signal } from '@matthesketh/utopia-core'")
     expect(result.code).toContain('const count = signal(0)')
@@ -665,7 +676,8 @@ const x = 1
 </script>
 `
     const result = compile(source)
-    expect(result.code).toContain('export default function render(_ctx)')
+    expect(result.code).toContain('function __render()')
+    expect(result.code).toContain('export default { render: __render }')
     expect(result.code).toContain('const x = 1')
     expect(result.css).toBe('')
   })
@@ -677,7 +689,8 @@ const x = 1
 </template>
 `
     const result = compile(source)
-    expect(result.code).toContain('export default function render(_ctx)')
+    expect(result.code).toContain('function __render()')
+    expect(result.code).toContain('export default { render: __render }')
     expect(result.code).toContain("createElement('div')")
   })
 
@@ -698,7 +711,7 @@ const x = 1
     expect(result.code).not.toContain('data-u-')
   })
 
-  it('produces code that uses correct _ctx references', () => {
+  it('produces code that uses direct module-level references', () => {
     const source = `
 <template>
   <div>
@@ -714,8 +727,9 @@ function handleClick() {}
 </script>
 `
     const result = compile(source)
-    expect(result.code).toContain('_ctx.message()')
-    expect(result.code).toContain('_ctx.handleClick')
+    expect(result.code).toContain('message()')
+    expect(result.code).toContain(', handleClick)')
+    expect(result.code).not.toContain('_ctx.')
   })
 
   it('handles u-for with proper item scoping in full compile', () => {
@@ -732,15 +746,12 @@ const items = signal(['a', 'b', 'c'])
 </script>
 `
     const result = compile(source)
-    // `items()` should reference _ctx.
-    expect(result.code).toContain('_ctx.items()')
-    // `item` inside the for body should be a bare variable, not _ctx.item.
+    // `items()` should be a direct reference (no _ctx).
+    expect(result.code).toContain('items()')
+    expect(result.code).not.toContain('_ctx.')
+    // `item` inside the for body should be a function parameter.
     expect(result.code).toContain('(item, _index)')
     expect(result.code).toContain('String(item)')
-    // Inside the for body, `item` should NOT be resolved as _ctx.item.
-    // (Note: _ctx.items() is expected; we check there's no _ctx.item that
-    // isn't followed by 's', i.e. no _ctx.item( or _ctx.item) references.)
-    expect(result.code).not.toMatch(/_ctx\.item[^s]/)
   })
 
   it('compiles a SFC with all directive types', () => {
