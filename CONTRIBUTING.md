@@ -78,4 +78,4 @@ This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md). By particip
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [AGPL-3.0-or-later](LICENSE) license.
+By contributing, you agree that your contributions will be licensed under the [MIT](LICENSE) license.

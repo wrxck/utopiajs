@@ -2,7 +2,7 @@
 
 A compiler-first, signal-based UI framework with single-file components.
 
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT--3.0--or--later-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-green.svg)](https://nodejs.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-workspace-F69220.svg)](https://pnpm.io/)
 
@@ -95,4 +95,4 @@ Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
 
 ## License
 
-[AGPL-3.0-or-later](LICENSE)
+[MIT](LICENSE)

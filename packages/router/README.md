@@ -71,4 +71,4 @@ See [docs/architecture.md](../../docs/architecture.md) for full routing details.
 
 ## License
 
-AGPL-3.0-or-later
+MIT

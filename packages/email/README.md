@@ -55,4 +55,4 @@ See [docs/email.md](../../docs/email.md) for the full rendering pipeline, compon
 
 ## License
 
-AGPL-3.0-or-later
+MIT

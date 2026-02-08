@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "description": "Scaffold a new UtopiaJS project",
   "type": "module",
-  "license": "AGPL-3.0-or-later",
+  "license": "MIT",
   "author": "Matt <matt@matthesketh.pro>",
   "repository": {
     "type": "git",

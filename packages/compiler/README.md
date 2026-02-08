@@ -47,4 +47,4 @@ See [docs/architecture.md](../../docs/architecture.md) for the full compilation 
 
 ## License
 
-AGPL-3.0-or-later
+MIT

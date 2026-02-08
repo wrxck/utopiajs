@@ -58,4 +58,4 @@ See [docs/architecture.md](../../docs/architecture.md) and [docs/ssr.md](../../d
 
 ## License
 
-AGPL-3.0-or-later
+MIT

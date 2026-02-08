@@ -58,4 +58,4 @@ The CLI is the primary interface. The package exports no public API -- it runs d
 
 ## License
 
-AGPL-3.0-or-later
+MIT
