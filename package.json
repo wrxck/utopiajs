@@ -1,0 +1,50 @@
+{
+  "name": "utopiajs",
+  "private": true,
+  "version": "0.0.1",
+  "description": "A compiler-first, signal-based UI framework with single-file components",
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "author": "Matt <matt@matthesketh.pro>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wrxck/utopiajs.git"
+  },
+  "homepage": "https://matthesketh.pro",
+  "bugs": "https://github.com/wrxck/utopiajs/issues",
+  "keywords": [
+    "ui",
+    "framework",
+    "signals",
+    "reactive",
+    "compiler",
+    "ssr",
+    "sfc",
+    "components",
+    "typescript"
+  ],
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "eslint packages/*/src/**/*.ts",
+    "clean": "pnpm -r exec rm -rf dist",
+    "release": "pnpm build && pnpm -r publish --access public"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "happy-dom": "^20.5.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "dependencies": {
+    "@esbuild/linux-x64": "^0.27.3",
+    "@vitest/runner": "^3.2.4",
+    "jsdom": "^24.1.3"
+  }
+}

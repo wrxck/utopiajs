@@ -1,0 +1,33 @@
+{
+  "name": "@utopia/core",
+  "version": "0.0.1",
+  "description": "Fine-grained signals reactivity system for UtopiaJS",
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "author": "Matt <matt@matthesketh.pro>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wrxck/utopiajs.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/wrxck/utopiajs/tree/main/packages/core",
+  "keywords": ["signals", "reactive", "fine-grained", "state-management", "utopiajs"],
+  "engines": { "node": ">=20.0.0" },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch"
+  }
+}

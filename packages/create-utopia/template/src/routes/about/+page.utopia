@@ -1,0 +1,19 @@
+<template>
+  <div>
+    <h1>About</h1>
+    <p>UtopiaJS is a modern web framework featuring:</p>
+    <ul>
+      <li>Fine-grained reactivity with signals</li>
+      <li>Compiler-first approach — no virtual DOM</li>
+      <li>Single-file components (.utopia)</li>
+      <li>File-based routing</li>
+      <li>TypeScript-first</li>
+    </ul>
+  </div>
+</template>
+
+<style scoped>
+ul {
+  line-height: 1.8;
+}
+</style>

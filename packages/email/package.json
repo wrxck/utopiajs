@@ -1,0 +1,61 @@
+{
+  "name": "@utopia/email",
+  "version": "0.0.1",
+  "description": "Template-based email rendering for UtopiaJS",
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "author": "Matt <matt@matthesketh.pro>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wrxck/utopiajs.git",
+    "directory": "packages/email"
+  },
+  "homepage": "https://github.com/wrxck/utopiajs/tree/main/packages/email",
+  "keywords": ["email", "templates", "smtp", "resend", "sendgrid", "utopiajs"],
+  "engines": { "node": ">=20.0.0" },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./smtp": {
+      "types": "./dist/adapters/smtp.d.ts",
+      "import": "./dist/adapters/smtp.js",
+      "require": "./dist/adapters/smtp.cjs"
+    },
+    "./resend": {
+      "types": "./dist/adapters/resend.d.ts",
+      "import": "./dist/adapters/resend.js",
+      "require": "./dist/adapters/resend.cjs"
+    },
+    "./sendgrid": {
+      "types": "./dist/adapters/sendgrid.d.ts",
+      "import": "./dist/adapters/sendgrid.js",
+      "require": "./dist/adapters/sendgrid.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts src/adapters/smtp.ts src/adapters/resend.ts src/adapters/sendgrid.ts --format esm,cjs --dts"
+  },
+  "dependencies": {
+    "@utopia/core": "workspace:*",
+    "@utopia/server": "workspace:*"
+  },
+  "peerDependencies": {
+    "nodemailer": "^6.0.0",
+    "resend": "^3.0.0 || ^4.0.0",
+    "@sendgrid/mail": "^7.0.0 || ^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "nodemailer": { "optional": true },
+    "resend": { "optional": true },
+    "@sendgrid/mail": { "optional": true }
+  }
+}

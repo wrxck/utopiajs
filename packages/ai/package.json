@@ -1,0 +1,67 @@
+{
+  "name": "@utopia/ai",
+  "version": "0.0.1",
+  "description": "AI adapters and MCP support for UtopiaJS",
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "author": "Matt <matt@matthesketh.pro>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wrxck/utopiajs.git",
+    "directory": "packages/ai"
+  },
+  "homepage": "https://github.com/wrxck/utopiajs/tree/main/packages/ai",
+  "keywords": ["ai", "llm", "openai", "anthropic", "mcp", "streaming", "tool-calling", "utopiajs"],
+  "engines": { "node": ">=20.0.0" },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./openai": {
+      "types": "./dist/adapters/openai.d.ts",
+      "import": "./dist/adapters/openai.js",
+      "require": "./dist/adapters/openai.cjs"
+    },
+    "./anthropic": {
+      "types": "./dist/adapters/anthropic.d.ts",
+      "import": "./dist/adapters/anthropic.js",
+      "require": "./dist/adapters/anthropic.cjs"
+    },
+    "./google": {
+      "types": "./dist/adapters/google.d.ts",
+      "import": "./dist/adapters/google.js",
+      "require": "./dist/adapters/google.cjs"
+    },
+    "./ollama": {
+      "types": "./dist/adapters/ollama.d.ts",
+      "import": "./dist/adapters/ollama.js",
+      "require": "./dist/adapters/ollama.cjs"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "import": "./dist/mcp/index.js",
+      "require": "./dist/mcp/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts src/adapters/openai.ts src/adapters/anthropic.ts src/adapters/google.ts src/adapters/ollama.ts src/mcp/index.ts --format esm,cjs --dts"
+  },
+  "peerDependencies": {
+    "openai": "^4.0.0",
+    "@anthropic-ai/sdk": "^0.30.0",
+    "@google/generative-ai": "^0.21.0"
+  },
+  "peerDependenciesMeta": {
+    "openai": { "optional": true },
+    "@anthropic-ai/sdk": { "optional": true },
+    "@google/generative-ai": { "optional": true }
+  }
+}

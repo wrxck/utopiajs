@@ -1,0 +1,227 @@
+<template>
+  <div class="home">
+    <h1>UtopiaJS Kitchen Sink</h1>
+    <p class="subtitle">Every feature in one example project.</p>
+
+    <section class="demo-section">
+      <h2>Signals Reactivity</h2>
+      <div class="counter-card">
+        <div class="counter-display">
+          <span class="count">{{ count() }}</span>
+          <span class="doubled">doubled: {{ doubled() }}</span>
+        </div>
+        <div class="counter-actions">
+          <button @click="decrement">-</button>
+          <button @click="reset">Reset</button>
+          <button @click="increment">+</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="demo-section">
+      <h2>Conditional Rendering (u-if)</h2>
+      <button @click="toggleVisible">Toggle</button>
+      <div u-if="isVisible()">
+        <p class="visible-text">This content is conditionally rendered.</p>
+      </div>
+    </section>
+
+    <section class="demo-section">
+      <h2>List Rendering (u-for)</h2>
+      <div class="input-row">
+        <input u-model="newItem" placeholder="Add item..." />
+        <button @click="addItem">Add</button>
+      </div>
+      <ul class="item-list">
+        <li u-for="item in items()">{{ item }}</li>
+      </ul>
+    </section>
+
+    <section class="demo-section">
+      <h2>Two-Way Binding (u-model)</h2>
+      <input u-model="name" placeholder="Type your name..." />
+      <p>Hello, {{ name() || 'stranger' }}.</p>
+    </section>
+
+    <section class="demo-section">
+      <h2>Batch Updates</h2>
+      <p>A: {{ a() }}, B: {{ b() }}, Sum: {{ sum() }}</p>
+      <button @click="batchUpdate">Update A and B together</button>
+    </section>
+
+    <section class="demo-section">
+      <h2>Features Used</h2>
+      <ul class="feature-list">
+        <li>signal(), computed(), effect(), batch(), untrack()</li>
+        <li>u-if, u-for, u-model, @click, {{ interpolation }}</li>
+        <li>File-based routing (+page.utopia, +layout.utopia, [param])</li>
+        <li>Route groups — (auth)/login</li>
+        <li>SSR with cursor-based hydration</li>
+        <li>AI chat with OpenAI streaming</li>
+        <li>Email sending via SMTP adapter</li>
+        <li>MCP server with JSON-RPC 2.0</li>
+        <li>Scoped CSS styles</li>
+      </ul>
+    </section>
+  </div>
+</template>
+
+<script>
+import { signal, computed, effect, batch, untrack } from '@utopia/core'
+
+// Counter demo
+const count = signal(0)
+const doubled = computed(() => count() * 2)
+
+function increment() { count.update(n => n + 1) }
+function decrement() { count.update(n => n - 1) }
+function reset() { count.set(0) }
+
+// Conditional rendering
+const isVisible = signal(true)
+function toggleVisible() { isVisible.update(v => !v) }
+
+// List rendering
+const items = signal(['Signals', 'Compiler', 'SSR'])
+const newItem = signal('')
+function addItem() {
+  const value = newItem().trim()
+  if (value) {
+    items.update(list => [...list, value])
+    newItem.set('')
+  }
+}
+
+// Two-way binding
+const name = signal('')
+
+// Batch updates
+const a = signal(1)
+const b = signal(2)
+const sum = computed(() => a() + b())
+function batchUpdate() {
+  batch(() => {
+    a.update(n => n + 10)
+    b.update(n => n + 20)
+  })
+}
+
+// Effect demo — logs to console whenever count changes
+effect(() => {
+  const c = count()
+  const n = untrack(() => name())
+  console.log(`[effect] count=${c}, name="${n}" (name is untracked)`)
+})
+</script>
+
+<style scoped>
+.home h1 {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  color: #666;
+  margin-bottom: 32px;
+}
+
+.demo-section {
+  margin-bottom: 32px;
+  padding: 24px;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+}
+
+.demo-section h2 {
+  font-size: 18px;
+  margin-bottom: 16px;
+  color: #333;
+}
+
+.counter-card {
+  text-align: center;
+}
+
+.counter-display {
+  margin-bottom: 16px;
+}
+
+.count {
+  font-size: 48px;
+  font-weight: 700;
+  color: #4a9eff;
+}
+
+.doubled {
+  display: block;
+  font-size: 14px;
+  color: #999;
+  margin-top: 4px;
+}
+
+.counter-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+button {
+  padding: 8px 20px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.15s;
+}
+
+button:hover {
+  background: #4a9eff;
+  color: #fff;
+  border-color: #4a9eff;
+}
+
+.visible-text {
+  margin-top: 12px;
+  padding: 12px;
+  background: #e8f4ff;
+  border-radius: 6px;
+  color: #1a6fbf;
+}
+
+.input-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+input {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  flex: 1;
+}
+
+.item-list {
+  list-style: none;
+  padding: 0;
+}
+
+.item-list li {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+}
+
+.feature-list {
+  padding-left: 20px;
+}
+
+.feature-list li {
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: #555;
+}
+</style>

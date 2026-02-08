@@ -1,0 +1,42 @@
+{
+  "name": "@utopia/server",
+  "version": "0.0.1",
+  "description": "Server-side rendering for UtopiaJS",
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "author": "Matt <matt@matthesketh.pro>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wrxck/utopiajs.git",
+    "directory": "packages/server"
+  },
+  "homepage": "https://github.com/wrxck/utopiajs/tree/main/packages/server",
+  "keywords": ["ssr", "server-side-rendering", "streaming", "hydration", "utopiajs"],
+  "engines": { "node": ">=20.0.0" },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./ssr-runtime": {
+      "types": "./dist/ssr-runtime.d.ts",
+      "import": "./dist/ssr-runtime.js",
+      "require": "./dist/ssr-runtime.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts src/ssr-runtime.ts --format esm,cjs --dts",
+    "dev": "tsup src/index.ts src/ssr-runtime.ts --format esm,cjs --dts --watch"
+  },
+  "dependencies": {
+    "@utopia/core": "workspace:*",
+    "@utopia/router": "workspace:*"
+  }
+}

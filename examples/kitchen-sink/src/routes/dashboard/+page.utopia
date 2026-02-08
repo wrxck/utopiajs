@@ -1,0 +1,184 @@
+<template>
+  <div class="dashboard">
+    <h1>Dashboard</h1>
+    <p>Reactive dashboard with computed signals and effects.</p>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Tasks</h3>
+        <span class="stat">{{ taskCount() }}</span>
+        <div class="actions">
+          <button @click="addTask">Add Task</button>
+          <button @click="clearTasks">Clear</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Completion</h3>
+        <span class="stat">{{ completionRate() }}%</span>
+        <button @click="completeOne">Complete One</button>
+      </div>
+
+      <div class="card">
+        <h3>Status</h3>
+        <span class="stat" :class="statusClass()">{{ statusText() }}</span>
+      </div>
+    </div>
+
+    <div class="task-list">
+      <h2>Task List</h2>
+      <ul>
+        <li u-for="task in tasks()">
+          {{ task.name }} — {{ task.done ? 'Done' : 'Pending' }}
+        </li>
+      </ul>
+    </div>
+  </div>
+</template>
+
+<script>
+import { signal, computed, effect } from '@utopia/core'
+
+interface Task {
+  name: string
+  done: boolean
+}
+
+const tasks = signal<Task[]>([
+  { name: 'Set up project', done: true },
+  { name: 'Build UI components', done: true },
+  { name: 'Integrate AI chat', done: false },
+  { name: 'Write tests', done: false },
+  { name: 'Deploy to production', done: false },
+])
+
+const taskCount = computed(() => tasks().length)
+const doneCount = computed(() => tasks().filter(t => t.done).length)
+const completionRate = computed(() => {
+  const total = taskCount()
+  return total === 0 ? 0 : Math.round((doneCount() / total) * 100)
+})
+
+const statusText = computed(() => {
+  const rate = completionRate()
+  if (rate === 100) return 'All Done'
+  if (rate >= 50) return 'In Progress'
+  return 'Getting Started'
+})
+
+const statusClass = computed(() => {
+  const rate = completionRate()
+  if (rate === 100) return 'status-done'
+  if (rate >= 50) return 'status-progress'
+  return 'status-start'
+})
+
+let counter = 0
+function addTask() {
+  counter++
+  tasks.update(list => [...list, { name: `Task #${list.length + counter}`, done: false }])
+}
+
+function clearTasks() {
+  tasks.set([])
+}
+
+function completeOne() {
+  tasks.update(list => {
+    const pending = list.findIndex(t => !t.done)
+    if (pending === -1) return list
+    return list.map((t, i) => i === pending ? { ...t, done: true } : t)
+  })
+}
+
+// Effect: log task changes
+effect(() => {
+  console.log(`[dashboard] ${doneCount()}/${taskCount()} tasks complete`)
+})
+</script>
+
+<style scoped>
+.dashboard h1 {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin: 24px 0;
+}
+
+.card {
+  padding: 24px;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.card h3 {
+  font-size: 14px;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.stat {
+  font-size: 36px;
+  font-weight: 700;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.status-done { color: #22c55e; }
+.status-progress { color: #f59e0b; }
+.status-start { color: #4a9eff; }
+
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+button {
+  padding: 6px 16px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+button:hover {
+  background: #4a9eff;
+  color: #fff;
+  border-color: #4a9eff;
+}
+
+.task-list {
+  margin-top: 24px;
+  padding: 24px;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+}
+
+.task-list h2 {
+  font-size: 18px;
+  margin-bottom: 16px;
+}
+
+ul {
+  list-style: none;
+  padding: 0;
+}
+
+li {
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+}
+</style>

@@ -1,0 +1,74 @@
+<template>
+  <div id="app">
+    <nav class="nav">
+      <div class="nav-brand">UtopiaJS Kitchen Sink</div>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/chat">AI Chat</a>
+        <a href="/blog/hello-world">Blog</a>
+        <a href="/login">Login</a>
+      </div>
+    </nav>
+    <main class="main">
+      <RouterView />
+    </main>
+  </div>
+</template>
+
+<script>
+import { createRouterView as RouterView } from '@utopia/router'
+</script>
+
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+#app {
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #1a1a1a;
+  min-height: 100vh;
+  background: #fafafa;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 32px;
+  background: #fff;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.nav-brand {
+  font-weight: 700;
+  font-size: 18px;
+  color: #111;
+}
+
+.nav-links {
+  display: flex;
+  gap: 24px;
+}
+
+.nav-links a {
+  color: #555;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.15s;
+}
+
+.nav-links a:hover {
+  color: #4a9eff;
+}
+
+.main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px;
+}
+</style>

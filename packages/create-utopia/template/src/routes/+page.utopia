@@ -1,0 +1,62 @@
+<template>
+  <div>
+    <h1>Welcome to UtopiaJS</h1>
+    <p>A compiler-first, signal-based UI framework.</p>
+
+    <div class="counter">
+      <p>Count: {{ count() }}</p>
+      <p>Doubled: {{ doubled() }}</p>
+      <button @click="increment">Increment</button>
+      <button @click="decrement">Decrement</button>
+      <button @click="reset">Reset</button>
+    </div>
+  </div>
+</template>
+
+<script>
+import { signal, computed } from '@utopia/core'
+
+const count = signal(0)
+const doubled = computed(() => count() * 2)
+
+function increment() {
+  count.update(n => n + 1)
+}
+
+function decrement() {
+  count.update(n => n - 1)
+}
+
+function reset() {
+  count.set(0)
+}
+</script>
+
+<style scoped>
+h1 {
+  color: #333;
+}
+
+.counter {
+  margin-top: 24px;
+  padding: 20px;
+  border-radius: 8px;
+  background: #f8f9fa;
+}
+
+button {
+  margin-right: 8px;
+  padding: 8px 16px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+button:hover {
+  background: #4a9eff;
+  color: white;
+  border-color: #4a9eff;
+}
+</style>

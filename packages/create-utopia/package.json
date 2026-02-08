@@ -1,0 +1,33 @@
+{
+  "name": "create-utopia",
+  "version": "0.0.1",
+  "description": "Scaffold a new UtopiaJS project",
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "author": "Matt <matt@matthesketh.pro>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wrxck/utopiajs.git",
+    "directory": "packages/create-utopia"
+  },
+  "homepage": "https://matthesketh.pro",
+  "keywords": ["create", "scaffold", "cli", "generator", "starter", "utopiajs"],
+  "engines": { "node": ">=20.0.0" },
+  "bin": {
+    "create-utopia": "./dist/index.js"
+  },
+  "files": ["dist", "template"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts",
+    "dev": "tsup src/index.ts --format esm --dts --watch"
+  },
+  "dependencies": {
+    "prompts": "^2.4.2",
+    "kolorist": "^1.8.0"
+  },
+  "devDependencies": {
+    "@types/prompts": "^2.4.9",
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0"
+  }
+}

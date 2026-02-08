@@ -1,0 +1,211 @@
+<template>
+  <div class="chat">
+    <h1>AI Chat</h1>
+    <p class="subtitle">Streaming chat powered by OpenAI via @utopia/ai.</p>
+
+    <div class="chat-window">
+      <div class="messages">
+        <div u-for="msg in messages()" :class="'message message-' + msg.role">
+          <div class="message-role">{{ msg.role }}</div>
+          <div class="message-content">{{ msg.content }}</div>
+        </div>
+        <div u-if="isLoading()">
+          <div class="message message-assistant">
+            <div class="message-role">assistant</div>
+            <div class="message-content streaming">{{ streamContent() || 'Thinking...' }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-input">
+        <input
+          u-model="input"
+          placeholder="Ask something..."
+          @keydown="handleKeydown"
+        />
+        <button @click="sendMessage" :disabled="isLoading()">Send</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import { signal, computed } from '@utopia/core'
+
+interface ChatMsg {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+const messages = signal<ChatMsg[]>([])
+const input = signal('')
+const isLoading = signal(false)
+const streamContent = signal('')
+
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    sendMessage()
+  }
+}
+
+async function sendMessage() {
+  const text = input().trim()
+  if (!text || isLoading()) return
+
+  // Add user message
+  messages.update(msgs => [...msgs, { role: 'user', content: text }])
+  input.set('')
+  isLoading.set(true)
+  streamContent.set('')
+
+  try {
+    // Send to our API route which uses @utopia/ai + streamSSE
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: messages().map(m => ({
+          role: m.role,
+          content: m.content,
+        })),
+      }),
+    })
+
+    // Parse SSE stream (matching parseSSEStream from @utopia/ai)
+    const reader = res.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let fullContent = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim()
+          if (data === '[DONE]') break
+          try {
+            const chunk = JSON.parse(data)
+            fullContent += chunk.delta
+            streamContent.set(fullContent)
+          } catch {
+            // skip malformed
+          }
+        }
+      }
+    }
+
+    // Add assistant message
+    messages.update(msgs => [...msgs, { role: 'assistant', content: fullContent }])
+  } catch (err: any) {
+    messages.update(msgs => [...msgs, {
+      role: 'assistant',
+      content: `Error: ${err.message}`,
+    }])
+  } finally {
+    isLoading.set(false)
+    streamContent.set('')
+  }
+}
+</script>
+
+<style scoped>
+.chat h1 {
+  font-size: 28px;
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  color: #666;
+  margin-bottom: 24px;
+}
+
+.chat-window {
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.messages {
+  padding: 24px;
+  min-height: 400px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.message {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.message-user {
+  background: #e8f4ff;
+  margin-left: 40px;
+}
+
+.message-assistant {
+  background: #f5f5f5;
+  margin-right: 40px;
+}
+
+.message-role {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #999;
+  margin-bottom: 4px;
+}
+
+.message-content {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.streaming {
+  color: #666;
+}
+
+.chat-input {
+  display: flex;
+  gap: 8px;
+  padding: 16px;
+  border-top: 1px solid #e5e5e5;
+  background: #fafafa;
+}
+
+.chat-input input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.chat-input button {
+  padding: 10px 24px;
+  background: #4a9eff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.chat-input button:hover {
+  background: #3a8eef;
+}
+
+.chat-input button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+</style>

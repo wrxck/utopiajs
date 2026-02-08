@@ -1,0 +1,111 @@
+<template>
+  <div class="blog-post">
+    <a href="/" class="back">&larr; Back to home</a>
+    <h1>{{ title() }}</h1>
+    <p class="meta">Published on {{ date() }} &middot; {{ readTime() }} min read</p>
+    <div class="content">
+      <p>{{ body() }}</p>
+      <p>This page demonstrates dynamic route parameters. The slug "{{ slug() }}" was extracted from the URL path <code>/blog/[slug]</code>.</p>
+      <p>In a real app, you would fetch the post data from an API using the slug parameter.</p>
+    </div>
+    <div class="reactions">
+      <button @click="like">{{ likeCount() }} Likes</button>
+    </div>
+  </div>
+</template>
+
+<script>
+import { signal, computed } from '@utopia/core'
+
+// In a real app, this would come from route params
+// For now, simulate with window.location
+const slug = signal('hello-world')
+const likeCount = signal(0)
+
+// Simulated blog data
+const posts: Record<string, { title: string; date: string; body: string }> = {
+  'hello-world': {
+    title: 'Hello World — Building with UtopiaJS',
+    date: '2025-01-15',
+    body: 'UtopiaJS is a compiler-first UI framework that combines the best ideas from SvelteKit, Vue, and SolidJS. It uses fine-grained signals for reactivity, compiles templates to direct DOM operations (no virtual DOM), and supports file-based routing, SSR, email templates, and AI integration out of the box.',
+  },
+}
+
+const post = computed(() => posts[slug()] ?? posts['hello-world'])
+const title = computed(() => post().title)
+const date = computed(() => post().date)
+const body = computed(() => post().body)
+const readTime = computed(() => Math.max(1, Math.ceil(body().split(' ').length / 200)))
+
+function like() {
+  likeCount.update(n => n + 1)
+}
+</script>
+
+<style scoped>
+.blog-post {
+  max-width: 680px;
+}
+
+.back {
+  display: inline-block;
+  color: #4a9eff;
+  text-decoration: none;
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+
+.back:hover {
+  text-decoration: underline;
+}
+
+h1 {
+  font-size: 32px;
+  line-height: 1.3;
+  margin-bottom: 12px;
+}
+
+.meta {
+  font-size: 14px;
+  color: #999;
+  margin-bottom: 24px;
+}
+
+.content {
+  font-size: 16px;
+  line-height: 1.8;
+  color: #333;
+}
+
+.content p {
+  margin-bottom: 16px;
+}
+
+code {
+  background: #f0f0f0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 14px;
+}
+
+.reactions {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #e5e5e5;
+}
+
+.reactions button {
+  padding: 8px 20px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.reactions button:hover {
+  background: #4a9eff;
+  color: #fff;
+  border-color: #4a9eff;
+}
+</style>
