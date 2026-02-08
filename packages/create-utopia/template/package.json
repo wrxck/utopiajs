@@ -4,17 +4,18 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "utopia dev",
+    "build": "utopia build",
+    "preview": "utopia preview"
   },
   "dependencies": {
-    "@matthesketh/utopia-core": "^0.0.1",
-    "@matthesketh/utopia-runtime": "^0.0.1",
-    "@matthesketh/utopia-router": "^0.0.1"
+    "@matthesketh/utopia-core": "^0.0.4",
+    "@matthesketh/utopia-runtime": "^0.0.4",
+    "@matthesketh/utopia-router": "^0.0.4"
   },
   "devDependencies": {
-    "@matthesketh/utopia-vite-plugin": "^0.0.1",
+    "@matthesketh/utopia-cli": "^0.0.4",
+    "@matthesketh/utopia-vite-plugin": "^0.0.4",
     "typescript": "^5.7.0",
     "vite": "^6.0.0"
   }

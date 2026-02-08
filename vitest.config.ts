@@ -12,6 +12,7 @@ export default defineConfig({
       '@matthesketh/utopia-email': path.resolve(__dirname, 'packages/email/src/index.ts'),
       '@matthesketh/utopia-ai': path.resolve(__dirname, 'packages/ai/src/index.ts'),
       '@matthesketh/utopia-ai/mcp': path.resolve(__dirname, 'packages/ai/src/mcp/index.ts'),
+      '@matthesketh/utopia-vite-plugin': path.resolve(__dirname, 'packages/vite-plugin/src/index.ts'),
     },
   },
   test: {

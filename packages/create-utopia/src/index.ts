@@ -184,12 +184,12 @@ function scaffoldProject(root: string, options: ProjectOptions): void {
 
   // Add email dependency
   if (useEmail && deps) {
-    deps['@matthesketh/utopia-email'] = '^0.0.1'
+    deps['@matthesketh/utopia-email'] = '^0.0.4'
   }
 
   // Add AI dependency
   if (useAI && deps) {
-    deps['@matthesketh/utopia-ai'] = '^0.0.1'
+    deps['@matthesketh/utopia-ai'] = '^0.0.4'
   }
 
   fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8')
@@ -213,7 +213,7 @@ function scaffoldProject(root: string, options: ProjectOptions): void {
     const ssrPkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8')) as Record<string, unknown>
     const ssrDeps = ssrPkg['dependencies'] as Record<string, string>
     const ssrDevDeps = ssrPkg['devDependencies'] as Record<string, string>
-    ssrDeps['@matthesketh/utopia-server'] = '^0.0.1'
+    ssrDeps['@matthesketh/utopia-server'] = '^0.0.4'
     ssrDeps['express'] = '^4.21.0'
     // Move vite to dependencies for the SSR server
     if (ssrDevDeps['vite']) {
@@ -396,7 +396,7 @@ function getPackageManagerCommands(pm: string): { install: string; dev: string }
 
 function printBanner(): void {
   console.log()
-  console.log(bold(cyan('  create-utopia')) + dim(' v0.0.1'))
+  console.log(bold(cyan('  create-utopia')) + dim(' v0.0.4'))
   console.log()
 }
 

@@ -425,8 +425,7 @@ function isDirectiveKind(s: string): s is DirectiveKind {
 
 /**
  * A set of variable names that are "local" (i.e. function parameters from
- * u-for) and should NOT be prefixed with `_ctx.`.  This set is threaded
- * through recursive codegen calls.
+ * u-for).  This set is threaded through recursive codegen calls.
  */
 type LocalScope = Set<string>
 

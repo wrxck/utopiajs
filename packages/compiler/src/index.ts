@@ -54,7 +54,8 @@ export interface CompileResult {
  *
  * // <script> block contents (user code) inlined here
  *
- * export default function render(_ctx) { ... }
+ * function __render() { ... }
+ * export default { render: __render }
  * ```
  *
  * The caller (e.g. the Vite plugin) is responsible for injecting the CSS
@@ -141,7 +142,7 @@ function splitModuleParts(moduleCode: string): { imports: string; body: string }
   // The template compiler generates code in the form:
   //   import { ... } from '@matthesketh/utopia-runtime'
   //
-  //   export default function render(_ctx) { ... }
+  //   function __render() { ... }
   //
   // We split at the first blank line (double newline).
   const idx = moduleCode.indexOf('\n\n')

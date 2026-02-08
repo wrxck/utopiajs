@@ -1,6 +1,6 @@
 {
   "name": "@matthesketh/utopia-email",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Template-based email rendering for UtopiaJS",
   "type": "module",
   "license": "MIT",
