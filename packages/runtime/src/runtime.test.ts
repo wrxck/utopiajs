@@ -457,6 +457,20 @@ describe('Directives', () => {
       dispose();
       expect(parent.querySelector('div')).toBeNull();
     });
+
+    it('does not throw when anchor has no parentNode', () => {
+      const anchor = document.createComment('if');
+      // anchor is NOT appended to any parent
+      const show = signal(true);
+
+      expect(() => {
+        createIf(
+          anchor,
+          () => show(),
+          () => createElement('span'),
+        );
+      }).not.toThrow();
+    });
   });
 
   describe('createFor', () => {
@@ -552,6 +566,24 @@ describe('Directives', () => {
 
       dispose();
       expect(parent.querySelectorAll('span').length).toBe(0);
+    });
+
+    it('does not throw when anchor has no parentNode', () => {
+      const anchor = document.createComment('for');
+      // anchor is NOT appended to any parent
+      const items = signal(['a', 'b', 'c']);
+
+      expect(() => {
+        createFor(
+          anchor,
+          () => items(),
+          (item) => {
+            const span = createElement('span');
+            span.textContent = item;
+            return span;
+          },
+        );
+      }).not.toThrow();
     });
   });
 

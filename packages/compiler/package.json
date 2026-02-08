@@ -1,6 +1,6 @@
 {
   "name": "@matthesketh/utopia-compiler",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Compiler for .utopia single-file components",
   "type": "module",
   "license": "MIT",

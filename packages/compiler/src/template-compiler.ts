@@ -434,6 +434,7 @@ class CodeGenerator {
   private varCounter: number = 0
   private helpers: Set<string> = new Set()
   private scopeId: string | undefined
+  private deferredCallsStack: string[][] = []
 
   constructor(private options: TemplateCompileOptions) {
     this.scopeId = options.scopeId
@@ -551,13 +552,18 @@ class CodeGenerator {
       this.genDirective(elVar, dir, scope)
     }
 
-    // Children
+    // Children — defer createFor/createIf calls until after all appendChild
+    this.deferredCallsStack.push([])
     for (const child of node.children) {
       const childVar = this.genNode(child, scope)
       if (childVar) {
         this.helpers.add('appendChild')
         this.emit(`appendChild(${elVar}, ${childVar})`)
       }
+    }
+    const deferred = this.deferredCallsStack.pop()!
+    for (const line of deferred) {
+      this.emit(line)
     }
 
     return elVar
@@ -660,7 +666,7 @@ class CodeGenerator {
     this.emit(`  return ${innerVar}`)
     this.emit(`}`)
 
-    this.emit(`createIf(${anchorVar}, () => Boolean(${condition}), ${trueFnVar})`)
+    this.emitOrDefer(`createIf(${anchorVar}, () => Boolean(${condition}), ${trueFnVar})`)
     return anchorVar
   }
 
@@ -706,7 +712,7 @@ class CodeGenerator {
     this.emit(`  return ${innerVar}`)
     this.emit(`}`)
 
-    this.emit(`createFor(${anchorVar}, () => ${listExpr}, ${renderFnVar})`)
+    this.emitOrDefer(`createFor(${anchorVar}, () => ${listExpr}, ${renderFnVar})`)
     return anchorVar
   }
 
@@ -760,6 +766,15 @@ class CodeGenerator {
 
   private emit(line: string): void {
     this.code.push(line)
+  }
+
+  private emitOrDefer(line: string): void {
+    const stack = this.deferredCallsStack
+    if (stack.length > 0) {
+      stack[stack.length - 1].push(line)
+    } else {
+      this.emit(line)
+    }
   }
 }
 

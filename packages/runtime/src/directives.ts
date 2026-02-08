@@ -48,8 +48,6 @@ export function createIf(
   let currentNodes: Node[] = [];
   let lastConditionTruthy: boolean | undefined;
 
-  const parent = anchor.parentNode!;
-
   const dispose = effect(() => {
     const truthy = !!condition();
 
@@ -58,6 +56,9 @@ export function createIf(
       return;
     }
     lastConditionTruthy = truthy;
+
+    const parent = anchor.parentNode;
+    if (!parent) return;
 
     // Tear down existing branch nodes.
     clearNodes(currentNodes);
@@ -99,7 +100,6 @@ export function createFor<T>(
   key?: (item: T, index: number) => any,
 ): () => void {
   let currentNodes: Node[] = [];
-  const parent = anchor.parentNode!;
 
   // We intentionally mark `key` as used so that linters / TS don't complain.
   // It's reserved for the future keyed-diffing optimisation.
@@ -107,6 +107,9 @@ export function createFor<T>(
 
   const dispose = effect(() => {
     const items = list();
+
+    const parent = anchor.parentNode;
+    if (!parent) return;
 
     // --- Simple strategy: clear everything and re-render. ---
     // This is intentionally naive. A keyed reconciliation algorithm will

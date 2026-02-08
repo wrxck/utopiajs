@@ -1,6 +1,6 @@
 {
   "name": "create-utopia",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Scaffold a new UtopiaJS project",
   "type": "module",
   "license": "MIT",

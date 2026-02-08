@@ -448,6 +448,32 @@ describe('Template Compilation', () => {
     expect(result.code).toContain("from '@matthesketh/utopia-runtime'")
   })
 
+  it('emits appendChild before createFor for nested u-for', () => {
+    const result = compileTemplate('<ul><li u-for="item in items()">{{ item }}</li></ul>')
+    const lines = result.code.split('\n')
+    // Find the appendChild that appends the u-for anchor comment to its parent
+    const anchorVar = result.code.match(/const (\w+) = createComment\('u-for'\)/)?.[1]
+    expect(anchorVar).toBeTruthy()
+    const appendIdx = lines.findIndex(l => l.includes('appendChild(') && l.includes(anchorVar!))
+    const createForIdx = lines.findIndex(l => l.includes('createFor('))
+    // appendChild of the anchor must come before createFor
+    expect(appendIdx).toBeGreaterThan(-1)
+    expect(createForIdx).toBeGreaterThan(-1)
+    expect(appendIdx).toBeLessThan(createForIdx)
+  })
+
+  it('emits appendChild before createIf for nested u-if', () => {
+    const result = compileTemplate('<div><span u-if="show()">hi</span></div>')
+    const lines = result.code.split('\n')
+    const anchorVar = result.code.match(/const (\w+) = createComment\('u-if'\)/)?.[1]
+    expect(anchorVar).toBeTruthy()
+    const appendIdx = lines.findIndex(l => l.includes('appendChild(') && l.includes(anchorVar!))
+    const createIfIdx = lines.findIndex(l => l.includes('createIf('))
+    expect(appendIdx).toBeGreaterThan(-1)
+    expect(createIfIdx).toBeGreaterThan(-1)
+    expect(appendIdx).toBeLessThan(createIfIdx)
+  })
+
   it('handles a complex template with all features', () => {
     const template = `
       <div class="counter">
