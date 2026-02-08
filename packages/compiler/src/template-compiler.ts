@@ -485,7 +485,7 @@ class CodeGenerator {
         : ''
 
     const fnBody = this.code.map((l) => `  ${l}`).join('\n')
-    const moduleCode = `${importLine}export default function render(_ctx) {\n${fnBody}\n}\n`
+    const moduleCode = `${importLine}function __render() {\n${fnBody}\n}\n`
 
     return { code: moduleCode, helpers: this.helpers }
   }
@@ -673,13 +673,14 @@ class CodeGenerator {
     this.helpers.add('createComment')
     this.emit(`const ${anchorVar} = createComment('u-for')`)
 
-    // Parse "item in expr"
-    const forMatch = dir.expression.match(/^\s*(\w+)\s+in\s+(.+)$/)
+    // Parse "item in expr" or "(item, index) in expr"
+    const forMatch = dir.expression.match(/^\s*(?:\(\s*(\w+)\s*(?:,\s*(\w+)\s*)?\)|(\w+))\s+in\s+(.+)$/)
     if (!forMatch) {
       throw new Error(`Invalid u-for expression: "${dir.expression}"`)
     }
-    const itemName = forMatch[1]
-    const listExpr = this.resolveExpression(forMatch[2].trim(), scope)
+    const itemName = forMatch[1] ?? forMatch[3]
+    const indexName = forMatch[2] ?? '_index'
+    const listExpr = this.resolveExpression(forMatch[4].trim(), scope)
 
     // Create a new scope that includes the item variable.
     const innerScope: LocalScope = new Set(scope)
@@ -698,7 +699,7 @@ class CodeGenerator {
     this.code = savedCode
 
     const renderFnVar = this.freshVar()
-    this.emit(`const ${renderFnVar} = (${itemName}, _index) => {`)
+    this.emit(`const ${renderFnVar} = (${itemName}, ${indexName}) => {`)
     for (const line of innerLines) {
       this.emit(`  ${line}`)
     }
@@ -732,7 +733,8 @@ class CodeGenerator {
     }
 
     const propsStr = propEntries.length > 0 ? `{ ${propEntries.join(', ')} }` : '{}'
-    this.emit(`const ${compVar} = _ctx.${node.tag}(${propsStr})`)
+    this.helpers.add('createComponent')
+    this.emit(`const ${compVar} = createComponent(${node.tag}, ${propsStr})`)
     return compVar
   }
 
@@ -741,38 +743,13 @@ class CodeGenerator {
   /**
    * Resolve a template expression to a JS expression.
    *
-   * If the leading identifier is in `scope` (a u-for item variable), it is
-   * emitted as a bare variable reference.  Otherwise it is prefixed with
-   * `_ctx.` to access the component context.
+   * All identifiers are emitted as bare references — user script variables
+   * live at module scope and are accessible via closure.
    */
-  private resolveExpression(expr: string, scope: LocalScope): string {
+  private resolveExpression(expr: string, _scope: LocalScope): string {
     const trimmed = expr.trim()
-
-    // Empty expression.
     if (!trimmed) return "''"
-
-    // Extract the leading identifier (if any).
-    const leadIdMatch = trimmed.match(/^([a-zA-Z_$][\w$]*)/)
-    if (!leadIdMatch) {
-      // Expression starts with a non-identifier char (number, paren, etc.)
-      return trimmed
-    }
-
-    const leadId = leadIdMatch[1]
-
-    // If the leading identifier is in the local scope, leave the expression
-    // as-is — the variable is available as a function parameter.
-    if (scope.has(leadId)) {
-      return trimmed
-    }
-
-    // Arrow function or contains '=>' — leave as-is to avoid breaking syntax.
-    if (trimmed.includes('=>')) {
-      return trimmed
-    }
-
-    // Prefix the leading identifier with `_ctx.`.
-    return `_ctx.${trimmed}`
+    return trimmed
   }
 
   // ---- Utilities ----------------------------------------------------------

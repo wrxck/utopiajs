@@ -13,7 +13,6 @@ import type {
   JsonRpcRequest,
   JsonRpcResponse,
 } from './types.js';
-import type { ToolDefinition } from '../types.js';
 import type { ToolHandler } from '../ai.js';
 
 export interface MCPClient {

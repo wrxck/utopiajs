@@ -8,7 +8,7 @@ Vite plugin for UtopiaJS. Transforms `.utopia` single-file components, extracts 
 pnpm add -D @matthesketh/utopia-vite-plugin
 ```
 
-Requires `vite` ^6.0.0 as a peer dependency.
+Requires `vite` ^6.0.0 or ^7.0.0 as a peer dependency.
 
 ## Usage
 
@@ -44,7 +44,6 @@ export default defineConfig({
 |--------|------|---------|-------------|
 | `include` | `FilterPattern` | `'**/*.utopia'` | Glob patterns to include |
 | `exclude` | `FilterPattern` | -- | Glob patterns to exclude |
-| `sourceMap` | `boolean` | `true` (dev) | Generate source maps |
 
 **Features:**
 

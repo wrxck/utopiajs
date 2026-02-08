@@ -123,6 +123,9 @@ export function compile(source: string, options: CompileOptions = {}): CompileRe
     parts.push(body)
   }
 
+  // Export a ComponentDefinition object for mount() compatibility.
+  parts.push('export default { render: __render }')
+
   const code = parts.join('\n\n') + '\n'
 
   return { code, css }

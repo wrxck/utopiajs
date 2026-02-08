@@ -1,7 +1,7 @@
 <template>
   <div class="chat">
     <h1>AI Chat</h1>
-    <p class="subtitle">Streaming chat powered by OpenAI via @utopia/ai.</p>
+    <p class="subtitle">Streaming chat powered by OpenAI via @matthesketh/utopia-ai.</p>
 
     <div class="chat-window">
       <div class="messages">
@@ -30,7 +30,7 @@
 </template>
 
 <script>
-import { signal, computed } from '@utopia/core'
+import { signal, computed } from '@matthesketh/utopia-core'
 
 interface ChatMsg {
   role: 'user' | 'assistant'
@@ -60,7 +60,7 @@ async function sendMessage() {
   streamContent.set('')
 
   try {
-    // Send to our API route which uses @utopia/ai + streamSSE
+    // Send to our API route which uses @matthesketh/utopia-ai + streamSSE
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -72,7 +72,7 @@ async function sendMessage() {
       }),
     })
 
-    // Parse SSE stream (matching parseSSEStream from @utopia/ai)
+    // Parse SSE stream (matching parseSSEStream from @matthesketh/utopia-ai)
     const reader = res.body!.getReader()
     const decoder = new TextDecoder()
     let buffer = ''

@@ -8,8 +8,6 @@ import type {
   ChatResponse,
   ChatChunk,
   ChatMessage,
-  EmbeddingRequest,
-  EmbeddingResponse,
   AnthropicConfig,
   ToolCall,
   ToolDefinition,

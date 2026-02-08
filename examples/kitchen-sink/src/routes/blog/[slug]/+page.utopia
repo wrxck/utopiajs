@@ -15,7 +15,7 @@
 </template>
 
 <script>
-import { signal, computed } from '@utopia/core'
+import { signal, computed } from '@matthesketh/utopia-core'
 
 // In a real app, this would come from route params
 // For now, simulate with window.location

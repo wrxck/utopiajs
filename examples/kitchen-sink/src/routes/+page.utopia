@@ -67,7 +67,7 @@
 </template>
 
 <script>
-import { signal, computed, effect, batch, untrack } from '@utopia/core'
+import { signal, computed, effect, batch, untrack } from '@matthesketh/utopia-core'
 
 // Counter demo
 const count = signal(0)

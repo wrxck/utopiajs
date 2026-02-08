@@ -9,7 +9,7 @@
 </template>
 
 <script>
-import { createRouterView as RouterView } from '@utopia/router'
+import { createRouterView as RouterView } from '@matthesketh/utopia-router'
 </script>
 
 <style>

@@ -28,7 +28,7 @@
 </template>
 
 <script>
-import { signal } from '@utopia/core'
+import { signal } from '@matthesketh/utopia-core'
 
 const email = signal('')
 const password = signal('')

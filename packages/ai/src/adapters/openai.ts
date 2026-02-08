@@ -13,7 +13,6 @@ import type {
   OpenAIConfig,
   ToolCall,
   ToolDefinition,
-  MessageContent,
 } from '../types.js';
 
 /**

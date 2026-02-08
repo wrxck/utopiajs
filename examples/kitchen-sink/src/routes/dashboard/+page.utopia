@@ -37,7 +37,7 @@
 </template>
 
 <script>
-import { signal, computed, effect } from '@utopia/core'
+import { signal, computed, effect } from '@matthesketh/utopia-core'
 
 interface Task {
   name: string

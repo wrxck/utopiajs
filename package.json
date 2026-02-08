@@ -1,7 +1,7 @@
 {
   "name": "utopiajs",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A compiler-first, signal-based UI framework with single-file components",
   "type": "module",
   "license": "MIT",

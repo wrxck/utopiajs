@@ -14,7 +14,7 @@
 </template>
 
 <script>
-import { signal, computed } from '@utopia/core'
+import { signal, computed } from '@matthesketh/utopia-core'
 
 const count = signal(0)
 const doubled = computed(() => count() * 2)
