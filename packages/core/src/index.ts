@@ -63,6 +63,12 @@ let currentSubscriber: Subscriber | null = null;
 /** Batch depth counter. When > 0, effect execution is deferred. */
 let batchDepth = 0;
 
+/** Depth counter for computed recomputation — detects mutual circular dependencies. */
+let computeDepth = 0;
+
+/** Maximum allowed nesting depth for computed recomputation. */
+const MAX_COMPUTE_DEPTH = 100;
+
 /** Queue of effects waiting to run after the current batch completes. */
 let pendingEffects: Set<EffectNode> = new Set();
 
@@ -245,6 +251,10 @@ class ComputedNode<T> implements Subscriber {
 
   /** Recompute the derived value. */
   _recompute(): void {
+    if (computeDepth >= MAX_COMPUTE_DEPTH) {
+      throw new Error('Circular dependency detected in computed chain');
+    }
+    computeDepth++;
     this._computing = true;
     // Clean up old subscriptions so conditional branches are correct.
     this._cleanup();
@@ -261,6 +271,7 @@ class ComputedNode<T> implements Subscriber {
         this._signalNode._value = newValue;
       }
     } finally {
+      computeDepth--;
       popSubscriber();
       this._computing = false;
     }
@@ -341,7 +352,11 @@ class EffectNode implements Subscriber {
 
     // Run previous cleanup function (like React useEffect cleanup).
     if (this._cleanupFn) {
-      this._cleanupFn();
+      try {
+        this._cleanupFn();
+      } catch (err) {
+        console.error('Error in effect cleanup:', err);
+      }
       this._cleanupFn = undefined;
     }
 
@@ -353,6 +368,8 @@ class EffectNode implements Subscriber {
     try {
       const result = this._fn();
       this._cleanupFn = typeof result === 'function' ? result : undefined;
+    } catch (err) {
+      console.error('Error in effect:', err);
     } finally {
       popSubscriber();
       this._queued = false;
@@ -371,7 +388,11 @@ class EffectNode implements Subscriber {
   _dispose(): void {
     this._disposed = true;
     if (this._cleanupFn) {
-      this._cleanupFn();
+      try {
+        this._cleanupFn();
+      } catch (err) {
+        console.error('Error in effect cleanup:', err);
+      }
       this._cleanupFn = undefined;
     }
     this._unsubscribe();

@@ -43,6 +43,15 @@ export function claimNode(): Node | null {
 }
 
 /**
+ * Rewind the cursor back to a previously claimed node. Used when a claimed
+ * node does not match expectations (e.g., expected text but got element) so
+ * that the cursor does not become permanently misaligned.
+ */
+export function unclaimNode(node: Node): void {
+  hydrateNode = node;
+}
+
+/**
  * Enter a child scope: push the current cursor onto the stack and set
  * the cursor to the first child of the given element.
  */

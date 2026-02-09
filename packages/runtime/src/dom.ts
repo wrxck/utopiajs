@@ -6,7 +6,7 @@
  * and keeps the runtime footprint small.
  */
 
-import { isHydrating, claimNode, enterNode, exitNode } from './hydration.js';
+import { isHydrating, claimNode, unclaimNode, enterNode, exitNode } from './hydration.js';
 
 // ---------------------------------------------------------------------------
 // Node creation
@@ -22,9 +22,16 @@ export function createElement(tag: string): HTMLElement {
       enterNode(node);
       return node;
     }
-    if (typeof process !== 'undefined' && process.env?.['NODE_ENV'] !== 'production') {
-      console.warn(`[utopia] Hydration mismatch: expected <${tag}>, got`, node);
+    if (node) {
+      unclaimNode(node);
     }
+    console.warn(`[utopia] Hydration mismatch: expected <${tag}>, got`, node);
+    const created = document.createElement(tag);
+    if (node && node.parentNode) {
+      node.parentNode.insertBefore(created, node);
+    }
+    enterNode(created);
+    return created;
   }
   return document.createElement(tag);
 }
@@ -36,9 +43,15 @@ export function createTextNode(text: string): Text {
     if (node && node.nodeType === 3) {
       return node;
     }
-    if (typeof process !== 'undefined' && process.env?.['NODE_ENV'] !== 'production') {
-      console.warn(`[utopia] Hydration mismatch: expected text node, got`, node);
+    if (node) {
+      unclaimNode(node);
     }
+    console.warn(`[utopia] Hydration mismatch: expected text node, got`, node);
+    const created = document.createTextNode(String(text));
+    if (node && node.parentNode) {
+      node.parentNode.insertBefore(created, node);
+    }
+    return created;
   }
   return document.createTextNode(String(text));
 }
@@ -217,9 +230,15 @@ export function createComment(text: string): Comment {
     if (node && node.nodeType === 8) {
       return node;
     }
-    if (typeof process !== 'undefined' && process.env?.['NODE_ENV'] !== 'production') {
-      console.warn(`[utopia] Hydration mismatch: expected comment node, got`, node);
+    if (node) {
+      unclaimNode(node);
     }
+    console.warn(`[utopia] Hydration mismatch: expected comment node, got`, node);
+    const created = document.createComment(text);
+    if (node && node.parentNode) {
+      node.parentNode.insertBefore(created, node);
+    }
+    return created;
   }
   return document.createComment(text);
 }

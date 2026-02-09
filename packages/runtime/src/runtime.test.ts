@@ -26,6 +26,7 @@ import { createComponentInstance, mount } from './component.js';
 import type { ComponentDefinition } from './component.js';
 import { queueJob, nextTick } from './scheduler.js';
 import { hydrate } from './hydration.js';
+import { createEffect } from './index.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -976,5 +977,85 @@ describe('Hydration', () => {
     expect(() => hydrate(definition, '#nonexistent')).toThrow(
       '[utopia] Hydration target not found',
     );
+  });
+});
+
+// =========================================================================
+// Style deduplication (via createComponent)
+// =========================================================================
+
+describe('Style deduplication', () => {
+  it('injects styles only once when the same component is created twice', () => {
+    const initialStyleCount = document.head.querySelectorAll('style').length;
+
+    const definition: ComponentDefinition = {
+      render: () => createElement('div'),
+      styles: '.dedup-test { color: green; }',
+    };
+
+    // Create the same component definition twice.
+    createComponent(definition);
+    createComponent(definition);
+
+    const styles = document.head.querySelectorAll('style');
+    // Only ONE new style element should have been added, not two.
+    const addedCount = styles.length - initialStyleCount;
+    expect(addedCount).toBe(1);
+
+    // Verify the content is correct.
+    const matchingStyles = Array.from(styles).filter(
+      (s) => s.textContent === '.dedup-test { color: green; }',
+    );
+    expect(matchingStyles.length).toBe(1);
+  });
+});
+
+// =========================================================================
+// Effect disposal on unmount
+// =========================================================================
+
+describe('Effect disposal on unmount', () => {
+  it('stops reactive effects after unmount', () => {
+    const target = container();
+    const count = signal(0);
+    const effectRunCount = vi.fn();
+
+    const definition: ComponentDefinition = {
+      setup: () => ({ count }),
+      render: (ctx) => {
+        const el = createElement('div');
+        const textNode = createTextNode('');
+        appendChild(el, textNode);
+
+        // Simulate what the compiled template does: use createEffect
+        // (which pushes a disposer) to reactively update the text.
+        createEffect(() => {
+          effectRunCount();
+          setText(textNode, String(ctx.count()));
+        });
+
+        return el;
+      },
+    };
+
+    const instance = createComponentInstance(definition);
+    instance.mount(target);
+
+    // The effect should have run once during mount.
+    expect(effectRunCount).toHaveBeenCalledTimes(1);
+    expect(target.querySelector('div')!.textContent).toBe('0');
+
+    // Update the signal — the effect should re-run.
+    count.set(1);
+    expect(effectRunCount).toHaveBeenCalledTimes(2);
+    expect(target.querySelector('div')!.textContent).toBe('1');
+
+    // Unmount the component.
+    instance.unmount();
+
+    // After unmount, changing the signal should NOT re-trigger the effect.
+    const callCountBeforeUpdate = effectRunCount.mock.calls.length;
+    count.set(2);
+    expect(effectRunCount).toHaveBeenCalledTimes(callCountBeforeUpdate);
   });
 });

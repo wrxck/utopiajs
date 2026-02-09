@@ -81,7 +81,7 @@ export function googleAdapter(config: GoogleConfig): AIAdapter {
       const fnCalls = parts.filter((p: any) => p.functionCall);
 
       const toolCalls: ToolCall[] = fnCalls.map((p: any) => ({
-        id: `call_${crypto.randomUUID()}`,
+        id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
         name: p.functionCall.name,
         arguments: p.functionCall.args ?? {},
       }));

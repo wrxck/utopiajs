@@ -8,6 +8,9 @@
 //   3. matchRoute against exact, dynamic, catch-all, and no-match routes
 //   4. buildRouteTable from manifest (ordering, layout/error resolution)
 //   5. Router navigation with mocked History API
+//   6. Router safety: redirect loops, guard errors, cross-origin blocks
+//   7. Scroll position map cap
+//   8. createLink cleanup
 //
 // ============================================================================
 
@@ -28,6 +31,7 @@ import {
   beforeNavigate,
   destroy,
 } from './router.js';
+import { createLink } from './components.js';
 import type { Route, RouteMatch } from './types.js';
 
 // ============================================================================
@@ -625,5 +629,187 @@ describe('Router (client-side navigation)', () => {
     // Navigation should still work.
     await navigate('/');
     expect(currentRoute.peek()!.route.path).toBe('/');
+  });
+});
+
+// ============================================================================
+// 6. Router safety: redirect loops, guard errors, cross-origin blocks
+// ============================================================================
+
+describe('Router safety (guards and redirect limits)', () => {
+  const makeRoutes = (): Route[] => {
+    return buildRouteTable({
+      'src/routes/+page.utopia': () => Promise.resolve({ default: () => {} }),
+      'src/routes/about/+page.utopia': () => Promise.resolve({ default: () => {} }),
+      'src/routes/blog/[slug]/+page.utopia': () => Promise.resolve({ default: () => {} }),
+    });
+  };
+
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/');
+  });
+
+  afterEach(() => {
+    destroy();
+  });
+
+  it('stops infinite redirect loops', async () => {
+    const routes = makeRoutes();
+    createRouter(routes);
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // Guard that always redirects to the same path, causing an infinite loop.
+    const removeGuard = beforeNavigate((_from, _to) => '/loop');
+
+    await navigate('/loop');
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Maximum navigation redirects'),
+    );
+
+    consoleSpy.mockRestore();
+    removeGuard();
+  });
+
+  it('catches guard exceptions without crashing', async () => {
+    const routes = makeRoutes();
+    createRouter(routes);
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const removeGuard = beforeNavigate(() => {
+      throw new Error('guard failed');
+    });
+
+    await navigate('/about');
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[utopia] Navigation guard error:',
+      expect.any(Error),
+    );
+    // Navigation should still complete since guard error doesn't block.
+    expect(currentRoute.peek()!.route.path).toBe('/about');
+
+    consoleSpy.mockRestore();
+    removeGuard();
+  });
+
+  it('blocks cross-origin guard redirects', async () => {
+    const routes = makeRoutes();
+    createRouter(routes);
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const removeGuard = beforeNavigate(() => 'https://evil.com/phishing');
+
+    await navigate('/about');
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Cross-origin redirect blocked'),
+      expect.any(String),
+    );
+
+    consoleSpy.mockRestore();
+    removeGuard();
+  });
+});
+
+// ============================================================================
+// 7. Scroll position map cap
+// ============================================================================
+
+describe('Scroll position map cap', () => {
+  // The internal scrollPositions map is capped at MAX_SCROLL_ENTRIES (50).
+  // Since the map is not exported, we test indirectly by performing more
+  // than 50 navigations and verifying the router still works correctly
+  // without errors or memory issues.
+
+  const makeRoutes = (): Route[] => {
+    return buildRouteTable({
+      'src/routes/+page.utopia': () => Promise.resolve({ default: () => {} }),
+      'src/routes/about/+page.utopia': () => Promise.resolve({ default: () => {} }),
+      'src/routes/blog/[slug]/+page.utopia': () => Promise.resolve({ default: () => {} }),
+    });
+  };
+
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/');
+  });
+
+  afterEach(() => {
+    destroy();
+  });
+
+  it('handles more than 50 navigations without errors (scroll map is capped)', async () => {
+    const routes = makeRoutes();
+    createRouter(routes);
+
+    const targets = ['/about', '/blog/post-1', '/'];
+
+    // Perform 55 navigations -- more than the MAX_SCROLL_ENTRIES cap of 50.
+    for (let i = 0; i < 55; i++) {
+      await navigate(targets[i % targets.length]);
+    }
+
+    // Router should still be fully functional after exceeding the cap.
+    const match = currentRoute.peek();
+    expect(match).not.toBeNull();
+    expect(isNavigating.peek()).toBe(false);
+
+    // One more navigation should still work fine.
+    await navigate('/about');
+    expect(currentRoute.peek()!.route.path).toBe('/about');
+  });
+});
+
+// ============================================================================
+// 8. createLink cleanup
+// ============================================================================
+
+describe('createLink', () => {
+  const makeRoutes = (): Route[] => {
+    return buildRouteTable({
+      'src/routes/+page.utopia': () => Promise.resolve({ default: () => {} }),
+      'src/routes/about/+page.utopia': () => Promise.resolve({ default: () => {} }),
+      'src/routes/blog/[slug]/+page.utopia': () => Promise.resolve({ default: () => {} }),
+    });
+  };
+
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/');
+  });
+
+  afterEach(() => {
+    destroy();
+  });
+
+  it('createLink attaches dispose function for activeClass effect', () => {
+    const routes = makeRoutes();
+    createRouter(routes);
+
+    const link = createLink({
+      href: '/test',
+      children: 'Test',
+      activeClass: 'active',
+    });
+
+    // The dispose function should be attached when activeClass is provided.
+    expect(typeof (link as any).__dispose).toBe('function');
+    // Calling dispose should not throw.
+    (link as any).__dispose();
+  });
+
+  it('createLink does not attach dispose without activeClass', () => {
+    const routes = makeRoutes();
+    createRouter(routes);
+
+    const link = createLink({
+      href: '/test',
+      children: 'Test',
+    });
+
+    // Without activeClass, no effect is created, so no __dispose.
+    expect((link as any).__dispose).toBeUndefined();
   });
 });

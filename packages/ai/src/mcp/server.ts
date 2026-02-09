@@ -180,7 +180,8 @@ export function createMCPServer(config: MCPServerConfig): MCPServer {
 // ---------------------------------------------------------------------------
 
 function matchesTemplate(pattern: string, uri: string): boolean {
-  const regex = pattern.replace(/\{[^}]+\}/g, '([^/]+)');
+  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = escaped.replace(/\\\{[^\\}]+\\\}/g, '([^/]+)');
   return new RegExp(`^${regex}$`).test(uri);
 }
 

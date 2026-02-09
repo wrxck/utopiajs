@@ -7,8 +7,18 @@
 
 import { effect } from '@matthesketh/utopia-core';
 import { insertBefore, removeNode } from './dom.js';
-import { createComponentInstance } from './component.js';
+import {
+  createComponentInstance,
+  startCapturingDisposers,
+  stopCapturingDisposers,
+} from './component.js';
 import type { ComponentDefinition } from './component.js';
+
+// ---------------------------------------------------------------------------
+// Style deduplication
+// ---------------------------------------------------------------------------
+
+const injectedStyles = new Set<string>();
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -167,14 +177,26 @@ export function createComponent(
     $slots: instance.slots,
   };
 
+  // Capture effect disposers created during render.
+  const prev = startCapturingDisposers();
   instance.el = Component.render(renderCtx);
+  const disposers = stopCapturingDisposers(prev);
 
-  // Inject scoped styles if the definition carries them.
-  if (Component.styles) {
+  // Inject scoped styles if the definition carries them (deduplicated).
+  if (Component.styles && !injectedStyles.has(Component.styles)) {
+    injectedStyles.add(Component.styles);
     const style = document.createElement('style');
     style.textContent = Component.styles;
     document.head.appendChild(style);
   }
 
-  return instance.el;
+  // Attach a cleanup function to the node so callers can dispose effects.
+  const node = instance.el;
+  (node as any).__cleanup = () => {
+    for (const dispose of disposers) {
+      dispose();
+    }
+  };
+
+  return node;
 }

@@ -270,7 +270,7 @@ export function createLink(props: {
 
   // Track active state if activeClass is provided.
   if (props.activeClass) {
-    effect(() => {
+    const dispose = effect(() => {
       const match = currentRoute();
       const isActive = match
         ? match.url.pathname === props.href ||
@@ -283,6 +283,8 @@ export function createLink(props: {
         anchor.classList.remove(props.activeClass!);
       }
     });
+    // Attach cleanup for when link is removed
+    (anchor as any).__dispose = dispose;
   }
 
   // The actual navigation is handled by the router's global click

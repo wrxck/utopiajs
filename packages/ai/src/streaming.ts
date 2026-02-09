@@ -46,13 +46,16 @@ export async function streamSSE(
     'X-Accel-Buffering': 'no',
   });
 
-  for await (const chunk of stream) {
-    options?.onChunk?.(chunk);
-    res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-  }
+  try {
+    for await (const chunk of stream) {
+      options?.onChunk?.(chunk);
+      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    }
 
-  res.write('data: [DONE]\n\n');
-  res.end();
+    res.write('data: [DONE]\n\n');
+  } finally {
+    res.end();
+  }
 }
 
 /**
@@ -87,24 +90,28 @@ export async function* parseSSEStream(
   const decoder = new TextDecoder();
   let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
 
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') return;
-        try {
-          yield JSON.parse(data) as ChatChunk;
-        } catch {
-          // Skip malformed SSE data
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') return;
+          try {
+            yield JSON.parse(data) as ChatChunk;
+          } catch {
+            // Skip malformed SSE data
+          }
         }
       }
     }
+  } finally {
+    reader.cancel().catch(() => {});
   }
 }

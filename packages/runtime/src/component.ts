@@ -6,6 +6,32 @@
  */
 
 // ---------------------------------------------------------------------------
+// Effect disposer capture mechanism
+// ---------------------------------------------------------------------------
+
+let activeDisposers: (() => void)[] | null = null;
+
+export function pushDisposer(fn: () => void): void {
+  if (activeDisposers !== null) {
+    activeDisposers.push(fn);
+  }
+}
+
+export function startCapturingDisposers(): (() => void)[] | null {
+  const prev = activeDisposers;
+  activeDisposers = [];
+  return prev;
+}
+
+export function stopCapturingDisposers(
+  prev: (() => void)[] | null,
+): (() => void)[] {
+  const captured = activeDisposers ?? [];
+  activeDisposers = prev;
+  return captured;
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -53,6 +79,7 @@ export function createComponentInstance(
   props?: Record<string, any>,
 ): ComponentInstance {
   let styleElement: HTMLStyleElement | null = null;
+  let disposers: (() => void)[] = [];
 
   const instance: ComponentInstance = {
     el: null,
@@ -77,8 +104,10 @@ export function createComponentInstance(
         $slots: instance.slots,
       };
 
-      // 2. Render the template to a real DOM subtree.
+      // 2. Render the template to a real DOM subtree, capturing effect disposers.
+      const prev = startCapturingDisposers();
       instance.el = definition.render(renderCtx);
+      disposers = stopCapturingDisposers(prev);
 
       // 3. Insert into the target.
       target.insertBefore(instance.el, anchor ?? null);
@@ -92,6 +121,12 @@ export function createComponentInstance(
     },
 
     unmount(): void {
+      // Dispose all reactive effects created during render.
+      for (const dispose of disposers) {
+        dispose();
+      }
+      disposers = [];
+
       if (instance.el && instance.el.parentNode) {
         instance.el.parentNode.removeChild(instance.el);
       }

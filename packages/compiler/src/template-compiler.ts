@@ -465,7 +465,7 @@ class CodeGenerator {
       this.emit(`const ${fragVar} = createElement('div')`)
       if (this.scopeId) {
         this.helpers.add('setAttr')
-        this.emit(`setAttr(${fragVar}, '${this.scopeId}', '')`)
+        this.emit(`setAttr(${fragVar}, '${escapeStr(this.scopeId)}', '')`)
       }
       for (const node of ast) {
         const childVar = this.genNode(node, scope)
@@ -533,7 +533,7 @@ class CodeGenerator {
     // Scope ID
     if (this.scopeId) {
       this.helpers.add('setAttr')
-      this.emit(`setAttr(${elVar}, '${this.scopeId}', '')`)
+      this.emit(`setAttr(${elVar}, '${escapeStr(this.scopeId)}', '')`)
     }
 
     // Static attributes
@@ -726,15 +726,15 @@ class CodeGenerator {
 
     for (const a of node.attrs) {
       if (a.value !== null) {
-        propEntries.push(`${a.name}: '${escapeStr(a.value)}'`)
+        propEntries.push(`'${escapeStr(a.name)}': '${escapeStr(a.value)}'`)
       } else {
-        propEntries.push(`${a.name}: true`)
+        propEntries.push(`'${escapeStr(a.name)}': true`)
       }
     }
 
     for (const d of node.directives) {
       if (d.kind === 'bind' && d.arg) {
-        propEntries.push(`${d.arg}: ${this.resolveExpression(d.expression, scope)}`)
+        propEntries.push(`'${escapeStr(d.arg)}': ${this.resolveExpression(d.expression, scope)}`)
       }
     }
 
@@ -785,7 +785,7 @@ class CodeGenerator {
  * Heuristic: starts with uppercase.
  */
 function isComponentTag(tag: string): boolean {
-  return /^[A-Z]/.test(tag)
+  return /^[A-Z][a-zA-Z0-9_$]*$/.test(tag)
 }
 
 function escapeStr(s: string): string {
@@ -807,8 +807,20 @@ const ENTITY_MAP: Record<string, string> = {
 
 function decodeEntities(text: string): string {
   return text.replace(/&(?:#(\d+)|#x([0-9a-fA-F]+)|(\w+));/g, (match, dec, hex, named) => {
-    if (dec) return String.fromCodePoint(parseInt(dec, 10))
-    if (hex) return String.fromCodePoint(parseInt(hex, 16))
+    if (dec) {
+      const code = parseInt(dec, 10)
+      if (code >= 0 && code <= 0x10FFFF) {
+        try { return String.fromCodePoint(code) } catch { return match }
+      }
+      return match
+    }
+    if (hex) {
+      const code = parseInt(hex, 16)
+      if (code >= 0 && code <= 0x10FFFF) {
+        try { return String.fromCodePoint(code) } catch { return match }
+      }
+      return match
+    }
     if (named) return ENTITY_MAP[`&${named};`] ?? match
     return match
   })

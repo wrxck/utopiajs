@@ -557,3 +557,105 @@ describe('MCP Client', () => {
     expect(result).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// MCP Server — Template URI Regex Injection
+// ---------------------------------------------------------------------------
+
+describe('MCP Server — template URI matching with regex special characters', () => {
+  it('should match a resource URI with dots treated as literal characters', async () => {
+    const server = createMCPServer({
+      name: 'regex-test',
+      resources: [{
+        definition: {
+          uri: 'config://app.json',
+          name: 'App Config JSON',
+          description: 'App configuration file',
+          mimeType: 'application/json',
+        },
+        handler: async () => ({
+          uri: 'config://app.json',
+          text: '{"ok":true}',
+          mimeType: 'application/json',
+        }),
+      }],
+    });
+
+    // Exact match should work
+    const response = await server.handleRequest({
+      jsonrpc: '2.0', id: 1, method: 'resources/read',
+      params: { uri: 'config://app.json' },
+    });
+
+    expect(response.error).toBeUndefined();
+    const result = response.result as any;
+    expect(result.contents[0].uri).toBe('config://app.json');
+    expect(result.contents[0].text).toBe('{"ok":true}');
+  });
+
+  it('should NOT match a URI where dots are treated as regex wildcards', async () => {
+    const server = createMCPServer({
+      name: 'regex-test',
+      resources: [{
+        definition: {
+          uri: 'config://app.json',
+          name: 'App Config JSON',
+          description: 'App configuration file',
+          mimeType: 'application/json',
+        },
+        handler: async () => ({
+          uri: 'config://app.json',
+          text: '{"ok":true}',
+          mimeType: 'application/json',
+        }),
+      }],
+    });
+
+    // "appXjson" should NOT match "app.json" — the dot must be literal
+    const response = await server.handleRequest({
+      jsonrpc: '2.0', id: 2, method: 'resources/read',
+      params: { uri: 'config://appXjson' },
+    });
+
+    expect(response.error).toBeDefined();
+    expect(response.error!.message).toContain('Unknown resource');
+  });
+
+  it('should still support template parameters with regex special chars in the base URI', async () => {
+    const server = createMCPServer({
+      name: 'regex-test',
+      resources: [{
+        definition: {
+          uri: 'files://docs/{filename}.md',
+          name: 'Markdown files',
+          description: 'Read a markdown doc',
+          mimeType: 'text/markdown',
+        },
+        handler: async (uri) => ({
+          uri,
+          text: `# Content for ${uri}`,
+          mimeType: 'text/markdown',
+        }),
+      }],
+    });
+
+    // Template parameter should match
+    const response = await server.handleRequest({
+      jsonrpc: '2.0', id: 3, method: 'resources/read',
+      params: { uri: 'files://docs/readme.md' },
+    });
+
+    expect(response.error).toBeUndefined();
+    const result = response.result as any;
+    expect(result.contents[0].uri).toBe('files://docs/readme.md');
+
+    // But the dot in ".md" should be literal — "Xmd" should NOT match
+    const badResponse = await server.handleRequest({
+      jsonrpc: '2.0', id: 4, method: 'resources/read',
+      params: { uri: 'files://docs/readmeXmd' },
+    });
+
+    expect(badResponse.error).toBeDefined();
+    expect(badResponse.error!.message).toContain('Unknown resource');
+  });
+});

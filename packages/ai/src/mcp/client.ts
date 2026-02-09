@@ -76,6 +76,7 @@ export function createMCPClient(config: MCPClientConfig): MCPClient {
         ...config.headers,
       },
       body: JSON.stringify(request),
+      signal: AbortSignal.timeout(30000),
     });
 
     if (!response.ok) {

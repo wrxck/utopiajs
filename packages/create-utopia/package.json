@@ -1,6 +1,6 @@
 {
   "name": "create-utopia",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "description": "Scaffold a new UtopiaJS project",
   "type": "module",
   "license": "MIT",
@@ -11,13 +11,27 @@
     "directory": "packages/create-utopia"
   },
   "homepage": "https://matthesketh.pro",
-  "keywords": ["create", "scaffold", "cli", "generator", "starter", "utopiajs"],
-  "engines": { "node": ">=20.0.0" },
-  "publishConfig": { "access": "public" },
+  "keywords": [
+    "create",
+    "scaffold",
+    "cli",
+    "generator",
+    "starter",
+    "utopiajs"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "create-utopia": "./dist/index.js"
   },
-  "files": ["dist", "template"],
+  "files": [
+    "dist",
+    "template"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts",
     "dev": "tsup src/index.ts --format esm --dts --watch"

@@ -54,6 +54,7 @@ export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(60000),
       });
 
       if (!response.ok) {
@@ -107,6 +108,7 @@ export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(60000),
       });
 
       if (!response.ok) {
@@ -128,7 +130,12 @@ export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
 
         for (const line of lines) {
           if (!line.trim()) continue;
-          const data = JSON.parse(line);
+          let data: any;
+          try {
+            data = JSON.parse(line);
+          } catch {
+            continue;
+          }
 
           yield {
             delta: data.message?.content ?? '',

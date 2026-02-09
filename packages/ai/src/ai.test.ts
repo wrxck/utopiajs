@@ -593,6 +593,125 @@ describe('parseSSEStream', () => {
     expect(chunks[0].delta).toBe('valid');
     expect(chunks[1].delta).toBe('also valid');
   });
+
+  it('should handle multiple malformed lines interspersed with valid ones', async () => {
+    const response = mockFetchResponse([
+      'data: not-json-at-all\n\n',
+      'data: {"delta":"first"}\n\n',
+      'data: {truncated\n\n',
+      'data: \n\n',
+      'data: {"delta":"second","finishReason":"stop"}\n\n',
+      'data: [DONE]\n\n',
+    ]);
+
+    const chunks: ChatChunk[] = [];
+    for await (const chunk of parseSSEStream(response)) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0].delta).toBe('first');
+    expect(chunks[1].delta).toBe('second');
+    expect(chunks[1].finishReason).toBe('stop');
+  });
+
+  it('should clean up the reader via cancel on normal completion', async () => {
+    const cancelFn = vi.fn().mockResolvedValue(undefined);
+    let index = 0;
+    const sseData = [
+      'data: {"delta":"hello"}\n\n',
+      'data: [DONE]\n\n',
+    ];
+
+    const stream = new ReadableStream({
+      pull(controller) {
+        if (index < sseData.length) {
+          controller.enqueue(new TextEncoder().encode(sseData[index++]));
+        } else {
+          controller.close();
+        }
+      },
+    });
+
+    // Override getReader to intercept cancel
+    const originalGetReader = stream.getReader.bind(stream);
+    const reader = originalGetReader();
+    const originalRead = reader.read.bind(reader);
+    const originalCancel = reader.cancel.bind(reader);
+
+    let readerRequested = false;
+    const mockStream = new ReadableStream(); // dummy, won't be used
+    const response = {
+      body: {
+        getReader() {
+          readerRequested = true;
+          return {
+            read: originalRead,
+            cancel: cancelFn,
+            releaseLock: reader.releaseLock.bind(reader),
+          };
+        },
+      },
+    } as unknown as Response;
+
+    const chunks: ChatChunk[] = [];
+    for await (const chunk of parseSSEStream(response)) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].delta).toBe('hello');
+    expect(readerRequested).toBe(true);
+    // The finally block should call reader.cancel()
+    expect(cancelFn).toHaveBeenCalled();
+  });
+
+  it('should clean up the reader even when iteration is aborted early', async () => {
+    const cancelFn = vi.fn().mockResolvedValue(undefined);
+    let index = 0;
+    const sseData = [
+      'data: {"delta":"chunk1"}\n\n',
+      'data: {"delta":"chunk2"}\n\n',
+      'data: {"delta":"chunk3"}\n\n',
+      'data: [DONE]\n\n',
+    ];
+
+    const stream = new ReadableStream({
+      pull(controller) {
+        if (index < sseData.length) {
+          controller.enqueue(new TextEncoder().encode(sseData[index++]));
+        } else {
+          controller.close();
+        }
+      },
+    });
+
+    const reader = stream.getReader();
+    const originalRead = reader.read.bind(reader);
+
+    const response = {
+      body: {
+        getReader() {
+          return {
+            read: originalRead,
+            cancel: cancelFn,
+            releaseLock: reader.releaseLock.bind(reader),
+          };
+        },
+      },
+    } as unknown as Response;
+
+    const chunks: ChatChunk[] = [];
+    for await (const chunk of parseSSEStream(response)) {
+      chunks.push(chunk);
+      if (chunks.length === 1) break; // Abort early after first chunk
+    }
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].delta).toBe('chunk1');
+    // The finally block should still call reader.cancel() even on early break
+    expect(cancelFn).toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 {
   "name": "@matthesketh/utopia-runtime",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "description": "DOM renderer and component lifecycle for UtopiaJS",
   "type": "module",
   "license": "MIT",
@@ -11,9 +11,20 @@
     "directory": "packages/runtime"
   },
   "homepage": "https://github.com/wrxck/utopiajs/tree/main/packages/runtime",
-  "keywords": ["runtime", "dom", "renderer", "lifecycle", "directives", "utopiajs"],
-  "engines": { "node": ">=20.0.0" },
-  "publishConfig": { "access": "public" },
+  "keywords": [
+    "runtime",
+    "dom",
+    "renderer",
+    "lifecycle",
+    "directives",
+    "utopiajs"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "sideEffects": false,
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -25,7 +36,9 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch"

@@ -6,6 +6,18 @@ import type { VNode, VElement } from './vnode.js';
 import type { ComponentDefinition } from './ssr-runtime.js';
 import { createComponent, flushStyles } from './ssr-runtime.js';
 
+const VALID_TAG = /^[a-zA-Z][a-zA-Z0-9-]*$/;
+function validateTag(tag: string): string {
+  if (!VALID_TAG.test(tag)) throw new Error(`Invalid tag name: ${tag}`);
+  return tag;
+}
+
+const VALID_ATTR = /^[a-zA-Z_:@][a-zA-Z0-9_.:-]*$/;
+function validateAttr(name: string): string {
+  if (!VALID_ATTR.test(name)) throw new Error(`Invalid attribute name: ${name}`);
+  return name;
+}
+
 // HTML void elements (self-closing, no closing tag).
 const VOID_ELEMENTS = new Set([
   'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
@@ -55,14 +67,14 @@ export function serializeVNode(node: VNode): string {
 
 function serializeElement(el: VElement): string {
   const tag = el.tag;
-  let html = `<${tag}`;
+  let html = `<${validateTag(tag)}`;
 
   // Attributes
   for (const [name, value] of Object.entries(el.attrs)) {
     if (value === '') {
-      html += ` ${name}`;
+      html += ` ${validateAttr(name)}`;
     } else {
-      html += ` ${name}="${escapeAttr(value)}"`;
+      html += ` ${validateAttr(name)}="${escapeAttr(value)}"`;
     }
   }
 
@@ -79,7 +91,7 @@ function serializeElement(el: VElement): string {
     html += serializeVNode(child);
   }
 
-  html += `</${tag}>`;
+  html += `</${validateTag(tag)}>`;
   return html;
 }
 

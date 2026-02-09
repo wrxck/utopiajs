@@ -48,6 +48,12 @@ const scrollPositions: Map<number, { x: number; y: number }> = new Map();
 /** Monotonically increasing navigation index for scroll position tracking. */
 let navIndex = 0;
 
+/** Maximum number of scroll position entries to retain. */
+const MAX_SCROLL_ENTRIES = 50;
+
+/** Current redirect depth -- used to detect infinite redirect loops. */
+let redirectDepth = 0;
+
 /** The cleanup function to tear down event listeners. */
 let cleanup: (() => void) | null = null;
 
@@ -97,6 +103,7 @@ export function createRouter(routeTable: Route[]): void {
 
       // Save current scroll position before navigating.
       scrollPositions.set(navIndex, { x: window.scrollX, y: window.scrollY });
+      capScrollPositions();
       navIndex = targetIndex;
 
       const url = new URL(window.location.href);
@@ -107,8 +114,15 @@ export function createRouter(routeTable: Route[]): void {
       // back/forward; we can only skip updating the route).
       runBeforeNavigateHooks(currentRoute.peek(), match).then((result) => {
         if (result === false) {
-          // Guard rejected — try to undo the navigation.
-          // This is best-effort; the URL has already changed.
+          // Guard rejected -- restore the previous URL.
+          const prev = currentRoute.peek();
+          if (prev) {
+            history.pushState(
+              { _utopiaNavIndex: navIndex },
+              '',
+              prev.url.pathname + prev.url.search + prev.url.hash,
+            );
+          }
           return;
         }
 
@@ -184,6 +198,13 @@ export async function navigate(
 ): Promise<void> {
   if (typeof window === 'undefined') return;
 
+  redirectDepth++;
+  if (redirectDepth > 10) {
+    console.error('[utopia] Maximum navigation redirects exceeded');
+    redirectDepth = 0;
+    return;
+  }
+
   isNavigating.set(true);
 
   try {
@@ -200,13 +221,24 @@ export async function navigate(
     }
 
     if (typeof hookResult === 'string') {
-      // Redirect — navigate to the new URL instead.
+      // Only allow same-origin redirects.
+      try {
+        const redirectUrl = new URL(hookResult, window.location.origin);
+        if (redirectUrl.origin !== window.location.origin) {
+          console.error('[utopia] Cross-origin redirect blocked:', hookResult);
+          return;
+        }
+      } catch {
+        // relative path is fine, absolute invalid URL is not
+      }
+      // Redirect -- navigate to the new URL instead.
       await navigate(hookResult, options);
       return;
     }
 
     // Save current scroll position.
     scrollPositions.set(navIndex, { x: window.scrollX, y: window.scrollY });
+    capScrollPositions();
 
     // Update history.
     navIndex++;
@@ -234,6 +266,7 @@ export async function navigate(
       window.scrollTo(0, 0);
     });
   } finally {
+    redirectDepth--;
     isNavigating.set(false);
   }
 }
@@ -328,13 +361,27 @@ async function runBeforeNavigateHooks(
   to: RouteMatch | null,
 ): Promise<boolean | string | void> {
   for (const hook of beforeNavigateHooks) {
-    const result = await hook(from, to);
-    if (result === false) {
-      return false;
-    }
-    if (typeof result === 'string') {
-      return result;
+    try {
+      const result = await hook(from, to);
+      if (result === false) {
+        return false;
+      }
+      if (typeof result === 'string') {
+        return result;
+      }
+    } catch (err) {
+      console.error('[utopia] Navigation guard error:', err);
     }
   }
   return undefined;
+}
+
+/**
+ * Evict the oldest scroll position entry if the map exceeds the size cap.
+ */
+function capScrollPositions(): void {
+  if (scrollPositions.size > MAX_SCROLL_ENTRIES) {
+    const firstKey = scrollPositions.keys().next().value;
+    if (firstKey !== undefined) scrollPositions.delete(firstKey);
+  }
 }

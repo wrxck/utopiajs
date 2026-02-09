@@ -22,6 +22,11 @@ export function createServerRouter(
 ): RouteMatch | null {
   // Construct a full URL. On the server we don't have window.location,
   // so we use a dummy origin.
-  const fullUrl = new URL(url, 'http://localhost');
+  let fullUrl: URL;
+  try {
+    fullUrl = new URL(url, 'http://localhost');
+  } catch {
+    return null;
+  }
   return matchRoute(fullUrl, routes);
 }

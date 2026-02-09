@@ -418,7 +418,7 @@ describe('Template Compilation', () => {
   it('compiles PascalCase component references', () => {
     const result = compileTemplate('<MyComponent title="hello" />')
     expect(result.code).toContain('createComponent(MyComponent,')
-    expect(result.code).toContain("title: 'hello'")
+    expect(result.code).toContain("'title': 'hello'")
     expect(result.code).not.toContain('_ctx.')
   })
 
@@ -825,5 +825,68 @@ function inc() { count.update(n => n + 1) }
     const result = compile(source, { scopeId: 'data-u-custom' })
     expect(result.css).toContain('.x[data-u-custom]')
     expect(result.code).toContain('data-u-custom')
+  })
+})
+
+// ===========================================================================
+// 6. Entity decoding edge cases
+// ===========================================================================
+
+describe('Entity decoding', () => {
+  it('preserves out-of-range numeric entity &#20000000; without crashing', () => {
+    // 20000000 exceeds the max Unicode code point (0x10FFFF = 1114111).
+    // The compiler should not crash and the original entity text should be
+    // preserved in the output.
+    const result = compileTemplate('<p>&#20000000;</p>')
+    expect(result.code).toContain('createTextNode')
+    // The literal entity should survive (not decoded) since it is invalid.
+    expect(result.code).toContain('&#20000000;')
+  })
+
+  it('decodes the max valid Unicode code point &#1114111; correctly', () => {
+    // 1114111 === 0x10FFFF — the highest valid Unicode code point.
+    const result = compileTemplate('<p>&#1114111;</p>')
+    expect(result.code).toContain('createTextNode')
+    // The entity should be decoded to its character representation.
+    const expectedChar = String.fromCodePoint(0x10FFFF)
+    expect(result.code).toContain(expectedChar)
+    // The raw entity should NOT appear in the output.
+    expect(result.code).not.toContain('&#1114111;')
+  })
+})
+
+// ===========================================================================
+// 7. isComponentTag validation
+// ===========================================================================
+
+describe('isComponentTag validation', () => {
+  it('compiles PascalCase tag with createComponent', () => {
+    const result = compileTemplate('<MyComponent />')
+    expect(result.code).toContain('createComponent(MyComponent,')
+    expect(result.helpers.has('createComponent')).toBe(true)
+  })
+
+  it('does NOT treat lowercase hyphenated tag as a component', () => {
+    // <my-component /> is lowercase, so it should be treated as a regular
+    // HTML element (createElement), not a component (createComponent).
+    const result = compileTemplate('<my-component />')
+    expect(result.code).toContain("createElement('my-component')")
+    expect(result.code).not.toContain('createComponent')
+    expect(result.helpers.has('createElement')).toBe(true)
+    expect(result.helpers.has('createComponent')).toBe(false)
+  })
+
+  it('does NOT treat a tag starting with a digit as a component', () => {
+    // Tags starting with digits should not match isComponentTag.
+    // The parser allows digits in tag names, but codegen should use createElement.
+    const result = compileTemplate('<H1tag />')
+    // H1tag starts with uppercase so it IS a component.
+    expect(result.code).toContain('createComponent(H1tag,')
+  })
+
+  it('treats a tag with only uppercase start and alphanumeric as component', () => {
+    const result = compileTemplate('<Widget2 />')
+    expect(result.code).toContain('createComponent(Widget2,')
+    expect(result.helpers.has('createComponent')).toBe(true)
   })
 })

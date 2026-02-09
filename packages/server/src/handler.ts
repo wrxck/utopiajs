@@ -4,6 +4,10 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
+function escapeStyleContent(css: string): string {
+  return css.replace(/<\/style/gi, '<\\/style');
+}
+
 export interface HandlerOptions {
   /** The HTML template with <!--ssr-outlet--> and <!--ssr-head--> markers. */
   template: string;
@@ -36,12 +40,12 @@ export function createHandler(
       const { html, css } = await render(url);
 
       // Build the head injection (scoped styles).
-      const headInject = css ? `<style>${css}</style>` : '';
+      const headInject = css ? `<style>${escapeStyleContent(css)}</style>` : '';
 
       // Inject into template.
       let page = template;
-      page = page.replace('<!--ssr-head-->', headInject);
-      page = page.replace('<!--ssr-outlet-->', html);
+      page = page.split('<!--ssr-head-->').join(headInject);
+      page = page.split('<!--ssr-outlet-->').join(html);
 
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(page);

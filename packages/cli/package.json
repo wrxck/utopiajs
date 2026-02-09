@@ -1,6 +1,6 @@
 {
   "name": "@matthesketh/utopia-cli",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "description": "CLI for the UtopiaJS framework",
   "type": "module",
   "license": "MIT",
@@ -11,14 +11,25 @@
     "directory": "packages/cli"
   },
   "homepage": "https://github.com/wrxck/utopiajs/tree/main/packages/cli",
-  "keywords": ["cli", "dev", "build", "utopiajs"],
-  "engines": { "node": ">=20.0.0" },
-  "publishConfig": { "access": "public" },
+  "keywords": [
+    "cli",
+    "dev",
+    "build",
+    "utopiajs"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "sideEffects": false,
   "bin": {
     "utopia": "./dist/index.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm",
     "dev": "tsup src/index.ts --format esm --watch"

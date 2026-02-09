@@ -835,3 +835,95 @@ describe('integration', () => {
     expect(state()).toBe(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Error handling
+// ---------------------------------------------------------------------------
+
+describe('error handling', () => {
+  it('recovers when effect function throws', () => {
+    const s = signal(0);
+    let callCount = 0;
+
+    effect(() => {
+      callCount++;
+      const val = s();
+      if (val === 1) throw new Error('test error');
+    });
+
+    expect(callCount).toBe(1);
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    s.set(1);
+    expect(callCount).toBe(2);
+    expect(consoleSpy).toHaveBeenCalledWith('Error in effect:', expect.any(Error));
+
+    s.set(2);
+    expect(callCount).toBe(3);
+    consoleSpy.mockRestore();
+  });
+
+  it('recovers when cleanup function throws', () => {
+    const s = signal(0);
+    let effectRan = 0;
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    effect(() => {
+      effectRan++;
+      s();
+      return () => {
+        throw new Error('cleanup error');
+      };
+    });
+
+    expect(effectRan).toBe(1);
+
+    s.set(1);
+    expect(effectRan).toBe(2);
+    expect(consoleSpy).toHaveBeenCalledWith('Error in effect cleanup:', expect.any(Error));
+
+    consoleSpy.mockRestore();
+  });
+
+  it('disposes effect even when cleanup throws', () => {
+    const s = signal(0);
+    let effectRan = 0;
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const dispose = effect(() => {
+      effectRan++;
+      s();
+      return () => { throw new Error('cleanup error'); };
+    });
+
+    expect(effectRan).toBe(1);
+
+    dispose();
+    expect(consoleSpy).toHaveBeenCalled();
+
+    s.set(1);
+    expect(effectRan).toBe(1);
+
+    consoleSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Circular dependencies
+// ---------------------------------------------------------------------------
+
+describe('circular dependencies', () => {
+  it('detects circular dependency in computed chain', () => {
+    const s = signal(0);
+    const computeds: any[] = [];
+
+    computeds.push(computed(() => s() + 1));
+    for (let i = 1; i <= 100; i++) {
+      computeds.push(computed(() => computeds[i - 1]() + 1));
+    }
+
+    expect(() => computeds[100]()).toThrow('Circular dependency detected in computed chain');
+  });
+});

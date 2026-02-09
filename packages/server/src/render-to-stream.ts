@@ -7,6 +7,22 @@ import type { VNode, VElement } from './vnode.js';
 import type { ComponentDefinition } from './ssr-runtime.js';
 import { createComponent, flushStyles } from './ssr-runtime.js';
 
+const VALID_TAG = /^[a-zA-Z][a-zA-Z0-9-]*$/;
+function validateTag(tag: string): string {
+  if (!VALID_TAG.test(tag)) throw new Error(`Invalid tag name: ${tag}`);
+  return tag;
+}
+
+const VALID_ATTR = /^[a-zA-Z_:@][a-zA-Z0-9_.:-]*$/;
+function validateAttr(name: string): string {
+  if (!VALID_ATTR.test(name)) throw new Error(`Invalid attribute name: ${name}`);
+  return name;
+}
+
+function escapeStyleContent(css: string): string {
+  return css.replace(/<\/style/gi, '<\\/style');
+}
+
 // HTML void elements (self-closing, no closing tag).
 const VOID_ELEMENTS = new Set([
   'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
@@ -46,11 +62,14 @@ export function renderToStream(
   const vnode = createComponent(component, props);
   const styles = flushStyles();
 
+  let rendered = false;
   return new Readable({
     read() {
+      if (rendered) return;
+      rendered = true;
       // Emit a leading CSS <style> block if styles were collected.
       if (styles.length > 0) {
-        this.push(`<style>${styles.join('\n')}</style>`);
+        this.push(`<style>${escapeStyleContent(styles.join('\n'))}</style>`);
       }
 
       // Walk the VNode tree and push chunks.
@@ -77,13 +96,13 @@ function pushVNode(stream: Readable, node: VNode): void {
 }
 
 function pushElement(stream: Readable, el: VElement): void {
-  let open = `<${el.tag}`;
+  let open = `<${validateTag(el.tag)}`;
 
   for (const [name, value] of Object.entries(el.attrs)) {
     if (value === '') {
-      open += ` ${name}`;
+      open += ` ${validateAttr(name)}`;
     } else {
-      open += ` ${name}="${escapeAttr(value)}"`;
+      open += ` ${validateAttr(name)}="${escapeAttr(value)}"`;
     }
   }
 
@@ -98,5 +117,5 @@ function pushElement(stream: Readable, el: VElement): void {
     pushVNode(stream, child);
   }
 
-  stream.push(`</${el.tag}>`);
+  stream.push(`</${validateTag(el.tag)}>`);
 }

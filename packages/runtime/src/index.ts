@@ -35,6 +35,9 @@ export {
 export {
   mount,
   createComponentInstance,
+  pushDisposer,
+  startCapturingDisposers,
+  stopCapturingDisposers,
 } from './component.js';
 
 export type {
@@ -57,5 +60,14 @@ export { hydrate } from './hydration.js';
 // ---------------------------------------------------------------------------
 export { signal, computed, effect, batch, untrack } from '@matthesketh/utopia-core';
 
-// Alias: the compiler emits `createEffect` but @matthesketh/utopia-core exports `effect`.
-export { effect as createEffect } from '@matthesketh/utopia-core';
+// ---------------------------------------------------------------------------
+// createEffect — wrapped effect() that captures disposers
+// ---------------------------------------------------------------------------
+import { effect as _coreEffect } from '@matthesketh/utopia-core';
+import { pushDisposer } from './component.js';
+
+export function createEffect(fn: () => void | (() => void)): () => void {
+  const dispose = _coreEffect(fn);
+  pushDisposer(dispose);
+  return dispose;
+}

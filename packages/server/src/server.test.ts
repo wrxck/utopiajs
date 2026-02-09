@@ -23,6 +23,8 @@ import {
   flushStyles,
 } from './ssr-runtime.js';
 import { renderToString, serializeVNode } from './render-to-string.js';
+import { renderToStream } from './render-to-stream.js';
+import { createServerRouter } from './server-router.js';
 
 // =========================================================================
 // VNode creation
@@ -471,5 +473,102 @@ describe('renderToString', () => {
 
     const { html } = renderToString(Component);
     expect(html).toBe('<ul><li>a</li><li>b</li><!--u-for--></ul>');
+  });
+});
+
+// =========================================================================
+// Security validation tests
+// =========================================================================
+
+describe('Security: tag name validation', () => {
+  it('throws on invalid tag name containing injected attributes', () => {
+    const maliciousTag = 'div onclick="alert(1)"';
+    const node: VElement = {
+      type: 1,
+      tag: maliciousTag,
+      attrs: {},
+      children: [],
+    };
+    expect(() => serializeVNode(node)).toThrow('Invalid tag name');
+  });
+});
+
+describe('Security: attribute name validation', () => {
+  it('throws on invalid attribute name with injection attempt', () => {
+    const node: VElement = {
+      type: 1,
+      tag: 'div',
+      attrs: { '" onload="alert(1)': 'x' },
+      children: [],
+    };
+    expect(() => serializeVNode(node)).toThrow('Invalid attribute name');
+  });
+});
+
+describe('Security: CSS injection prevention', () => {
+  it('escapes closing style tags in CSS content via renderToStream', async () => {
+    const maliciousCSS = '</style><script>alert(\'xss\')</script>';
+    const Component = {
+      render: () => createElement('div'),
+      styles: maliciousCSS,
+    };
+
+    const stream = renderToStream(Component);
+    const chunks: string[] = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk.toString());
+    }
+    const output = chunks.join('');
+    // The raw </style> should be escaped to <\/style
+    expect(output).toContain('<\\/style');
+    expect(output).not.toMatch(/<\/style><script>/);
+  });
+});
+
+describe('Security: template marker safety', () => {
+  it('CSS with replace() special characters ($1, $&) is inserted correctly', async () => {
+    const trickyCss = 'body { content: "$1 $& $$"; }';
+    const Component = {
+      render: () => createElement('div'),
+      styles: trickyCss,
+    };
+
+    const stream = renderToStream(Component);
+    const chunks: string[] = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk.toString());
+    }
+    const output = chunks.join('');
+    expect(output).toContain('$1 $& $$');
+  });
+});
+
+describe('Security: malformed URL handling in createServerRouter', () => {
+  it('returns null for garbage URL input', () => {
+    const routes = [{
+      path: '/',
+      pattern: /^\/$/,
+      params: [],
+      component: () => Promise.resolve({}),
+    }];
+    // http://[::1 causes the URL constructor to throw
+    const result = createServerRouter(routes, 'http://[::1');
+    expect(result).toBeNull();
+  });
+});
+
+describe('Security: valid tags pass through validation', () => {
+  it('allows standard HTML tags', () => {
+    const div: VElement = { type: 1, tag: 'div', attrs: {}, children: [] };
+    expect(() => serializeVNode(div)).not.toThrow();
+
+    const span: VElement = { type: 1, tag: 'span', attrs: {}, children: [] };
+    expect(() => serializeVNode(span)).not.toThrow();
+  });
+
+  it('allows custom element / web component tags', () => {
+    const custom: VElement = { type: 1, tag: 'my-component', attrs: {}, children: [] };
+    const html = serializeVNode(custom);
+    expect(html).toBe('<my-component></my-component>');
   });
 });
