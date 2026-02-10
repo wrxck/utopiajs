@@ -73,25 +73,27 @@ async function handlePost(
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(response));
-  } catch (err: any) {
+  } catch (err: unknown) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      jsonrpc: '2.0',
-      id: null,
-      error: { code: -32700, message: 'Parse error', data: err.message },
-    }));
+    res.end(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: null,
+        error: {
+          code: -32700,
+          message: 'Parse error',
+          data: err instanceof Error ? err.message : String(err),
+        },
+      }),
+    );
   }
 }
 
-function handleSSE(
-  server: MCPServer,
-  _req: IncomingMessage,
-  res: ServerResponse,
-): void {
+function handleSSE(server: MCPServer, _req: IncomingMessage, res: ServerResponse): void {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
+    Connection: 'keep-alive',
   });
 
   // Send endpoint event so client knows where to POST

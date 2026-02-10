@@ -19,40 +19,40 @@
 
 export interface StyleCompileOptions {
   /** The raw CSS source. */
-  source: string
+  source: string;
   /** The filename for the component (used to generate a stable hash). */
-  filename: string
+  filename: string;
   /** Whether the `<style>` block had the `scoped` attribute. */
-  scoped: boolean
+  scoped: boolean;
   /** Override the scope ID (useful for testing). */
-  scopeId?: string
+  scopeId?: string;
 }
 
 export interface StyleCompileResult {
   /** The (possibly transformed) CSS. */
-  css: string
+  css: string;
   /**
    * The data attribute that must be added to every element in the component
    * template so the scoped selectors match.  `null` when not scoped.
    */
-  scopeId: string | null
+  scopeId: string | null;
 }
 
 /**
  * Compile a `<style>` block, applying scoped transformations when required.
  */
 export function compileStyle(options: StyleCompileOptions): StyleCompileResult {
-  const { source, filename, scoped, scopeId: overrideScopeId } = options
+  const { source, filename, scoped, scopeId: overrideScopeId } = options;
 
   if (!scoped) {
-    return { css: source, scopeId: null }
+    return { css: source, scopeId: null };
   }
 
-  const scopeId = overrideScopeId ?? generateScopeId(filename)
+  const scopeId = overrideScopeId ?? generateScopeId(filename);
 
-  const css = scopeSelectors(source, scopeId)
+  const css = scopeSelectors(source, scopeId);
 
-  return { css, scopeId }
+  return { css, scopeId };
 }
 
 // ---------------------------------------------------------------------------
@@ -66,12 +66,12 @@ export function compileStyle(options: StyleCompileOptions): StyleCompileResult {
  * as `data-u-XXXXXXXX`.
  */
 export function generateScopeId(filename: string): string {
-  let hash = 5381
+  let hash = 5381;
   for (let i = 0; i < filename.length; i++) {
     // hash * 33 + char
-    hash = ((hash << 5) + hash + filename.charCodeAt(i)) >>> 0
+    hash = ((hash << 5) + hash + filename.charCodeAt(i)) >>> 0;
   }
-  return `data-u-${hash.toString(16).padStart(8, '0')}`
+  return `data-u-${hash.toString(16).padStart(8, '0')}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,56 +95,56 @@ export function generateScopeId(filename: string): string {
  * would use a proper CSS parser (e.g. PostCSS).
  */
 function scopeSelectors(css: string, scopeId: string): string {
-  const result: string[] = []
-  let pos = 0
+  const result: string[] = [];
+  let pos = 0;
 
   while (pos < css.length) {
     // Skip whitespace.
     if (/\s/.test(css[pos])) {
-      result.push(css[pos])
-      pos++
-      continue
+      result.push(css[pos]);
+      pos++;
+      continue;
     }
 
     // CSS comment: /* ... */
     if (css[pos] === '/' && css[pos + 1] === '*') {
-      const endIdx = css.indexOf('*/', pos + 2)
+      const endIdx = css.indexOf('*/', pos + 2);
       if (endIdx === -1) {
-        result.push(css.slice(pos))
-        break
+        result.push(css.slice(pos));
+        break;
       }
-      result.push(css.slice(pos, endIdx + 2))
-      pos = endIdx + 2
-      continue
+      result.push(css.slice(pos, endIdx + 2));
+      pos = endIdx + 2;
+      continue;
     }
 
     // At-rule: @media, @keyframes, @supports, etc.
     if (css[pos] === '@') {
-      const atResult = consumeAtRule(css, pos, scopeId)
-      result.push(atResult.text)
-      pos = atResult.end
-      continue
+      const atResult = consumeAtRule(css, pos, scopeId);
+      result.push(atResult.text);
+      pos = atResult.end;
+      continue;
     }
 
     // Closing brace (should not appear at top level, but be defensive).
     if (css[pos] === '}') {
-      result.push('}')
-      pos++
-      continue
+      result.push('}');
+      pos++;
+      continue;
     }
 
     // Otherwise we expect a rule set: selectors { declarations }
-    const ruleResult = consumeRuleSet(css, pos, scopeId)
-    result.push(ruleResult.text)
-    pos = ruleResult.end
+    const ruleResult = consumeRuleSet(css, pos, scopeId);
+    result.push(ruleResult.text);
+    pos = ruleResult.end;
   }
 
-  return result.join('')
+  return result.join('');
 }
 
 interface ConsumeResult {
-  text: string
-  end: number
+  text: string;
+  end: number;
 }
 
 /**
@@ -153,54 +153,54 @@ interface ConsumeResult {
  */
 function consumeAtRule(css: string, pos: number, scopeId: string): ConsumeResult {
   // Read the at-keyword and everything up to `{` or `;`.
-  const start = pos
-  let depth = 0
-  let headerEnd = -1
+  const start = pos;
+  let depth = 0;
+  let headerEnd = -1;
 
   for (let i = pos; i < css.length; i++) {
     if (css[i] === '{') {
-      headerEnd = i
-      break
+      headerEnd = i;
+      break;
     }
     if (css[i] === ';') {
       // Statement at-rule (e.g. @import).
-      return { text: css.slice(start, i + 1), end: i + 1 }
+      return { text: css.slice(start, i + 1), end: i + 1 };
     }
   }
 
   if (headerEnd === -1) {
     // Malformed — return rest of input.
-    return { text: css.slice(start), end: css.length }
+    return { text: css.slice(start), end: css.length };
   }
 
-  const header = css.slice(start, headerEnd)
+  const header = css.slice(start, headerEnd);
 
   // Is this @keyframes?  If so, don't scope the contents.
-  const isKeyframes = /^@(?:-\w+-)?keyframes\b/.test(header.trim())
+  const isKeyframes = /^@(?:-\w+-)?keyframes\b/.test(header.trim());
 
   // Find the matching closing brace.
-  depth = 1
-  let bodyStart = headerEnd + 1
-  let bodyEnd = headerEnd + 1
+  depth = 1;
+  let bodyStart = headerEnd + 1;
+  let bodyEnd = headerEnd + 1;
   for (let i = bodyStart; i < css.length && depth > 0; i++) {
-    if (css[i] === '{') depth++
-    else if (css[i] === '}') depth--
-    bodyEnd = i
+    if (css[i] === '{') depth++;
+    else if (css[i] === '}') depth--;
+    bodyEnd = i;
   }
 
-  const body = css.slice(bodyStart, bodyEnd)
+  const body = css.slice(bodyStart, bodyEnd);
 
-  let scopedBody: string
+  let scopedBody: string;
   if (isKeyframes) {
-    scopedBody = body
+    scopedBody = body;
   } else {
-    scopedBody = scopeSelectors(body, scopeId)
+    scopedBody = scopeSelectors(body, scopeId);
   }
 
   return {
     text: `${header}{${scopedBody}}`,
     end: bodyEnd + 1,
-  }
+  };
 }
 
 /**
@@ -208,35 +208,35 @@ function consumeAtRule(css: string, pos: number, scopeId: string): ConsumeResult
  */
 function consumeRuleSet(css: string, pos: number, scopeId: string): ConsumeResult {
   // Find the opening brace.
-  const braceIdx = css.indexOf('{', pos)
+  const braceIdx = css.indexOf('{', pos);
   if (braceIdx === -1) {
     // No more rules — return the rest as-is (might be trailing whitespace).
-    return { text: css.slice(pos), end: css.length }
+    return { text: css.slice(pos), end: css.length };
   }
 
-  const selectorText = css.slice(pos, braceIdx)
+  const selectorText = css.slice(pos, braceIdx);
 
   // Find the matching closing brace (no nesting expected inside declarations,
   // but be safe).
-  let depth = 1
-  let endIdx = braceIdx + 1
+  let depth = 1;
+  let endIdx = braceIdx + 1;
   for (; endIdx < css.length && depth > 0; endIdx++) {
-    if (css[endIdx] === '{') depth++
-    else if (css[endIdx] === '}') depth--
+    if (css[endIdx] === '{') depth++;
+    else if (css[endIdx] === '}') depth--;
   }
 
-  const declarations = css.slice(braceIdx + 1, endIdx - 1)
+  const declarations = css.slice(braceIdx + 1, endIdx - 1);
 
   // Scope each selector in the comma-separated list.
   const scopedSelectors = selectorText
     .split(',')
     .map((sel) => scopeSingleSelector(sel.trim(), scopeId))
-    .join(', ')
+    .join(', ');
 
   return {
     text: `${scopedSelectors} {${declarations}}`,
     end: endIdx,
-  }
+  };
 }
 
 /**
@@ -253,9 +253,9 @@ function consumeRuleSet(css: string, pos: number, scopeId: string): ConsumeResul
  *   `h1::before`   -> `h1[data-u-xxx]::before`
  */
 function scopeSingleSelector(selector: string, scopeId: string): string {
-  if (!selector) return selector
+  if (!selector) return selector;
 
-  const attr = `[${scopeId}]`
+  const attr = `[${scopeId}]`;
 
   // Find the position to insert the scope attribute.
   // We want to insert *before* any pseudo-element (::) or pseudo-class (:)
@@ -268,13 +268,13 @@ function scopeSingleSelector(selector: string, scopeId: string): string {
 
   // Match trailing pseudo-elements/classes: e.g. `:hover`, `::before`,
   // `:nth-child(2n)`.
-  const pseudoRe = /(?:::?[\w-]+(?:\([^)]*\))?)+$/
-  const pseudoMatch = selector.match(pseudoRe)
+  const pseudoRe = /(?:::?[\w-]+(?:\([^)]*\))?)+$/;
+  const pseudoMatch = selector.match(pseudoRe);
 
   if (pseudoMatch) {
-    const beforePseudo = selector.slice(0, pseudoMatch.index!)
-    return `${beforePseudo}${attr}${pseudoMatch[0]}`
+    const beforePseudo = selector.slice(0, pseudoMatch.index!);
+    return `${beforePseudo}${attr}${pseudoMatch[0]}`;
   }
 
-  return `${selector}${attr}`
+  return `${selector}${attr}`;
 }

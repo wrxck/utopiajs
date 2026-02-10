@@ -22,7 +22,10 @@ const TestComponent = {
 };
 
 // Mock adapter
-function createMockAdapter(): EmailAdapter & { lastMessage: EmailMessage | null; sendFn: ReturnType<typeof vi.fn> } {
+function createMockAdapter(): EmailAdapter & {
+  lastMessage: EmailMessage | null;
+  sendFn: ReturnType<typeof vi.fn>;
+} {
   const sendFn = vi.fn<[EmailMessage], Promise<EmailResult>>().mockResolvedValue({
     success: true,
     messageId: 'test-123',
@@ -76,9 +79,7 @@ describe('createMailer', () => {
       cc: 'bob@example.com',
       bcc: ['secret@example.com'],
       replyTo: 'support@example.com',
-      attachments: [
-        { filename: 'doc.pdf', content: 'base64data', contentType: 'application/pdf' },
-      ],
+      attachments: [{ filename: 'doc.pdf', content: 'base64data', contentType: 'application/pdf' }],
     });
 
     const sent = adapter.lastMessage!;

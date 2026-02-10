@@ -2,6 +2,16 @@
 // @matthesketh/utopia-email — Shared types
 // ============================================================================
 
+/** Slot function type for email components. Returns an SSR VNode. */
+type SlotFn = () => Parameters<
+  typeof import('@matthesketh/utopia-server/ssr-runtime').appendChild
+>[1];
+
+/** Context object passed to email component render functions. */
+export interface EmailComponentContext extends Record<string, unknown> {
+  $slots: Record<string, SlotFn | undefined>;
+}
+
 export interface RenderEmailOptions {
   /** Email subject line (can also be set in MailerSendOptions). */
   subject?: string;
@@ -58,8 +68,8 @@ export interface MailerSendOptions {
   to: string | string[];
   from: string;
   subject?: string;
-  component: any;
-  props?: Record<string, any>;
+  component: unknown;
+  props?: Record<string, unknown>;
   renderOptions?: RenderEmailOptions;
   cc?: string | string[];
   bcc?: string | string[];

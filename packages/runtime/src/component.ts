@@ -23,9 +23,7 @@ export function startCapturingDisposers(): (() => void)[] | null {
   return prev;
 }
 
-export function stopCapturingDisposers(
-  prev: (() => void)[] | null,
-): (() => void)[] {
+export function stopCapturingDisposers(prev: (() => void)[] | null): (() => void)[] {
   const captured = activeDisposers ?? [];
   activeDisposers = prev;
   return captured;
@@ -41,9 +39,9 @@ export function stopCapturingDisposers(
  */
 export interface ComponentDefinition {
   /** The `<script>` block compiled into a setup function. */
-  setup?: (props: Record<string, any>) => Record<string, any>;
+  setup?: (props: Record<string, unknown>) => Record<string, unknown>;
   /** The `<template>` block compiled into a render function. */
-  render: (ctx: Record<string, any>) => Node;
+  render: (ctx: Record<string, unknown>) => Node;
   /** Scoped CSS extracted from the `<style>` block, if any. */
   styles?: string;
 }
@@ -55,7 +53,7 @@ export interface ComponentInstance {
   /** The root DOM node produced by `render()`. */
   el: Node | null;
   /** The reactive props passed into this component. */
-  props: Record<string, any>;
+  props: Record<string, unknown>;
   /** Named slots (each value is a factory that returns a DOM subtree). */
   slots: Record<string, () => Node>;
   /** Mount the component's root node into the given target element. */
@@ -76,7 +74,7 @@ export interface ComponentInstance {
  */
 export function createComponentInstance(
   definition: ComponentDefinition,
-  props?: Record<string, any>,
+  props?: Record<string, unknown>,
 ): ComponentInstance {
   let styleElement: HTMLStyleElement | null = null;
   let disposers: (() => void)[] = [];
@@ -94,12 +92,10 @@ export function createComponentInstance(
       }
 
       // 1. Run setup() to obtain the reactive context.
-      const ctx = definition.setup
-        ? definition.setup(instance.props)
-        : {};
+      const ctx = definition.setup ? definition.setup(instance.props) : {};
 
       // Merge slots into the render context.
-      const renderCtx: Record<string, any> = {
+      const renderCtx: Record<string, unknown> = {
         ...ctx,
         $slots: instance.slots,
       };
@@ -161,14 +157,8 @@ export function createComponentInstance(
  * @param target     A CSS selector string or a DOM Element to mount into.
  * @returns The `ComponentInstance`, allowing later `unmount()`.
  */
-export function mount(
-  component: ComponentDefinition,
-  target: string | Element,
-): ComponentInstance {
-  const el =
-    typeof target === 'string'
-      ? document.querySelector(target)
-      : target;
+export function mount(component: ComponentDefinition, target: string | Element): ComponentInstance {
+  const el = typeof target === 'string' ? document.querySelector(target) : target;
 
   if (!el) {
     throw new Error(

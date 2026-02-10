@@ -9,20 +9,27 @@ import type { EmailAdapter, EmailMessage, EmailResult, SendGridConfig } from '..
  *
  * Requires `@sendgrid/mail` as a peer dependency.
  */
-export function sendgridAdapter(config: SendGridConfig): EmailAdapter {
-  let client: any = null;
+interface SendGridClient {
+  setApiKey(key: string): void;
+  send(
+    msg: Record<string, unknown>,
+  ): Promise<[{ statusCode: number; headers: Record<string, string> }, Record<string, unknown>]>;
+}
 
-  async function getClient(): Promise<any> {
+export function sendgridAdapter(config: SendGridConfig): EmailAdapter {
+  let client: SendGridClient | null = null;
+
+  async function getClient(): Promise<SendGridClient> {
     if (client) return client;
 
-    let sgMail: any;
+    let sgMail: SendGridClient;
     try {
       const mod = await import('@sendgrid/mail');
-      sgMail = mod.default ?? mod;
+      sgMail = (mod.default ?? mod) as unknown as SendGridClient;
     } catch {
       throw new Error(
         '@matthesketh/utopia-email: "@sendgrid/mail" package is required for the SendGrid adapter. ' +
-        'Install it with: npm install @sendgrid/mail',
+          'Install it with: npm install @sendgrid/mail',
       );
     }
 
@@ -36,7 +43,7 @@ export function sendgridAdapter(config: SendGridConfig): EmailAdapter {
       try {
         const sg = await getClient();
 
-        const msg: Record<string, any> = {
+        const msg: Record<string, unknown> = {
           to: Array.isArray(message.to) ? message.to : [message.to],
           from: message.from,
           subject: message.subject,
@@ -71,10 +78,10 @@ export function sendgridAdapter(config: SendGridConfig): EmailAdapter {
           success: true,
           messageId: response?.headers?.['x-message-id'],
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
           success: false,
-          error: err.message ?? String(err),
+          error: err instanceof Error ? err.message : String(err),
         };
       }
     },

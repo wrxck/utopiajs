@@ -14,6 +14,42 @@
 // ============================================================================
 
 // ---------------------------------------------------------------------------
+// Global error handler
+// ---------------------------------------------------------------------------
+
+/** Global effect error handler callback. */
+let effectErrorHandler: ((error: unknown) => void) | null = null;
+
+/**
+ * Register a global error handler for effects. When set, effect errors are
+ * forwarded to this handler instead of being logged to console.error.
+ *
+ * Returns a function that restores the previous handler.
+ *
+ * ```ts
+ * const restore = onEffectError((err) => reportToSentry(err));
+ * // later:
+ * restore();
+ * ```
+ */
+export function onEffectError(handler: (error: unknown) => void): () => void {
+  const prev = effectErrorHandler;
+  effectErrorHandler = handler;
+  return () => {
+    effectErrorHandler = prev;
+  };
+}
+
+/** Internal: report an effect error via the global handler or console. */
+function reportEffectError(label: string, err: unknown): void {
+  if (effectErrorHandler) {
+    effectErrorHandler(err);
+  } else {
+    console.error(label, err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -355,7 +391,7 @@ class EffectNode implements Subscriber {
       try {
         this._cleanupFn();
       } catch (err) {
-        console.error('Error in effect cleanup:', err);
+        reportEffectError('Error in effect cleanup:', err);
       }
       this._cleanupFn = undefined;
     }
@@ -369,7 +405,7 @@ class EffectNode implements Subscriber {
       const result = this._fn();
       this._cleanupFn = typeof result === 'function' ? result : undefined;
     } catch (err) {
-      console.error('Error in effect:', err);
+      reportEffectError('Error in effect:', err);
     } finally {
       popSubscriber();
       this._queued = false;
@@ -391,7 +427,7 @@ class EffectNode implements Subscriber {
       try {
         this._cleanupFn();
       } catch (err) {
-        console.error('Error in effect cleanup:', err);
+        reportEffectError('Error in effect cleanup:', err);
       }
       this._cleanupFn = undefined;
     }

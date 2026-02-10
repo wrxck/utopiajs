@@ -13,6 +13,8 @@ import type {
   ToolDefinition,
 } from '../types.js';
 
+import type Anthropic from '@anthropic-ai/sdk';
+
 /**
  * Create an Anthropic adapter.
  *
@@ -26,23 +28,23 @@ import type {
  * ```
  */
 export function anthropicAdapter(config: AnthropicConfig): AIAdapter {
-  let client: any = null;
+  let client: Anthropic | null = null;
 
-  async function getClient(): Promise<any> {
+  async function getClient(): Promise<Anthropic> {
     if (client) return client;
 
-    let Anthropic: any;
+    let AnthropicCtor: new (opts: { apiKey: string; baseURL?: string }) => Anthropic;
     try {
       const mod = await import('@anthropic-ai/sdk');
-      Anthropic = mod.Anthropic ?? mod.default;
+      AnthropicCtor = (mod.Anthropic ?? mod.default) as typeof AnthropicCtor;
     } catch {
       throw new Error(
         '@matthesketh/utopia-ai: "@anthropic-ai/sdk" package is required for the Anthropic adapter. ' +
-        'Install it with: npm install @anthropic-ai/sdk',
+          'Install it with: npm install @anthropic-ai/sdk',
       );
     }
 
-    client = new Anthropic({
+    client = new AnthropicCtor({
       apiKey: config.apiKey,
       ...(config.baseURL ? { baseURL: config.baseURL } : {}),
     });
@@ -56,7 +58,7 @@ export function anthropicAdapter(config: AnthropicConfig): AIAdapter {
 
       const { system, messages } = toAnthropicMessages(request.messages);
 
-      const body: Record<string, any> = {
+      const body: Record<string, unknown> = {
         model,
         messages,
         max_tokens: request.maxTokens ?? 4096,
@@ -75,30 +77,45 @@ export function anthropicAdapter(config: AnthropicConfig): AIAdapter {
         }
       }
 
-      const response = await anthropic.messages.create(body);
+      // Cast needed: we build params dynamically but the SDK expects strict types
+      const response = (await anthropic.messages.create(
+        body as unknown as Anthropic.MessageCreateParamsNonStreaming,
+      )) as Anthropic.Message;
 
-      const textContent = response.content
-        .filter((b: any) => b.type === 'text')
-        .map((b: any) => b.text)
+      if (!response.content || !Array.isArray(response.content)) {
+        throw new Error('Anthropic returned invalid response: missing content array');
+      }
+
+      const contentBlocks = response.content as AnthropicContentBlock[];
+
+      const textContent = contentBlocks
+        .filter((b) => b.type === 'text')
+        .map((b) => (b as { type: 'text'; text: string }).text)
         .join('');
 
-      const toolCalls = response.content
-        .filter((b: any) => b.type === 'tool_use')
-        .map((b: any): ToolCall => ({
-          id: b.id,
-          name: b.name,
-          arguments: b.input ?? {},
-        }));
+      const toolCalls = contentBlocks
+        .filter((b) => b.type === 'tool_use')
+        .map((b): ToolCall => {
+          const tu = b as {
+            type: 'tool_use';
+            id: string;
+            name: string;
+            input: Record<string, unknown>;
+          };
+          return { id: tu.id, name: tu.name, arguments: tu.input ?? {} };
+        });
 
       return {
         content: textContent,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-        finishReason: mapStopReason(response.stop_reason),
-        usage: response.usage ? {
-          promptTokens: response.usage.input_tokens,
-          completionTokens: response.usage.output_tokens,
-          totalTokens: response.usage.input_tokens + response.usage.output_tokens,
-        } : undefined,
+        finishReason: mapStopReason(response.stop_reason ?? ''),
+        usage: response.usage
+          ? {
+              promptTokens: response.usage.input_tokens,
+              completionTokens: response.usage.output_tokens,
+              totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+            }
+          : undefined,
         raw: response,
       };
     },
@@ -109,7 +126,7 @@ export function anthropicAdapter(config: AnthropicConfig): AIAdapter {
 
       const { system, messages } = toAnthropicMessages(request.messages);
 
-      const body: Record<string, any> = {
+      const body: Record<string, unknown> = {
         model,
         messages,
         max_tokens: request.maxTokens ?? 4096,
@@ -129,7 +146,10 @@ export function anthropicAdapter(config: AnthropicConfig): AIAdapter {
         }
       }
 
-      const stream = anthropic.messages.stream(body);
+      // Cast needed: we build params dynamically but the SDK expects strict types
+      const stream = anthropic.messages.stream(
+        body as unknown as Anthropic.MessageCreateParamsStreaming,
+      );
 
       let promptTokens = 0;
 
@@ -162,12 +182,14 @@ export function anthropicAdapter(config: AnthropicConfig): AIAdapter {
           const outputTokens = event.usage?.output_tokens ?? 0;
           yield {
             delta: '',
-            finishReason: mapStopReason(event.delta.stop_reason),
-            usage: event.usage ? {
-              promptTokens,
-              completionTokens: outputTokens,
-              totalTokens: promptTokens + outputTokens,
-            } : undefined,
+            finishReason: mapStopReason(event.delta.stop_reason ?? ''),
+            usage: event.usage
+              ? {
+                  promptTokens,
+                  completionTokens: outputTokens,
+                  totalTokens: promptTokens + outputTokens,
+                }
+              : undefined,
           };
         }
       }
@@ -176,20 +198,47 @@ export function anthropicAdapter(config: AnthropicConfig): AIAdapter {
 }
 
 // ---------------------------------------------------------------------------
+// Internal Anthropic-shaped types
+// ---------------------------------------------------------------------------
+
+type AnthropicContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> };
+
+interface AnthropicMessage {
+  role: string;
+  content: string | Record<string, unknown>[];
+}
+
+interface AnthropicToolParam {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
 // Mapping helpers
 // ---------------------------------------------------------------------------
 
-function toAnthropicMessages(messages: ChatMessage[]): { system?: string; messages: any[] } {
+function toAnthropicMessages(messages: ChatMessage[]): {
+  system?: string;
+  messages: AnthropicMessage[];
+} {
   let system: string | undefined;
-  const out: any[] = [];
+  const out: AnthropicMessage[] = [];
 
   for (const msg of messages) {
     if (msg.role === 'system') {
-      system = typeof msg.content === 'string'
-        ? msg.content
-        : Array.isArray(msg.content)
-          ? msg.content.map((c) => typeof c === 'string' ? c : 'text' in c ? c.text : '').join('')
-          : 'text' in msg.content ? msg.content.text : '';
+      system =
+        typeof msg.content === 'string'
+          ? msg.content
+          : Array.isArray(msg.content)
+            ? msg.content
+                .map((c) => (typeof c === 'string' ? c : 'text' in c ? c.text : ''))
+                .join('')
+            : 'text' in msg.content
+              ? msg.content.text
+              : '';
       continue;
     }
 
@@ -199,7 +248,7 @@ function toAnthropicMessages(messages: ChatMessage[]): { system?: string; messag
     }
 
     if (Array.isArray(msg.content)) {
-      const blocks: any[] = [];
+      const blocks: Record<string, unknown>[] = [];
 
       for (const part of msg.content) {
         if (typeof part === 'string') {
@@ -210,7 +259,10 @@ function toAnthropicMessages(messages: ChatMessage[]): { system?: string; messag
           blocks.push({
             type: 'image',
             source: {
-              type: part.source.startsWith('data:') || part.source.startsWith('http') ? 'url' : 'base64',
+              type:
+                part.source.startsWith('data:') || part.source.startsWith('http')
+                  ? 'url'
+                  : 'base64',
               ...(part.source.startsWith('data:') || part.source.startsWith('http')
                 ? { url: part.source }
                 : { media_type: part.mediaType ?? 'image/png', data: part.source }),
@@ -249,15 +301,15 @@ function toAnthropicMessages(messages: ChatMessage[]): { system?: string; messag
   return { system, messages: out };
 }
 
-function toAnthropicTool(tool: ToolDefinition): any {
+function toAnthropicTool(tool: ToolDefinition): AnthropicToolParam {
   return {
     name: tool.name,
     description: tool.description,
-    input_schema: tool.parameters,
+    input_schema: tool.parameters as Record<string, unknown>,
   };
 }
 
-function toAnthropicToolChoice(choice: ChatRequest['toolChoice']): any {
+function toAnthropicToolChoice(choice: ChatRequest['toolChoice']): { type: string; name?: string } {
   if (choice === 'auto') return { type: 'auto' };
   if (choice === 'none') return { type: 'none' };
   if (choice === 'required') return { type: 'any' };
@@ -269,14 +321,23 @@ function toAnthropicToolChoice(choice: ChatRequest['toolChoice']): any {
 
 function mapStopReason(reason: string): ChatResponse['finishReason'] {
   switch (reason) {
-    case 'end_turn': return 'stop';
-    case 'stop_sequence': return 'stop';
-    case 'tool_use': return 'tool_calls';
-    case 'max_tokens': return 'length';
-    default: return 'stop';
+    case 'end_turn':
+      return 'stop';
+    case 'stop_sequence':
+      return 'stop';
+    case 'tool_use':
+      return 'tool_calls';
+    case 'max_tokens':
+      return 'length';
+    default:
+      return 'stop';
   }
 }
 
 function tryParseJSON(str: string): Record<string, unknown> | undefined {
-  try { return JSON.parse(str); } catch { return undefined; }
+  try {
+    return JSON.parse(str);
+  } catch {
+    return undefined;
+  }
 }

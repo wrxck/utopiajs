@@ -17,12 +17,7 @@
 // @vitest-environment happy-dom
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import {
-  filePathToRoute,
-  compilePattern,
-  matchRoute,
-  buildRouteTable,
-} from './matcher.js';
+import { filePathToRoute, compilePattern, matchRoute, buildRouteTable } from './matcher.js';
 import {
   createRouter,
   currentRoute,
@@ -684,10 +679,7 @@ describe('Router safety (guards and redirect limits)', () => {
 
     await navigate('/about');
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      '[utopia] Navigation guard error:',
-      expect.any(Error),
-    );
+    expect(consoleSpy).toHaveBeenCalledWith('[utopia] Navigation guard error:', expect.any(Error));
     // Navigation should still complete since guard error doesn't block.
     expect(currentRoute.peek()!.route.path).toBe('/about');
 

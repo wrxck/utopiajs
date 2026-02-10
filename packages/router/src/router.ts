@@ -192,10 +192,7 @@ export function createRouter(routeTable: Route[]): void {
  * @param options.replace - If true, replace the current history entry instead of pushing
  * @returns Promise that resolves when navigation is complete
  */
-export async function navigate(
-  url: string,
-  options: { replace?: boolean } = {},
-): Promise<void> {
+export async function navigate(url: string, options: { replace?: boolean } = {}): Promise<void> {
   if (typeof window === 'undefined') return;
 
   redirectDepth++;

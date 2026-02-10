@@ -1,7 +1,7 @@
 {
   "name": "utopiajs",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A compiler-first, signal-based UI framework with single-file components",
   "type": "module",
   "license": "MIT",
@@ -28,6 +28,9 @@
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "eslint packages/*/src/**/*.ts",
+    "lint:fix": "eslint packages/*/src/**/*.ts --fix",
+    "format": "prettier --write 'packages/*/src/**/*.ts' 'packages/*/package.json' 'package.json' '*.js'",
+    "format:check": "prettier --check 'packages/*/src/**/*.ts' 'packages/*/package.json' 'package.json' '*.js'",
     "clean": "pnpm -r exec rm -rf dist",
     "release": "pnpm build && pnpm -r publish --access public"
   },
@@ -39,6 +42,7 @@
     "eslint": "^9.0.0",
     "globals": "^17.3.0",
     "happy-dom": "^20.5.0",
+    "prettier": "^3.8.1",
     "tsup": "^8.4.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"

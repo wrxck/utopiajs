@@ -105,16 +105,17 @@ export function createAI(adapter: AIAdapter, options?: CreateAIOptions): AI {
           return await hooks.onAfterChat(response, req);
         }
         return response;
-      } catch (err: any) {
-        hooks?.onError?.(err, { method: 'chat', request: req });
+      } catch (err: unknown) {
+        hooks?.onError?.(err instanceof Error ? err : new Error(String(err)), {
+          method: 'chat',
+          request: req,
+        });
         throw err;
       }
     },
 
     stream(request: ChatRequest): AsyncIterable<ChatChunk> {
-      const source = adapter.stream
-        ? adapter.stream
-        : (r: ChatRequest) => chatToStream(adapter, r);
+      const source = adapter.stream ? adapter.stream : (r: ChatRequest) => chatToStream(adapter, r);
 
       // Wrap with hooks (no retry for streaming)
       const wrapped = async function* (): AsyncIterable<ChatChunk> {
@@ -124,8 +125,11 @@ export function createAI(adapter: AIAdapter, options?: CreateAIOptions): AI {
         }
         try {
           yield* source.call(adapter, req);
-        } catch (err: any) {
-          hooks?.onError?.(err, { method: 'stream', request: req });
+        } catch (err: unknown) {
+          hooks?.onError?.(err instanceof Error ? err : new Error(String(err)), {
+            method: 'stream',
+            request: req,
+          });
           throw err;
         }
       };
@@ -141,12 +145,7 @@ export function createAI(adapter: AIAdapter, options?: CreateAIOptions): AI {
     },
 
     async run(options: RunOptions): Promise<ChatResponse> {
-      const {
-        tools,
-        maxRounds = 10,
-        onToolCall,
-        ...requestBase
-      } = options;
+      const { tools, maxRounds = 10, onToolCall, ...requestBase } = options;
 
       const messages = [...options.messages];
       const toolDefs = tools.map((t) => t.definition);
@@ -168,8 +167,11 @@ export function createAI(adapter: AIAdapter, options?: CreateAIOptions): AI {
         let response: ChatResponse;
         try {
           response = await withRetry(() => adapter.chat(req), retry);
-        } catch (err: any) {
-          hooks?.onError?.(err, { method: 'run', request: req });
+        } catch (err: unknown) {
+          hooks?.onError?.(err instanceof Error ? err : new Error(String(err)), {
+            method: 'run',
+            request: req,
+          });
           throw err;
         }
 
@@ -205,8 +207,8 @@ export function createAI(adapter: AIAdapter, options?: CreateAIOptions): AI {
           } else {
             try {
               result = await handler(call.arguments);
-            } catch (err: any) {
-              result = err.message ?? String(err);
+            } catch (err: unknown) {
+              result = err instanceof Error ? err.message : String(err);
               isError = true;
             }
           }
@@ -215,12 +217,14 @@ export function createAI(adapter: AIAdapter, options?: CreateAIOptions): AI {
 
           messages.push({
             role: 'tool',
-            content: [{
-              type: 'tool_result',
-              id: call.id,
-              content: typeof result === 'string' ? result : JSON.stringify(result),
-              isError,
-            }],
+            content: [
+              {
+                type: 'tool_result',
+                id: call.id,
+                content: typeof result === 'string' ? result : JSON.stringify(result),
+                isError,
+              },
+            ],
           });
         }
       }
@@ -241,8 +245,11 @@ export function createAI(adapter: AIAdapter, options?: CreateAIOptions): AI {
       let finalResponse: ChatResponse;
       try {
         finalResponse = await withRetry(() => adapter.chat(req), retry);
-      } catch (err: any) {
-        hooks?.onError?.(err, { method: 'run', request: req });
+      } catch (err: unknown) {
+        hooks?.onError?.(err instanceof Error ? err : new Error(String(err)), {
+          method: 'run',
+          request: req,
+        });
         throw err;
       }
 
@@ -268,9 +275,9 @@ async function withRetry<T>(fn: () => Promise<T>, config?: RetryConfig): Promise
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
-    } catch (err: any) {
-      lastError = err;
-      if (attempt < maxRetries && shouldRetry(err)) {
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < maxRetries && shouldRetry(lastError)) {
         await sleep(baseDelay * Math.pow(2, attempt));
         continue;
       }
@@ -282,9 +289,15 @@ async function withRetry<T>(fn: () => Promise<T>, config?: RetryConfig): Promise
 
 function defaultShouldRetry(error: Error): boolean {
   const msg = error.message.toLowerCase();
-  return msg.includes('network') || msg.includes('timeout') ||
-         msg.includes('429') || msg.includes('500') ||
-         msg.includes('502') || msg.includes('503') || msg.includes('econnreset');
+  return (
+    msg.includes('network') ||
+    msg.includes('timeout') ||
+    msg.includes('429') ||
+    msg.includes('500') ||
+    msg.includes('502') ||
+    msg.includes('503') ||
+    msg.includes('econnreset')
+  );
 }
 
 function sleep(ms: number): Promise<void> {
@@ -295,10 +308,7 @@ function sleep(ms: number): Promise<void> {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function* chatToStream(
-  adapter: AIAdapter,
-  request: ChatRequest,
-): AsyncIterable<ChatChunk> {
+async function* chatToStream(adapter: AIAdapter, request: ChatRequest): AsyncIterable<ChatChunk> {
   const response = await adapter.chat(request);
   yield {
     delta: response.content,

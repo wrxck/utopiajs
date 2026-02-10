@@ -17,12 +17,12 @@ export { signal, computed, batch, untrack };
 // Collected styles — SSR components push their scoped CSS here.
 // ---------------------------------------------------------------------------
 
-let collectedStyles: string[] = [];
+let collectedStyles = new Set<string>();
 
-/** Reset and return all collected styles. */
+/** Reset and return all collected styles (deduplicated). */
 export function flushStyles(): string[] {
-  const styles = collectedStyles;
-  collectedStyles = [];
+  const styles = Array.from(collectedStyles);
+  collectedStyles = new Set();
   return styles;
 }
 
@@ -46,7 +46,7 @@ export function createComment(text: string): VComment {
 // Reactive text
 // ---------------------------------------------------------------------------
 
-export function setText(node: VText, value: any): void {
+export function setText(node: VText, value: unknown): void {
   node.text = value == null ? '' : String(value);
 }
 
@@ -54,16 +54,17 @@ export function setText(node: VText, value: any): void {
 // Attributes
 // ---------------------------------------------------------------------------
 
-export function setAttr(el: VElement, name: string, value: any): void {
+export function setAttr(el: VElement, name: string, value: unknown): void {
   if (name === 'class') {
     if (value == null || value === false) {
       delete el.attrs['class'];
     } else if (typeof value === 'string') {
       el.attrs['class'] = value;
-    } else if (typeof value === 'object') {
+    } else if (typeof value === 'object' && value !== null) {
       const classes: string[] = [];
-      for (const key of Object.keys(value)) {
-        if (value[key]) classes.push(key);
+      const obj = value as Record<string, unknown>;
+      for (const key of Object.keys(obj)) {
+        if (obj[key]) classes.push(key);
       }
       el.attrs['class'] = classes.join(' ');
     }
@@ -75,12 +76,13 @@ export function setAttr(el: VElement, name: string, value: any): void {
       delete el.attrs['style'];
     } else if (typeof value === 'string') {
       el.attrs['style'] = value;
-    } else if (typeof value === 'object') {
+    } else if (typeof value === 'object' && value !== null) {
       const parts: string[] = [];
-      for (const prop of Object.keys(value)) {
-        if (value[prop] != null) {
+      const styleObj = value as Record<string, unknown>;
+      for (const prop of Object.keys(styleObj)) {
+        if (styleObj[prop] != null) {
           const cssName = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
-          parts.push(`${cssName}: ${value[prop]}`);
+          parts.push(`${cssName}: ${styleObj[prop]}`);
         }
       }
       el.attrs['style'] = parts.join('; ');
@@ -90,9 +92,20 @@ export function setAttr(el: VElement, name: string, value: any): void {
 
   // Boolean attributes
   const BOOLEAN_ATTRS = new Set([
-    'disabled', 'checked', 'readonly', 'hidden', 'selected',
-    'required', 'multiple', 'autofocus', 'autoplay', 'controls',
-    'loop', 'muted', 'open', 'novalidate',
+    'disabled',
+    'checked',
+    'readonly',
+    'hidden',
+    'selected',
+    'required',
+    'multiple',
+    'autofocus',
+    'autoplay',
+    'controls',
+    'loop',
+    'muted',
+    'open',
+    'novalidate',
   ]);
 
   if (BOOLEAN_ATTRS.has(name)) {
@@ -119,7 +132,8 @@ export function setAttr(el: VElement, name: string, value: any): void {
 export function addEventListener(
   _el: VElement,
   _event: string,
-  _handler: any,
+  _handler: EventListener,
+  _options?: AddEventListenerOptions,
 ): () => void {
   return () => {};
 }
@@ -133,11 +147,7 @@ export function appendChild(parent: VElement, child: VNode): void {
   parent.children.push(child);
 }
 
-export function insertBefore(
-  parent: VElement,
-  node: VNode,
-  anchor: VNode | null,
-): void {
+export function insertBefore(parent: VElement, node: VNode, anchor: VNode | null): void {
   node._parent = parent;
   if (anchor === null) {
     parent.children.push(node);
@@ -180,7 +190,7 @@ export function createEffect(fn: () => void | (() => void)): () => void {
 
 export function createIf(
   anchor: VComment,
-  condition: () => any,
+  condition: () => unknown,
   renderTrue: () => VNode,
   renderFalse?: () => VNode,
 ): () => void {
@@ -204,6 +214,7 @@ export function createFor<T>(
   anchor: VComment,
   list: () => T[],
   renderItem: (item: T, index: number) => VNode,
+  _key?: (item: T, index: number) => string | number,
 ): () => void {
   const parent = anchor._parent;
   if (!parent) return () => {};
@@ -223,21 +234,19 @@ export function createFor<T>(
 // ---------------------------------------------------------------------------
 
 export interface ComponentDefinition {
-  setup?: (props: Record<string, any>) => Record<string, any>;
-  render: (ctx: Record<string, any>) => VNode;
+  setup?: (props: Record<string, unknown>) => Record<string, unknown>;
+  render: (ctx: Record<string, unknown>) => VNode;
   styles?: string;
 }
 
 export function createComponent(
   Component: ComponentDefinition,
-  props?: Record<string, any>,
+  props?: Record<string, unknown>,
   children?: Record<string, () => VNode>,
 ): VNode {
-  const ctx = Component.setup
-    ? untrack(() => Component.setup!(props ?? {}))
-    : {};
+  const ctx = Component.setup ? untrack(() => Component.setup!(props ?? {})) : {};
 
-  const renderCtx: Record<string, any> = {
+  const renderCtx: Record<string, unknown> = {
     ...ctx,
     $slots: children ?? {},
   };
@@ -246,7 +255,7 @@ export function createComponent(
 
   // Collect scoped styles
   if (Component.styles) {
-    collectedStyles.push(Component.styles);
+    collectedStyles.add(Component.styles);
   }
 
   return el;
@@ -254,23 +263,21 @@ export function createComponent(
 
 export function createComponentInstance(
   definition: ComponentDefinition,
-  props?: Record<string, any>,
+  props?: Record<string, unknown>,
 ) {
   return {
     el: null as VNode | null,
     props: props ?? {},
     slots: {} as Record<string, () => VNode>,
-    mount(_target: any): void {
-      const ctx = definition.setup
-        ? untrack(() => definition.setup!(this.props))
-        : {};
-      const renderCtx: Record<string, any> = {
+    mount(_target: unknown): void {
+      const ctx = definition.setup ? untrack(() => definition.setup!(this.props)) : {};
+      const renderCtx: Record<string, unknown> = {
         ...ctx,
         $slots: this.slots,
       };
       this.el = untrack(() => definition.render(renderCtx));
       if (definition.styles) {
-        collectedStyles.push(definition.styles);
+        collectedStyles.add(definition.styles);
       }
     },
     unmount(): void {
@@ -279,10 +286,7 @@ export function createComponentInstance(
   };
 }
 
-export function mount(
-  component: ComponentDefinition,
-  _target: any,
-) {
+export function mount(component: ComponentDefinition, _target: unknown) {
   const instance = createComponentInstance(component);
   instance.mount(null);
   return instance;

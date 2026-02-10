@@ -23,11 +23,7 @@ export {
 // ---------------------------------------------------------------------------
 // Directives (used by compiled control-flow constructs)
 // ---------------------------------------------------------------------------
-export {
-  createIf,
-  createFor,
-  createComponent,
-} from './directives.js';
+export { createIf, createFor, createComponent } from './directives.js';
 
 // ---------------------------------------------------------------------------
 // Component lifecycle
@@ -40,10 +36,7 @@ export {
   stopCapturingDisposers,
 } from './component.js';
 
-export type {
-  ComponentDefinition,
-  ComponentInstance,
-} from './component.js';
+export type { ComponentDefinition, ComponentInstance } from './component.js';
 
 // ---------------------------------------------------------------------------
 // Scheduler

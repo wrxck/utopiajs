@@ -189,14 +189,19 @@ describe('SSR runtime helpers', () => {
   describe('effect / createEffect', () => {
     it('runs the function once synchronously', () => {
       let count = 0;
-      effect(() => { count++; });
+      effect(() => {
+        count++;
+      });
       expect(count).toBe(1);
     });
 
     it('does not track dependencies', () => {
       const s = signal(0);
       let count = 0;
-      effect(() => { s(); count++; });
+      effect(() => {
+        s();
+        count++;
+      });
       expect(count).toBe(1);
       s.set(1);
       // Should NOT re-run on server
@@ -205,7 +210,9 @@ describe('SSR runtime helpers', () => {
 
     it('createEffect is an alias for effect', () => {
       let count = 0;
-      createEffect(() => { count++; });
+      createEffect(() => {
+        count++;
+      });
       expect(count).toBe(1);
     });
   });
@@ -507,7 +514,7 @@ describe('Security: attribute name validation', () => {
 
 describe('Security: CSS injection prevention', () => {
   it('escapes closing style tags in CSS content via renderToStream', async () => {
-    const maliciousCSS = '</style><script>alert(\'xss\')</script>';
+    const maliciousCSS = "</style><script>alert('xss')</script>";
     const Component = {
       render: () => createElement('div'),
       styles: maliciousCSS,
@@ -545,12 +552,14 @@ describe('Security: template marker safety', () => {
 
 describe('Security: malformed URL handling in createServerRouter', () => {
   it('returns null for garbage URL input', () => {
-    const routes = [{
-      path: '/',
-      pattern: /^\/$/,
-      params: [],
-      component: () => Promise.resolve({}),
-    }];
+    const routes = [
+      {
+        path: '/',
+        pattern: /^\/$/,
+        params: [],
+        component: () => Promise.resolve({}),
+      },
+    ];
     // http://[::1 causes the URL constructor to throw
     const result = createServerRouter(routes, 'http://[::1');
     expect(result).toBeNull();

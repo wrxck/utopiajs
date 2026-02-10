@@ -9,11 +9,48 @@
 import { isHydrating, claimNode, unclaimNode, enterNode, exitNode } from './hydration.js';
 
 // ---------------------------------------------------------------------------
+// SVG support
+// ---------------------------------------------------------------------------
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+const SVG_TAGS = new Set([
+  'svg',
+  'path',
+  'circle',
+  'rect',
+  'line',
+  'polyline',
+  'polygon',
+  'ellipse',
+  'g',
+  'text',
+  'tspan',
+  'defs',
+  'use',
+  'clipPath',
+  'mask',
+  'pattern',
+  'image',
+  'foreignObject',
+  'marker',
+  'linearGradient',
+  'radialGradient',
+  'stop',
+  'animate',
+  'animateTransform',
+  'desc',
+  'title',
+  'metadata',
+  'symbol',
+]);
+
+// ---------------------------------------------------------------------------
 // Node creation
 // ---------------------------------------------------------------------------
 
 /** Create a real DOM element for the given tag name. */
-export function createElement(tag: string): HTMLElement {
+export function createElement(tag: string): Element {
   if (isHydrating) {
     const node = claimNode() as HTMLElement;
     if (node && node.nodeType === 1) {
@@ -26,12 +63,18 @@ export function createElement(tag: string): HTMLElement {
       unclaimNode(node);
     }
     console.warn(`[utopia] Hydration mismatch: expected <${tag}>, got`, node);
-    const created = document.createElement(tag);
+    const created = SVG_TAGS.has(tag)
+      ? document.createElementNS(SVG_NS, tag)
+      : document.createElement(tag);
     if (node && node.parentNode) {
       node.parentNode.insertBefore(created, node);
+      node.parentNode.removeChild(node);
     }
     enterNode(created);
     return created;
+  }
+  if (SVG_TAGS.has(tag)) {
+    return document.createElementNS(SVG_NS, tag);
   }
   return document.createElement(tag);
 }
@@ -50,6 +93,7 @@ export function createTextNode(text: string): Text {
     const created = document.createTextNode(String(text));
     if (node && node.parentNode) {
       node.parentNode.insertBefore(created, node);
+      node.parentNode.removeChild(node);
     }
     return created;
   }
@@ -64,7 +108,7 @@ export function createTextNode(text: string): Text {
  * Set the text content of a Text node. The compiler wraps calls to this
  * function inside an `effect()` so the DOM stays in sync with signals.
  */
-export function setText(node: Text, value: any): void {
+export function setText(node: Text, value: unknown): void {
   const text = value == null ? '' : String(value);
   if (node.data !== text) {
     node.data = text;
@@ -88,17 +132,18 @@ export function setText(node: Text, value: any): void {
  * - **data-* attributes**: set via `el.dataset`
  * - Everything else: plain `setAttribute` / `removeAttribute`.
  */
-export function setAttr(el: Element, name: string, value: any): void {
+export function setAttr(el: Element, name: string, value: unknown): void {
   // --- class ---------------------------------------------------------------
   if (name === 'class') {
     if (value == null || value === false) {
       el.removeAttribute('class');
     } else if (typeof value === 'string') {
       el.className = value;
-    } else if (typeof value === 'object') {
+    } else if (typeof value === 'object' && value !== null) {
       const classes: string[] = [];
-      for (const key of Object.keys(value)) {
-        if (value[key]) {
+      const obj = value as Record<string, unknown>;
+      for (const key of Object.keys(obj)) {
+        if (obj[key]) {
           classes.push(key);
         }
       }
@@ -114,17 +159,15 @@ export function setAttr(el: Element, name: string, value: any): void {
       htmlEl.removeAttribute('style');
     } else if (typeof value === 'string') {
       htmlEl.style.cssText = value;
-    } else if (typeof value === 'object') {
+    } else if (typeof value === 'object' && value !== null) {
       // Reset first to avoid stale properties
       htmlEl.style.cssText = '';
-      for (const prop of Object.keys(value)) {
-        const val = value[prop];
+      const styleObj = value as Record<string, unknown>;
+      for (const prop of Object.keys(styleObj)) {
+        const val = styleObj[prop];
         if (val != null) {
           // Support both camelCase and kebab-case property names
-          htmlEl.style.setProperty(
-            prop.replace(/([A-Z])/g, '-$1').toLowerCase(),
-            String(val),
-          );
+          htmlEl.style.setProperty(prop.replace(/([A-Z])/g, '-$1').toLowerCase(), String(val));
         }
       }
     }
@@ -133,9 +176,20 @@ export function setAttr(el: Element, name: string, value: any): void {
 
   // --- boolean attributes --------------------------------------------------
   const BOOLEAN_ATTRS = new Set([
-    'disabled', 'checked', 'readonly', 'hidden', 'selected',
-    'required', 'multiple', 'autofocus', 'autoplay', 'controls',
-    'loop', 'muted', 'open', 'novalidate',
+    'disabled',
+    'checked',
+    'readonly',
+    'hidden',
+    'selected',
+    'required',
+    'multiple',
+    'autofocus',
+    'autoplay',
+    'controls',
+    'loop',
+    'muted',
+    'open',
+    'novalidate',
   ]);
 
   if (BOOLEAN_ATTRS.has(name)) {
@@ -143,12 +197,12 @@ export function setAttr(el: Element, name: string, value: any): void {
       el.setAttribute(name, '');
       // Also set the IDL property for form elements etc.
       if (name in el) {
-        (el as any)[name] = true;
+        (el as unknown as Record<string, unknown>)[name] = true;
       }
     } else {
       el.removeAttribute(name);
       if (name in el) {
-        (el as any)[name] = false;
+        (el as unknown as Record<string, unknown>)[name] = false;
       }
     }
     return;
@@ -156,9 +210,7 @@ export function setAttr(el: Element, name: string, value: any): void {
 
   // --- dataset (data-*) attributes -----------------------------------------
   if (name.startsWith('data-')) {
-    const key = name
-      .slice(5)
-      .replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+    const key = name.slice(5).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
     (el as HTMLElement).dataset[key] = value == null ? '' : String(value);
     return;
   }
@@ -183,10 +235,11 @@ export function addEventListener(
   el: Element,
   event: string,
   handler: EventListener,
+  options?: AddEventListenerOptions,
 ): () => void {
-  el.addEventListener(event, handler);
+  el.addEventListener(event, handler, options);
   return () => {
-    el.removeEventListener(event, handler);
+    el.removeEventListener(event, handler, options);
   };
 }
 
@@ -195,11 +248,7 @@ export function addEventListener(
 // ---------------------------------------------------------------------------
 
 /** Insert `node` into `parent` before the given `anchor` (or append if null). */
-export function insertBefore(
-  parent: Node,
-  node: Node,
-  anchor: Node | null,
-): void {
+export function insertBefore(parent: Node, node: Node, anchor: Node | null): void {
   parent.insertBefore(node, anchor);
 }
 
@@ -237,6 +286,7 @@ export function createComment(text: string): Comment {
     const created = document.createComment(text);
     if (node && node.parentNode) {
       node.parentNode.insertBefore(created, node);
+      node.parentNode.removeChild(node);
     }
     return created;
   }

@@ -43,9 +43,9 @@ export function createHandler(
       const headInject = css ? `<style>${escapeStyleContent(css)}</style>` : '';
 
       // Inject into template.
-      let page = template;
-      page = page.split('<!--ssr-head-->').join(headInject);
-      page = page.split('<!--ssr-outlet-->').join(html);
+      const page = template
+        .replace('<!--ssr-head-->', headInject)
+        .replace('<!--ssr-outlet-->', html);
 
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(page);

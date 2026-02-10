@@ -2,18 +2,15 @@
 // EmailColumns — Table-based multi-column layout
 // ============================================================================
 
-import {
-  createElement,
-  appendChild,
-  setAttr,
-} from '@matthesketh/utopia-server/ssr-runtime';
+import { createElement, appendChild, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
+import type { EmailComponentContext } from '../types.js';
 
 export const EmailColumns = {
-  setup: (props: Record<string, any>) => ({
+  setup: (props: Record<string, unknown>) => ({
     columns: props.columns ?? 2,
     gap: props.gap ?? '20px',
   }),
-  render: (ctx: any) => {
+  render: (ctx: EmailComponentContext) => {
     const table = createElement('table');
     setAttr(table, 'role', 'presentation');
     setAttr(table, 'cellpadding', '0');
@@ -22,7 +19,7 @@ export const EmailColumns = {
     setAttr(table, 'width', '100%');
 
     const tr = createElement('tr');
-    const columnCount = Math.min(4, Math.max(1, ctx.columns));
+    const columnCount = Math.min(4, Math.max(1, Number(ctx.columns) || 2));
     const widthPercent = Math.floor(100 / columnCount);
 
     for (let i = 0; i < columnCount; i++) {

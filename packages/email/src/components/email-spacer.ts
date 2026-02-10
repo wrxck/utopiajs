@@ -2,17 +2,13 @@
 // EmailSpacer — Vertical spacing
 // ============================================================================
 
-import {
-  createElement,
-  appendChild,
-  setAttr,
-} from '@matthesketh/utopia-server/ssr-runtime';
+import { createElement, appendChild, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
 
 export const EmailSpacer = {
-  setup: (props: Record<string, any>) => ({
+  setup: (props: Record<string, unknown>) => ({
     height: props.height ?? '20px',
   }),
-  render: (ctx: any) => {
+  render: (ctx: Record<string, unknown>) => {
     const table = createElement('table');
     setAttr(table, 'role', 'presentation');
     setAttr(table, 'cellpadding', '0');

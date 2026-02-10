@@ -9,13 +9,13 @@
     "preview": "utopia preview"
   },
   "dependencies": {
-    "@matthesketh/utopia-core": "^0.1.0",
-    "@matthesketh/utopia-runtime": "^0.1.0",
-    "@matthesketh/utopia-router": "^0.1.0"
+    "@matthesketh/utopia-core": "^0.2.0",
+    "@matthesketh/utopia-runtime": "^0.2.0",
+    "@matthesketh/utopia-router": "^0.2.0"
   },
   "devDependencies": {
-    "@matthesketh/utopia-cli": "^0.1.0",
-    "@matthesketh/utopia-vite-plugin": "^0.1.0",
+    "@matthesketh/utopia-cli": "^0.2.0",
+    "@matthesketh/utopia-vite-plugin": "^0.2.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0"
   }

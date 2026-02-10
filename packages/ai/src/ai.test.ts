@@ -7,7 +7,14 @@ import { createAI } from './ai.js';
 import type { CreateAIOptions } from './ai.js';
 import { collectStream } from './streaming.js';
 import { createMCPServer } from './mcp/server.js';
-import type { AIAdapter, AIHooks, RetryConfig, ChatRequest, ChatResponse, ChatChunk } from './types.js';
+import type {
+  AIAdapter,
+  AIHooks,
+  RetryConfig,
+  ChatRequest,
+  ChatResponse,
+  ChatChunk,
+} from './types.js';
 
 // ---------------------------------------------------------------------------
 // Mock adapter
@@ -50,9 +57,7 @@ describe('createAI', () => {
 
   it('should stream responses', async () => {
     const ai = createAI(mockAdapter({ content: 'one two three' }));
-    const text = await collectStream(
-      ai.stream({ messages: [{ role: 'user', content: 'count' }] }),
-    );
+    const text = await collectStream(ai.stream({ messages: [{ role: 'user', content: 'count' }] }));
     expect(text.trim()).toBe('one two three');
   });
 
@@ -63,9 +68,7 @@ describe('createAI', () => {
       },
     };
     const ai = createAI(adapter);
-    const text = await collectStream(
-      ai.stream({ messages: [{ role: 'user', content: 'hi' }] }),
-    );
+    const text = await collectStream(ai.stream({ messages: [{ role: 'user', content: 'hi' }] }));
     expect(text).toBe('no stream');
   });
 
@@ -104,11 +107,13 @@ describe('ai.run - tool calling loop', () => {
           return {
             content: '',
             finishReason: 'tool_calls',
-            toolCalls: [{
-              id: 'call_1',
-              name: 'get_weather',
-              arguments: { city: 'NYC' },
-            }],
+            toolCalls: [
+              {
+                id: 'call_1',
+                name: 'get_weather',
+                arguments: { city: 'NYC' },
+              },
+            ],
           };
         }
         return {
@@ -123,20 +128,22 @@ describe('ai.run - tool calling loop', () => {
 
     const result = await ai.run({
       messages: [{ role: 'user', content: 'What is the weather in NYC?' }],
-      tools: [{
-        definition: {
-          name: 'get_weather',
-          description: 'Get current weather',
-          parameters: {
-            type: 'object',
-            properties: {
-              city: { type: 'string', description: 'City name' },
+      tools: [
+        {
+          definition: {
+            name: 'get_weather',
+            description: 'Get current weather',
+            parameters: {
+              type: 'object',
+              properties: {
+                city: { type: 'string', description: 'City name' },
+              },
+              required: ['city'],
             },
-            required: ['city'],
           },
+          handler: async ({ city }) => ({ temp: 72, condition: 'sunny', city }),
         },
-        handler: async ({ city }) => ({ temp: 72, condition: 'sunny', city }),
-      }],
+      ],
       onToolCall,
     });
 
@@ -193,14 +200,18 @@ describe('ai.run - tool calling loop', () => {
     const ai = createAI(adapter);
     const result = await ai.run({
       messages: [{ role: 'user', content: 'test' }],
-      tools: [{
-        definition: {
-          name: 'failing_tool',
-          description: 'A tool that fails',
-          parameters: { type: 'object' },
+      tools: [
+        {
+          definition: {
+            name: 'failing_tool',
+            description: 'A tool that fails',
+            parameters: { type: 'object' },
+          },
+          handler: async () => {
+            throw new Error('Connection timeout');
+          },
         },
-        handler: async () => { throw new Error('Connection timeout'); },
-      }],
+      ],
     });
     expect(result.content).toBe('Tool failed, sorry.');
   });
@@ -226,10 +237,12 @@ describe('ai.run - tool calling loop', () => {
     const ai = createAI(adapter);
     const result = await ai.run({
       messages: [{ role: 'user', content: 'test' }],
-      tools: [{
-        definition: { name: 'loop_tool', description: 'Loops', parameters: { type: 'object' } },
-        handler: async () => 'ok',
-      }],
+      tools: [
+        {
+          definition: { name: 'loop_tool', description: 'Loops', parameters: { type: 'object' } },
+          handler: async () => 'ok',
+        },
+      ],
       maxRounds: 3,
     });
 
@@ -248,49 +261,57 @@ describe('MCP Server', () => {
     return createMCPServer({
       name: 'test-server',
       version: '1.0.0',
-      tools: [{
-        definition: {
-          name: 'add',
-          description: 'Add two numbers',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              a: { type: 'number', description: 'First number' },
-              b: { type: 'number', description: 'Second number' },
+      tools: [
+        {
+          definition: {
+            name: 'add',
+            description: 'Add two numbers',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                a: { type: 'number', description: 'First number' },
+                b: { type: 'number', description: 'Second number' },
+              },
+              required: ['a', 'b'],
             },
-            required: ['a', 'b'],
           },
+          handler: async (params) => ({
+            content: [{ type: 'text', text: String(Number(params.a) + Number(params.b)) }],
+          }),
         },
-        handler: async (params) => ({
-          content: [{ type: 'text', text: String(Number(params.a) + Number(params.b)) }],
-        }),
-      }],
-      resources: [{
-        definition: {
-          uri: 'config://app',
-          name: 'App Configuration',
-          description: 'Current app config',
-          mimeType: 'application/json',
+      ],
+      resources: [
+        {
+          definition: {
+            uri: 'config://app',
+            name: 'App Configuration',
+            description: 'Current app config',
+            mimeType: 'application/json',
+          },
+          handler: async () => ({
+            uri: 'config://app',
+            text: JSON.stringify({ theme: 'dark', lang: 'en' }),
+            mimeType: 'application/json',
+          }),
         },
-        handler: async () => ({
-          uri: 'config://app',
-          text: JSON.stringify({ theme: 'dark', lang: 'en' }),
-          mimeType: 'application/json',
-        }),
-      }],
-      prompts: [{
-        definition: {
-          name: 'greeting',
-          description: 'Generate a greeting',
-          arguments: [{ name: 'name', required: true }],
+      ],
+      prompts: [
+        {
+          definition: {
+            name: 'greeting',
+            description: 'Generate a greeting',
+            arguments: [{ name: 'name', required: true }],
+          },
+          handler: async (args) => ({
+            messages: [
+              {
+                role: 'user',
+                content: { type: 'text', text: `Say hello to ${args.name}` },
+              },
+            ],
+          }),
         },
-        handler: async (args) => ({
-          messages: [{
-            role: 'user',
-            content: { type: 'text', text: `Say hello to ${args.name}` },
-          }],
-        }),
-      }],
+      ],
     });
   }
 
@@ -319,7 +340,9 @@ describe('MCP Server', () => {
   it('should list tools', async () => {
     const server = createTestServer();
     const response = await server.handleRequest({
-      jsonrpc: '2.0', id: 2, method: 'tools/list',
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/list',
     });
 
     const result = response.result as any;
@@ -330,7 +353,9 @@ describe('MCP Server', () => {
   it('should call a tool', async () => {
     const server = createTestServer();
     const response = await server.handleRequest({
-      jsonrpc: '2.0', id: 3, method: 'tools/call',
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
       params: { name: 'add', arguments: { a: 3, b: 4 } },
     });
 
@@ -341,7 +366,9 @@ describe('MCP Server', () => {
   it('should return error for unknown tool', async () => {
     const server = createTestServer();
     const response = await server.handleRequest({
-      jsonrpc: '2.0', id: 4, method: 'tools/call',
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'tools/call',
       params: { name: 'nonexistent' },
     });
 
@@ -352,7 +379,9 @@ describe('MCP Server', () => {
   it('should list resources', async () => {
     const server = createTestServer();
     const response = await server.handleRequest({
-      jsonrpc: '2.0', id: 5, method: 'resources/list',
+      jsonrpc: '2.0',
+      id: 5,
+      method: 'resources/list',
     });
 
     const result = response.result as any;
@@ -363,7 +392,9 @@ describe('MCP Server', () => {
   it('should read a resource', async () => {
     const server = createTestServer();
     const response = await server.handleRequest({
-      jsonrpc: '2.0', id: 6, method: 'resources/read',
+      jsonrpc: '2.0',
+      id: 6,
+      method: 'resources/read',
       params: { uri: 'config://app' },
     });
 
@@ -376,7 +407,9 @@ describe('MCP Server', () => {
   it('should list prompts', async () => {
     const server = createTestServer();
     const response = await server.handleRequest({
-      jsonrpc: '2.0', id: 7, method: 'prompts/list',
+      jsonrpc: '2.0',
+      id: 7,
+      method: 'prompts/list',
     });
 
     const result = response.result as any;
@@ -387,7 +420,9 @@ describe('MCP Server', () => {
   it('should get a prompt', async () => {
     const server = createTestServer();
     const response = await server.handleRequest({
-      jsonrpc: '2.0', id: 8, method: 'prompts/get',
+      jsonrpc: '2.0',
+      id: 8,
+      method: 'prompts/get',
       params: { name: 'greeting', arguments: { name: 'Alice' } },
     });
 
@@ -398,7 +433,9 @@ describe('MCP Server', () => {
   it('should handle ping', async () => {
     const server = createTestServer();
     const response = await server.handleRequest({
-      jsonrpc: '2.0', id: 9, method: 'ping',
+      jsonrpc: '2.0',
+      id: 9,
+      method: 'ping',
     });
 
     expect(response.error).toBeUndefined();
@@ -408,7 +445,9 @@ describe('MCP Server', () => {
   it('should return error for unknown method', async () => {
     const server = createTestServer();
     const response = await server.handleRequest({
-      jsonrpc: '2.0', id: 10, method: 'unknown/method',
+      jsonrpc: '2.0',
+      id: 10,
+      method: 'unknown/method',
     });
 
     expect(response.error).toBeDefined();
@@ -479,7 +518,7 @@ describe('streamSSE', () => {
     expect(res.writeHead).toHaveBeenCalledWith(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
+      Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
     });
   });
@@ -618,10 +657,7 @@ describe('parseSSEStream', () => {
   it('should clean up the reader via cancel on normal completion', async () => {
     const cancelFn = vi.fn().mockResolvedValue(undefined);
     let index = 0;
-    const sseData = [
-      'data: {"delta":"hello"}\n\n',
-      'data: [DONE]\n\n',
-    ];
+    const sseData = ['data: {"delta":"hello"}\n\n', 'data: [DONE]\n\n'];
 
     const stream = new ReadableStream({
       pull(controller) {
@@ -755,7 +791,11 @@ describe('ai.run - multiple tool calls in one round', () => {
           definition: {
             name: 'get_weather',
             description: 'Get weather',
-            parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] },
+            parameters: {
+              type: 'object',
+              properties: { city: { type: 'string' } },
+              required: ['city'],
+            },
           },
           handler: async ({ city }) => ({ temp: 72, city }),
         },
@@ -763,7 +803,11 @@ describe('ai.run - multiple tool calls in one round', () => {
           definition: {
             name: 'get_time',
             description: 'Get current time',
-            parameters: { type: 'object', properties: { timezone: { type: 'string' } }, required: ['timezone'] },
+            parameters: {
+              type: 'object',
+              properties: { timezone: { type: 'string' } },
+              required: ['timezone'],
+            },
           },
           handler: async ({ timezone }) => ({ time: '3:00 PM', timezone }),
         },
@@ -823,13 +867,19 @@ describe('edge cases', () => {
 
     const ai = createAI(adapter);
     const result = await ai.chat({
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: 'What is in this image?' },
-          { type: 'image', source: 'data:image/png;base64,iVBORw0KGgoAAAANS...', mediaType: 'image/png' },
-        ],
-      }],
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'What is in this image?' },
+            {
+              type: 'image',
+              source: 'data:image/png;base64,iVBORw0KGgoAAAANS...',
+              mediaType: 'image/png',
+            },
+          ],
+        },
+      ],
     });
 
     expect(result.content).toBe('I see a cat in the image.');
@@ -865,14 +915,16 @@ describe('edge cases', () => {
 
     const result = await ai.run({
       messages: [{ role: 'user', content: 'Check system status' }],
-      tools: [{
-        definition: {
-          name: 'get_status',
-          description: 'Get system status',
-          parameters: { type: 'object' },
+      tools: [
+        {
+          definition: {
+            name: 'get_status',
+            description: 'Get system status',
+            parameters: { type: 'object' },
+          },
+          handler,
         },
-        handler,
-      }],
+      ],
     });
 
     expect(result.content).toBe('System is healthy.');
@@ -966,7 +1018,9 @@ describe('hooks', () => {
 
     const ai = createAI(adapter, { hooks: { onError } });
 
-    await expect(ai.chat({ messages: [{ role: 'user', content: 'Hi' }] })).rejects.toThrow('network timeout');
+    await expect(ai.chat({ messages: [{ role: 'user', content: 'Hi' }] })).rejects.toThrow(
+      'network timeout',
+    );
     expect(onError).toHaveBeenCalledOnce();
     expect(onError.mock.calls[0][0].message).toBe('network timeout');
     expect(onError.mock.calls[0][1].method).toBe('chat');
@@ -1012,7 +1066,9 @@ describe('retry', () => {
       retry: { maxRetries: 2, baseDelay: 1 },
     });
 
-    await expect(ai.chat({ messages: [{ role: 'user', content: 'Hi' }] })).rejects.toThrow('500 internal server error');
+    await expect(ai.chat({ messages: [{ role: 'user', content: 'Hi' }] })).rejects.toThrow(
+      '500 internal server error',
+    );
     // 1 initial + 2 retries = 3 total attempts
     expect(attempt).toBe(3);
   });
@@ -1030,7 +1086,9 @@ describe('retry', () => {
       retry: { maxRetries: 3, baseDelay: 1 },
     });
 
-    await expect(ai.chat({ messages: [{ role: 'user', content: 'Hi' }] })).rejects.toThrow('Invalid API key');
+    await expect(ai.chat({ messages: [{ role: 'user', content: 'Hi' }] })).rejects.toThrow(
+      'Invalid API key',
+    );
     // Should not retry — only 1 attempt
     expect(attempt).toBe(1);
   });
@@ -1112,7 +1170,9 @@ describe('retry', () => {
       },
     });
 
-    await expect(ai.chat({ messages: [{ role: 'user', content: 'Hi' }] })).rejects.toThrow('custom-retryable');
+    await expect(ai.chat({ messages: [{ role: 'user', content: 'Hi' }] })).rejects.toThrow(
+      'custom-retryable',
+    );
     // 1 initial + 2 retries = 3
     expect(attempt).toBe(3);
   });

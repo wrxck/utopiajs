@@ -14,6 +14,11 @@ import {
 } from './component.js';
 import type { ComponentDefinition } from './component.js';
 
+/** A DOM Node with optional cleanup/dispose callbacks attached by the runtime. */
+interface DisposableNode extends Node {
+  __cleanup?: () => void;
+}
+
 // ---------------------------------------------------------------------------
 // Style deduplication
 // ---------------------------------------------------------------------------
@@ -25,10 +30,14 @@ const injectedStyles = new Set<string>();
 // ---------------------------------------------------------------------------
 
 /**
- * Remove an array of DOM nodes and clear the array in-place.
+ * Remove an array of DOM nodes (and run their __cleanup if present) and clear
+ * the array in-place.
  */
 function clearNodes(nodes: Node[]): void {
   for (const node of nodes) {
+    if ((node as DisposableNode).__cleanup) {
+      (node as DisposableNode).__cleanup!();
+    }
     removeNode(node);
   }
   nodes.length = 0;
@@ -51,7 +60,7 @@ function clearNodes(nodes: Node[]): void {
  */
 export function createIf(
   anchor: Comment,
-  condition: () => any,
+  condition: () => unknown,
   renderTrue: () => Node,
   renderFalse?: () => Node,
 ): () => void {
@@ -107,7 +116,7 @@ export function createFor<T>(
   anchor: Comment,
   list: () => T[],
   renderItem: (item: T, index: number) => Node,
-  key?: (item: T, index: number) => any,
+  key?: (item: T, index: number) => string | number,
 ): () => void {
   let currentNodes: Node[] = [];
 
@@ -155,7 +164,7 @@ export function createFor<T>(
  */
 export function createComponent(
   Component: ComponentDefinition,
-  props?: Record<string, any>,
+  props?: Record<string, unknown>,
   children?: Record<string, () => Node>,
 ): Node {
   const instance = createComponentInstance(Component, props);
@@ -172,7 +181,7 @@ export function createComponent(
   const ctx = Component.setup ? Component.setup(instance.props) : {};
 
   // Merge slots into the render context so templates can reference them.
-  const renderCtx: Record<string, any> = {
+  const renderCtx: Record<string, unknown> = {
     ...ctx,
     $slots: instance.slots,
   };
@@ -192,7 +201,7 @@ export function createComponent(
 
   // Attach a cleanup function to the node so callers can dispose effects.
   const node = instance.el;
-  (node as any).__cleanup = () => {
+  (node as DisposableNode).__cleanup = () => {
     for (const dispose of disposers) {
       dispose();
     }

@@ -94,10 +94,7 @@ describe('DOM helpers', () => {
 
     it('skips update when value has not changed', () => {
       const node = createTextNode('same');
-      const originalDescriptor = Object.getOwnPropertyDescriptor(
-        CharacterData.prototype,
-        'data',
-      )!;
+      const originalDescriptor = Object.getOwnPropertyDescriptor(CharacterData.prototype, 'data')!;
       const setter = vi.fn(originalDescriptor.set!);
       Object.defineProperty(node, 'data', {
         get: originalDescriptor.get,
@@ -628,17 +625,19 @@ describe('Directives', () => {
         },
       };
 
-      const node = createComponent(definition, {}, {
-        default: () => {
-          const span = createElement('span');
-          span.textContent = 'slot content';
-          return span;
+      const node = createComponent(
+        definition,
+        {},
+        {
+          default: () => {
+            const span = createElement('span');
+            span.textContent = 'slot content';
+            return span;
+          },
         },
-      });
+      );
 
-      expect(
-        (node as HTMLElement).querySelector('span')!.textContent,
-      ).toBe('slot content');
+      expect((node as HTMLElement).querySelector('span')!.textContent).toBe('slot content');
     });
 
     it('injects styles into document.head', () => {
@@ -653,9 +652,7 @@ describe('Directives', () => {
 
       const styles = document.head.querySelectorAll('style');
       expect(styles.length).toBe(initialStyleCount + 1);
-      expect(styles[styles.length - 1].textContent).toBe(
-        '.scoped { color: red; }',
-      );
+      expect(styles[styles.length - 1].textContent).toBe('.scoped { color: red; }');
     });
   });
 });
@@ -730,8 +727,7 @@ describe('Component lifecycle', () => {
 
     it('injects scoped styles on mount and removes on unmount', () => {
       const target = container();
-      const initialStyleCount =
-        document.head.querySelectorAll('style').length;
+      const initialStyleCount = document.head.querySelectorAll('style').length;
 
       const definition: ComponentDefinition = {
         render: () => createElement('div'),
@@ -741,14 +737,10 @@ describe('Component lifecycle', () => {
       const instance = createComponentInstance(definition);
       instance.mount(target);
 
-      expect(document.head.querySelectorAll('style').length).toBe(
-        initialStyleCount + 1,
-      );
+      expect(document.head.querySelectorAll('style').length).toBe(initialStyleCount + 1);
 
       instance.unmount();
-      expect(document.head.querySelectorAll('style').length).toBe(
-        initialStyleCount,
-      );
+      expect(document.head.querySelectorAll('style').length).toBe(initialStyleCount);
     });
 
     it('mounts with an anchor node', () => {

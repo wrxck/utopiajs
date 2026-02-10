@@ -6,23 +6,13 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export type {
-  Route,
-  RouteMatch,
-  RouterState,
-  BeforeNavigateHook,
-} from './types.js';
+export type { Route, RouteMatch, RouterState, BeforeNavigateHook } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Route matching (build-time + runtime)
 // ---------------------------------------------------------------------------
 
-export {
-  filePathToRoute,
-  compilePattern,
-  matchRoute,
-  buildRouteTable,
-} from './matcher.js';
+export { filePathToRoute, compilePattern, matchRoute, buildRouteTable } from './matcher.js';
 
 // ---------------------------------------------------------------------------
 // Client-side router
@@ -43,7 +33,4 @@ export {
 // Router components (render functions)
 // ---------------------------------------------------------------------------
 
-export {
-  createRouterView,
-  createLink,
-} from './components.js';
+export { createRouterView, createLink } from './components.js';

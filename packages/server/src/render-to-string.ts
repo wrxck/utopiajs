@@ -20,27 +20,34 @@ function validateAttr(name: string): string {
 
 // HTML void elements (self-closing, no closing tag).
 const VOID_ELEMENTS = new Set([
-  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
-  'link', 'meta', 'param', 'source', 'track', 'wbr',
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
 ]);
 
 /**
  * Escape special HTML characters in text content.
  */
 function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /**
  * Escape special characters in attribute values.
  */
 function escapeAttr(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;');
+  return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
 /**
@@ -103,7 +110,7 @@ function serializeElement(el: VElement): string {
  */
 export function renderToString(
   component: ComponentDefinition,
-  props?: Record<string, any>,
+  props?: Record<string, unknown>,
 ): { html: string; css: string } {
   // Flush any previously collected styles.
   flushStyles();

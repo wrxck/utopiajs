@@ -53,36 +53,40 @@ function createTestServer(): MCPServer {
   return createMCPServer({
     name: 'test-server',
     version: '1.0.0',
-    tools: [{
-      definition: {
-        name: 'add',
-        description: 'Add two numbers',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            a: { type: 'number', description: 'First number' },
-            b: { type: 'number', description: 'Second number' },
+    tools: [
+      {
+        definition: {
+          name: 'add',
+          description: 'Add two numbers',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              a: { type: 'number', description: 'First number' },
+              b: { type: 'number', description: 'Second number' },
+            },
+            required: ['a', 'b'],
           },
-          required: ['a', 'b'],
         },
+        handler: async (params) => ({
+          content: [{ type: 'text', text: String(Number(params.a) + Number(params.b)) }],
+        }),
       },
-      handler: async (params) => ({
-        content: [{ type: 'text', text: String(Number(params.a) + Number(params.b)) }],
-      }),
-    }],
-    resources: [{
-      definition: {
-        uri: 'config://app',
-        name: 'App Configuration',
-        description: 'Current app config',
-        mimeType: 'application/json',
+    ],
+    resources: [
+      {
+        definition: {
+          uri: 'config://app',
+          name: 'App Configuration',
+          description: 'Current app config',
+          mimeType: 'application/json',
+        },
+        handler: async () => ({
+          uri: 'config://app',
+          text: JSON.stringify({ theme: 'dark', lang: 'en' }),
+          mimeType: 'application/json',
+        }),
       },
-      handler: async () => ({
-        uri: 'config://app',
-        text: JSON.stringify({ theme: 'dark', lang: 'en' }),
-        mimeType: 'application/json',
-      }),
-    }],
+    ],
   });
 }
 
@@ -351,9 +355,7 @@ describe('MCP Client', () => {
   });
 
   it('listResources() should return resource definitions', async () => {
-    const resources = [
-      { uri: 'config://app', name: 'App Config', mimeType: 'application/json' },
-    ];
+    const resources = [{ uri: 'config://app', name: 'App Config', mimeType: 'application/json' }];
     mockFetchResponse({ resources });
 
     const client = createMCPClient({ url: 'http://localhost:3001/mcp' });
@@ -369,11 +371,13 @@ describe('MCP Client', () => {
 
   it('readResource() should return resource content', async () => {
     const content = {
-      contents: [{
-        uri: 'config://app',
-        text: '{"theme":"dark"}',
-        mimeType: 'application/json',
-      }],
+      contents: [
+        {
+          uri: 'config://app',
+          text: '{"theme":"dark"}',
+          mimeType: 'application/json',
+        },
+      ],
     };
     mockFetchResponse(content);
 
@@ -391,18 +395,20 @@ describe('MCP Client', () => {
   it('toToolHandlers() should convert MCP tools to AI-compatible ToolHandler[]', async () => {
     // First call: listTools
     mockFetchResponse({
-      tools: [{
-        name: 'add',
-        description: 'Add two numbers',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            a: { type: 'number' },
-            b: { type: 'number' },
+      tools: [
+        {
+          name: 'add',
+          description: 'Add two numbers',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              a: { type: 'number' },
+              b: { type: 'number' },
+            },
+            required: ['a', 'b'],
           },
-          required: ['a', 'b'],
         },
-      }],
+      ],
     });
 
     // Second call: callTool (when we invoke the handler)
@@ -434,11 +440,13 @@ describe('MCP Client', () => {
   it('toToolHandlers() handler should throw on tool error', async () => {
     // First call: listTools
     mockFetchResponse({
-      tools: [{
-        name: 'fail_tool',
-        description: 'A tool that fails',
-        inputSchema: { type: 'object' },
-      }],
+      tools: [
+        {
+          name: 'fail_tool',
+          description: 'A tool that fails',
+          inputSchema: { type: 'object' },
+        },
+      ],
     });
 
     // Second call: callTool returns isError: true
@@ -507,7 +515,9 @@ describe('MCP Client', () => {
 
     const client = createMCPClient({ url: 'http://localhost:3001/mcp' });
 
-    await expect(client.initialize()).rejects.toThrow('MCP server error 500: Internal Server Error');
+    await expect(client.initialize()).rejects.toThrow(
+      'MCP server error 500: Internal Server Error',
+    );
   });
 
   it('should send custom headers when configured', async () => {
@@ -566,24 +576,28 @@ describe('MCP Server — template URI matching with regex special characters', (
   it('should match a resource URI with dots treated as literal characters', async () => {
     const server = createMCPServer({
       name: 'regex-test',
-      resources: [{
-        definition: {
-          uri: 'config://app.json',
-          name: 'App Config JSON',
-          description: 'App configuration file',
-          mimeType: 'application/json',
+      resources: [
+        {
+          definition: {
+            uri: 'config://app.json',
+            name: 'App Config JSON',
+            description: 'App configuration file',
+            mimeType: 'application/json',
+          },
+          handler: async () => ({
+            uri: 'config://app.json',
+            text: '{"ok":true}',
+            mimeType: 'application/json',
+          }),
         },
-        handler: async () => ({
-          uri: 'config://app.json',
-          text: '{"ok":true}',
-          mimeType: 'application/json',
-        }),
-      }],
+      ],
     });
 
     // Exact match should work
     const response = await server.handleRequest({
-      jsonrpc: '2.0', id: 1, method: 'resources/read',
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'resources/read',
       params: { uri: 'config://app.json' },
     });
 
@@ -596,24 +610,28 @@ describe('MCP Server — template URI matching with regex special characters', (
   it('should NOT match a URI where dots are treated as regex wildcards', async () => {
     const server = createMCPServer({
       name: 'regex-test',
-      resources: [{
-        definition: {
-          uri: 'config://app.json',
-          name: 'App Config JSON',
-          description: 'App configuration file',
-          mimeType: 'application/json',
+      resources: [
+        {
+          definition: {
+            uri: 'config://app.json',
+            name: 'App Config JSON',
+            description: 'App configuration file',
+            mimeType: 'application/json',
+          },
+          handler: async () => ({
+            uri: 'config://app.json',
+            text: '{"ok":true}',
+            mimeType: 'application/json',
+          }),
         },
-        handler: async () => ({
-          uri: 'config://app.json',
-          text: '{"ok":true}',
-          mimeType: 'application/json',
-        }),
-      }],
+      ],
     });
 
     // "appXjson" should NOT match "app.json" — the dot must be literal
     const response = await server.handleRequest({
-      jsonrpc: '2.0', id: 2, method: 'resources/read',
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'resources/read',
       params: { uri: 'config://appXjson' },
     });
 
@@ -624,24 +642,28 @@ describe('MCP Server — template URI matching with regex special characters', (
   it('should still support template parameters with regex special chars in the base URI', async () => {
     const server = createMCPServer({
       name: 'regex-test',
-      resources: [{
-        definition: {
-          uri: 'files://docs/{filename}.md',
-          name: 'Markdown files',
-          description: 'Read a markdown doc',
-          mimeType: 'text/markdown',
+      resources: [
+        {
+          definition: {
+            uri: 'files://docs/{filename}.md',
+            name: 'Markdown files',
+            description: 'Read a markdown doc',
+            mimeType: 'text/markdown',
+          },
+          handler: async (uri) => ({
+            uri,
+            text: `# Content for ${uri}`,
+            mimeType: 'text/markdown',
+          }),
         },
-        handler: async (uri) => ({
-          uri,
-          text: `# Content for ${uri}`,
-          mimeType: 'text/markdown',
-        }),
-      }],
+      ],
     });
 
     // Template parameter should match
     const response = await server.handleRequest({
-      jsonrpc: '2.0', id: 3, method: 'resources/read',
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'resources/read',
       params: { uri: 'files://docs/readme.md' },
     });
 
@@ -651,7 +673,9 @@ describe('MCP Server — template URI matching with regex special characters', (
 
     // But the dot in ".md" should be literal — "Xmd" should NOT match
     const badResponse = await server.handleRequest({
-      jsonrpc: '2.0', id: 4, method: 'resources/read',
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'resources/read',
       params: { uri: 'files://docs/readmeXmd' },
     });
 

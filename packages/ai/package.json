@@ -1,6 +1,6 @@
 {
   "name": "@matthesketh/utopia-ai",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI adapters and MCP support for UtopiaJS",
   "type": "module",
   "license": "MIT",
@@ -70,9 +70,9 @@
     "build": "tsup src/index.ts src/adapters/openai.ts src/adapters/anthropic.ts src/adapters/google.ts src/adapters/ollama.ts src/mcp/index.ts --format esm,cjs --dts"
   },
   "peerDependencies": {
-    "@anthropic-ai/sdk": "^0.30.0",
-    "@google/generative-ai": "^0.21.0",
-    "openai": "^4.0.0"
+    "@anthropic-ai/sdk": "^0.30.0 || ^0.74.0",
+    "@google/generative-ai": "^0.21.0 || ^0.24.0",
+    "openai": "^4.0.0 || ^5.0.0 || ^6.0.0"
   },
   "peerDependenciesMeta": {
     "openai": {

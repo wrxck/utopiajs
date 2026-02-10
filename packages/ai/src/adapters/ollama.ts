@@ -15,6 +15,45 @@ import type {
   ToolDefinition,
 } from '../types.js';
 
+// ---------------------------------------------------------------------------
+// Internal Ollama API types (no SDK — native fetch)
+// ---------------------------------------------------------------------------
+
+interface OllamaMessage {
+  role: string;
+  content: string;
+  images?: string[];
+  tool_calls?: OllamaToolCall[];
+}
+
+interface OllamaToolCall {
+  function: { name: string; arguments: Record<string, unknown> };
+}
+
+interface OllamaChatRequest {
+  model: string;
+  messages: OllamaMessage[];
+  stream: boolean;
+  options: Record<string, unknown>;
+  tools?: OllamaToolParam[];
+}
+
+interface OllamaToolParam {
+  type: 'function';
+  function: { name: string; description: string; parameters: Record<string, unknown> };
+}
+
+interface OllamaChatResponse {
+  message?: OllamaMessage;
+  done: boolean;
+  done_reason?: string;
+  prompt_eval_count?: number;
+  eval_count?: number;
+}
+
+/** Monotonic counter for generating unique tool call IDs. */
+let ollamaToolCallCounter = 0;
+
 /**
  * Create an Ollama adapter for local models.
  *
@@ -34,17 +73,18 @@ export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
     async chat(request: ChatRequest): Promise<ChatResponse> {
       const model = request.model ?? config.defaultModel ?? 'llama3.2';
 
-      const body: Record<string, any> = {
+      const options: Record<string, unknown> = {};
+      if (request.temperature !== undefined) options.temperature = request.temperature;
+      if (request.topP !== undefined) options.top_p = request.topP;
+      if (request.maxTokens !== undefined) options.num_predict = request.maxTokens;
+      if (request.stop) options.stop = request.stop;
+
+      const body: OllamaChatRequest = {
         model,
         messages: toOllamaMessages(request.messages),
         stream: false,
-        options: {},
+        options,
       };
-
-      if (request.temperature !== undefined) body.options.temperature = request.temperature;
-      if (request.topP !== undefined) body.options.top_p = request.topP;
-      if (request.maxTokens !== undefined) body.options.num_predict = request.maxTokens;
-      if (request.stop) body.options.stop = request.stop;
 
       if (request.tools?.length) {
         body.tools = request.tools.map(toOllamaTool);
@@ -62,15 +102,13 @@ export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
         throw new Error(`Ollama error ${response.status}: ${text}`);
       }
 
-      const data = await response.json();
+      const data: OllamaChatResponse = await response.json();
 
-      const toolCalls: ToolCall[] = (data.message?.tool_calls ?? []).map(
-        (tc: any, i: number) => ({
-          id: `call_${i}`,
-          name: tc.function.name,
-          arguments: tc.function.arguments ?? {},
-        }),
-      );
+      const toolCalls: ToolCall[] = (data.message?.tool_calls ?? []).map((tc: OllamaToolCall) => ({
+        id: `call_${++ollamaToolCallCounter}_${Date.now().toString(36)}`,
+        name: tc.function.name,
+        arguments: tc.function.arguments ?? {},
+      }));
 
       return {
         content: data.message?.content ?? '',
@@ -88,17 +126,18 @@ export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
     async *stream(request: ChatRequest): AsyncIterable<ChatChunk> {
       const model = request.model ?? config.defaultModel ?? 'llama3.2';
 
-      const body: Record<string, any> = {
+      const streamOptions: Record<string, unknown> = {};
+      if (request.temperature !== undefined) streamOptions.temperature = request.temperature;
+      if (request.topP !== undefined) streamOptions.top_p = request.topP;
+      if (request.maxTokens !== undefined) streamOptions.num_predict = request.maxTokens;
+      if (request.stop) streamOptions.stop = request.stop;
+
+      const body: OllamaChatRequest = {
         model,
         messages: toOllamaMessages(request.messages),
         stream: true,
-        options: {},
+        options: streamOptions,
       };
-
-      if (request.temperature !== undefined) body.options.temperature = request.temperature;
-      if (request.topP !== undefined) body.options.top_p = request.topP;
-      if (request.maxTokens !== undefined) body.options.num_predict = request.maxTokens;
-      if (request.stop) body.options.stop = request.stop;
 
       if (request.tools?.length) {
         body.tools = request.tools.map(toOllamaTool);
@@ -116,7 +155,10 @@ export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
         throw new Error(`Ollama error ${response.status}: ${text}`);
       }
 
-      const reader = response.body!.getReader();
+      if (!response.body) {
+        throw new Error('Response body is null — streaming not supported');
+      }
+      const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
 
@@ -130,7 +172,7 @@ export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
 
         for (const line of lines) {
           if (!line.trim()) continue;
-          let data: any;
+          let data: OllamaChatResponse;
           try {
             data = JSON.parse(line);
           } catch {
@@ -140,11 +182,13 @@ export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
           yield {
             delta: data.message?.content ?? '',
             finishReason: data.done ? 'stop' : undefined,
-            usage: data.done ? {
-              promptTokens: data.prompt_eval_count ?? 0,
-              completionTokens: data.eval_count ?? 0,
-              totalTokens: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
-            } : undefined,
+            usage: data.done
+              ? {
+                  promptTokens: data.prompt_eval_count ?? 0,
+                  completionTokens: data.eval_count ?? 0,
+                  totalTokens: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
+                }
+              : undefined,
           };
         }
       }
@@ -181,7 +225,7 @@ export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
 // Mapping helpers
 // ---------------------------------------------------------------------------
 
-function toOllamaMessages(messages: ChatMessage[]): any[] {
+function toOllamaMessages(messages: ChatMessage[]): OllamaMessage[] {
   return messages.map((msg) => {
     if (typeof msg.content === 'string') {
       return { role: msg.role, content: msg.content };
@@ -219,13 +263,13 @@ function toOllamaMessages(messages: ChatMessage[]): any[] {
   });
 }
 
-function toOllamaTool(tool: ToolDefinition): any {
+function toOllamaTool(tool: ToolDefinition): OllamaToolParam {
   return {
     type: 'function',
     function: {
       name: tool.name,
       description: tool.description,
-      parameters: tool.parameters,
+      parameters: tool.parameters as Record<string, unknown>,
     },
   };
 }

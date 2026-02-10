@@ -49,7 +49,10 @@ function parseCSS(css: string): CSSRule[] {
         if (cleaned[i] === '{') depth++;
         if (cleaned[i] === '}') {
           depth--;
-          if (depth <= 0) { i++; break; }
+          if (depth <= 0) {
+            i++;
+            break;
+          }
         }
         i++;
       }
@@ -202,8 +205,14 @@ function matchesSimpleSelector(
         // Just check attribute existence
         if (!(attrExpr.trim() in attrs)) return false;
       } else {
-        const attrName = attrExpr.slice(0, eqIdx).replace(/[~|^$*]$/, '').trim();
-        const attrValue = attrExpr.slice(eqIdx + 1).replace(/^["']|["']$/g, '').trim();
+        const attrName = attrExpr
+          .slice(0, eqIdx)
+          .replace(/[~|^$*]$/, '')
+          .trim();
+        const attrValue = attrExpr
+          .slice(eqIdx + 1)
+          .replace(/^["']|["']$/g, '')
+          .trim();
         if (attrs[attrName] !== attrValue) return false;
       }
       remaining = remaining.slice(attrMatch[0].length);
@@ -232,7 +241,15 @@ function selectorMatches(selector: string, element: ParsedElement): boolean {
     const parts = selector.split(/\s*>\s*/);
     const targetSelector = parts[parts.length - 1].trim();
 
-    if (!matchesSimpleSelector(targetSelector, element.tag, element.classes, element.id, element.attrs)) {
+    if (
+      !matchesSimpleSelector(
+        targetSelector,
+        element.tag,
+        element.classes,
+        element.id,
+        element.attrs,
+      )
+    ) {
       return false;
     }
 
@@ -243,7 +260,9 @@ function selectorMatches(selector: string, element: ParsedElement): boolean {
       // The immediate parent must match (for > combinator)
       if (ancestors.length === 0) return false;
       const parent = ancestors[ancestors.length - 1];
-      if (!matchesSimpleSelector(parentSelector, parent.tag, parent.classes, parent.id, parent.attrs)) {
+      if (
+        !matchesSimpleSelector(parentSelector, parent.tag, parent.classes, parent.id, parent.attrs)
+      ) {
         return false;
       }
       ancestors = ancestors.slice(0, -1);
@@ -259,7 +278,9 @@ function selectorMatches(selector: string, element: ParsedElement): boolean {
   }
 
   const targetSelector = parts[parts.length - 1];
-  if (!matchesSimpleSelector(targetSelector, element.tag, element.classes, element.id, element.attrs)) {
+  if (
+    !matchesSimpleSelector(targetSelector, element.tag, element.classes, element.id, element.attrs)
+  ) {
     return false;
   }
 
@@ -271,7 +292,15 @@ function selectorMatches(selector: string, element: ParsedElement): boolean {
     while (ancestorIdx >= 0) {
       const ancestor = element.ancestors[ancestorIdx];
       ancestorIdx--;
-      if (matchesSimpleSelector(ancestorSelector, ancestor.tag, ancestor.classes, ancestor.id, ancestor.attrs)) {
+      if (
+        matchesSimpleSelector(
+          ancestorSelector,
+          ancestor.tag,
+          ancestor.classes,
+          ancestor.id,
+          ancestor.attrs,
+        )
+      ) {
         found = true;
         break;
       }
@@ -366,8 +395,20 @@ export function inlineCSS(html: string, css: string): string {
   // We'll do a single pass collecting opening/closing tags
   const allTagsRegex = /<\/?([a-zA-Z][\w-]*)(\s[^>]*?)?\s*\/?>/g;
   const voidElements = new Set([
-    'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
-    'link', 'meta', 'param', 'source', 'track', 'wbr',
+    'area',
+    'base',
+    'br',
+    'col',
+    'embed',
+    'hr',
+    'img',
+    'input',
+    'link',
+    'meta',
+    'param',
+    'source',
+    'track',
+    'wbr',
   ]);
 
   let match;
@@ -445,8 +486,7 @@ export function inlineCSS(html: string, css: string): string {
 
   // Build result by replacing opening tags with styled versions
   // Process from end to start so positions remain valid
-  const sortedElements = [...elementMatches.entries()]
-    .sort((a, b) => b[0].start - a[0].start);
+  const sortedElements = [...elementMatches.entries()].sort((a, b) => b[0].start - a[0].start);
 
   let result = html;
 
@@ -459,19 +499,18 @@ export function inlineCSS(html: string, css: string): string {
 
     if (element.existingStyle) {
       // Replace existing style attribute
-      newTag = originalTag.replace(
-        /style="[^"]*"/,
-        `style="${mergedStyle}"`,
-      );
+      newTag = originalTag.replace(/style="[^"]*"/, `style="${mergedStyle}"`);
     } else {
       // Insert style attribute before the closing >
       const insertPos = originalTag.endsWith('/>')
         ? originalTag.length - 2
         : originalTag.length - 1;
-      newTag = originalTag.slice(0, insertPos) + ` style="${mergedStyle}"` + originalTag.slice(insertPos);
+      newTag =
+        originalTag.slice(0, insertPos) + ` style="${mergedStyle}"` + originalTag.slice(insertPos);
     }
 
-    result = result.slice(0, element.start) + newTag + result.slice(element.start + originalTag.length);
+    result =
+      result.slice(0, element.start) + newTag + result.slice(element.start + originalTag.length);
   }
 
   return result;

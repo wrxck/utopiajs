@@ -28,7 +28,7 @@ describe('signal', () => {
 
   it('updates via callback with .update()', () => {
     const s = signal(5);
-    s.update(n => n * 3);
+    s.update((n) => n * 3);
     expect(s()).toBe(15);
   });
 
@@ -670,7 +670,9 @@ describe('edge cases', () => {
 
   it('disposing an effect twice is safe', () => {
     const s = signal(0);
-    const dispose = effect(() => { s(); });
+    const dispose = effect(() => {
+      s();
+    });
 
     dispose();
     expect(() => dispose()).not.toThrow();
@@ -678,7 +680,9 @@ describe('edge cases', () => {
 
   it('effect does not run after disposal even if queued in batch', () => {
     const s = signal(0);
-    const fn = vi.fn(() => { s(); });
+    const fn = vi.fn(() => {
+      s();
+    });
 
     const dispose = effect(fn);
     fn.mockClear();
@@ -718,7 +722,7 @@ describe('edge cases', () => {
 
   it('signal update function receives current value', () => {
     const s = signal(10);
-    s.update(v => {
+    s.update((v) => {
       expect(v).toBe(10);
       return 20;
     });
@@ -770,7 +774,7 @@ describe('integration', () => {
       const list = todos();
       const f = filter();
       if (f === 'all') return list;
-      return list.filter(t => t.includes(f));
+      return list.filter((t) => t.includes(f));
     });
 
     const count = computed(() => filteredTodos().length);
@@ -795,11 +799,11 @@ describe('integration', () => {
     const password = signal('');
 
     const usernameError = computed(() =>
-      username().length < 3 ? 'Username must be at least 3 characters' : null
+      username().length < 3 ? 'Username must be at least 3 characters' : null,
     );
 
     const passwordError = computed(() =>
-      password().length < 8 ? 'Password must be at least 8 characters' : null
+      password().length < 8 ? 'Password must be at least 8 characters' : null,
     );
 
     const isValid = computed(() => !usernameError() && !passwordError());
@@ -895,7 +899,9 @@ describe('error handling', () => {
     const dispose = effect(() => {
       effectRan++;
       s();
-      return () => { throw new Error('cleanup error'); };
+      return () => {
+        throw new Error('cleanup error');
+      };
     });
 
     expect(effectRan).toBe(1);

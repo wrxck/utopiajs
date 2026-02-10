@@ -16,10 +16,7 @@ import type { Route, RouteMatch } from '@matthesketh/utopia-router';
  * @param url    - The URL string to match (e.g. '/blog/my-post')
  * @returns The matched route with params, or null
  */
-export function createServerRouter(
-  routes: Route[],
-  url: string,
-): RouteMatch | null {
+export function createServerRouter(routes: Route[], url: string): RouteMatch | null {
   // Construct a full URL. On the server we don't have window.location,
   // so we use a dummy origin.
   let fullUrl: URL;

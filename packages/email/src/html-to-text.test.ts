@@ -19,13 +19,15 @@ describe('HTML to Text', () => {
   });
 
   it('converts links to text (url) format', () => {
-    expect(htmlToText('<a href="https://example.com">Click here</a>'))
-      .toBe('Click here (https://example.com)');
+    expect(htmlToText('<a href="https://example.com">Click here</a>')).toBe(
+      'Click here (https://example.com)',
+    );
   });
 
   it('converts links where text equals href', () => {
-    expect(htmlToText('<a href="https://example.com">https://example.com</a>'))
-      .toBe('https://example.com');
+    expect(htmlToText('<a href="https://example.com">https://example.com</a>')).toBe(
+      'https://example.com',
+    );
   });
 
   it('converts headings to uppercase', () => {

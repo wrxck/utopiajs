@@ -165,7 +165,11 @@ function escapeRegex(str: string): string {
  * @returns The matched route with params, or null
  */
 export function matchRoute(url: URL, routes: Route[]): RouteMatch | null {
-  const pathname = url.pathname;
+  // Normalize: strip trailing slash (except for root '/').
+  let pathname = url.pathname;
+  if (pathname.length > 1 && pathname.endsWith('/')) {
+    pathname = pathname.slice(0, -1);
+  }
 
   for (const route of routes) {
     const match = route.pattern.exec(pathname);
@@ -207,10 +211,12 @@ export function matchRoute(url: URL, routes: Route[]): RouteMatch | null {
  * @param manifest - Record of file paths to lazy import functions
  * @returns Ordered array of compiled Route objects
  */
-export function buildRouteTable(manifest: Record<string, () => Promise<any>>): Route[] {
-  const pages: Map<string, () => Promise<any>> = new Map();
-  const layouts: Map<string, () => Promise<any>> = new Map();
-  const errors: Map<string, () => Promise<any>> = new Map();
+export function buildRouteTable(
+  manifest: Record<string, () => Promise<Record<string, unknown>>>,
+): Route[] {
+  const pages: Map<string, () => Promise<Record<string, unknown>>> = new Map();
+  const layouts: Map<string, () => Promise<Record<string, unknown>>> = new Map();
+  const errors: Map<string, () => Promise<Record<string, unknown>>> = new Map();
 
   // Classify each manifest entry.
   for (const [filePath, importFn] of Object.entries(manifest)) {
@@ -308,8 +314,8 @@ function routeSpecificity(path: string): number {
  */
 function findNearestSpecialFile(
   pageFilePath: string,
-  specialFiles: Map<string, () => Promise<any>>,
-): (() => Promise<any>) | undefined {
+  specialFiles: Map<string, () => Promise<Record<string, unknown>>>,
+): (() => Promise<Record<string, unknown>>) | undefined {
   const normalized = pageFilePath.replace(/\\/g, '/');
 
   // Get the directory of the page file.

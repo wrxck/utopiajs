@@ -89,7 +89,7 @@ async function loadRouteComponent(
 ): Promise<(() => void) | null> {
   try {
     // Load component module(s) in parallel.
-    const promises: Promise<any>[] = [match.route.component()];
+    const promises: Promise<Record<string, unknown>>[] = [match.route.component()];
     if (match.route.layout) {
       promises.push(match.route.layout());
     }
@@ -106,9 +106,7 @@ async function loadRouteComponent(
 
     // Extract the default export (the component function or class).
     const PageComponent = pageModule.default ?? pageModule;
-    const LayoutComponent = layoutModule
-      ? (layoutModule.default ?? layoutModule)
-      : null;
+    const LayoutComponent = layoutModule ? (layoutModule.default ?? layoutModule) : null;
 
     // Clear container before mounting (in case another load snuck in).
     while (container.firstChild) {
@@ -177,7 +175,11 @@ async function loadRouteComponent(
  * props. This is consistent with how the UtopiaJS compiler generates
  * component code.
  */
-function renderComponent(component: any, props: Record<string, any>): Node {
+interface ComponentLike {
+  render?: (props: Record<string, unknown>) => Node;
+}
+
+function renderComponent(component: unknown, props: Record<string, unknown>): Node {
   if (typeof component === 'function') {
     const result = component(props);
     if (result instanceof Node) {
@@ -193,8 +195,8 @@ function renderComponent(component: any, props: Record<string, any>): Node {
     }
   }
   // Object with render method.
-  if (component && typeof component.render === 'function') {
-    return component.render(props);
+  if (component && typeof (component as ComponentLike).render === 'function') {
+    return (component as ComponentLike).render!(props);
   }
 
   // Fallback: empty div.
@@ -273,8 +275,7 @@ export function createLink(props: {
     const dispose = effect(() => {
       const match = currentRoute();
       const isActive = match
-        ? match.url.pathname === props.href ||
-          match.url.pathname.startsWith(props.href + '/')
+        ? match.url.pathname === props.href || match.url.pathname.startsWith(props.href + '/')
         : false;
 
       if (isActive) {
@@ -284,7 +285,7 @@ export function createLink(props: {
       }
     });
     // Attach cleanup for when link is removed
-    (anchor as any).__dispose = dispose;
+    (anchor as unknown as { __dispose?: () => void }).__dispose = dispose;
   }
 
   // The actual navigation is handled by the router's global click

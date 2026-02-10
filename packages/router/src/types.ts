@@ -19,13 +19,16 @@ export interface Route {
   params: string[];
 
   /** Lazy component import — called only when the route is matched. */
-  component: () => Promise<any>;
+  component: () => Promise<Record<string, unknown>>;
 
   /** Optional layout component that wraps the page. */
-  layout?: () => Promise<any>;
+  layout?: () => Promise<Record<string, unknown>>;
 
   /** Optional error boundary component shown when loading fails. */
-  error?: () => Promise<any>;
+  error?: () => Promise<Record<string, unknown>>;
+
+  /** Optional metadata (e.g. page title, auth requirements). */
+  meta?: Record<string, unknown>;
 }
 
 /**

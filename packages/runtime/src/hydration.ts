@@ -80,14 +80,8 @@ export function exitNode(): void {
  * @param target    - A CSS selector string or DOM Element containing the
  *                    server-rendered HTML
  */
-export function hydrate(
-  component: ComponentDefinition,
-  target: string | Element,
-): void {
-  const el =
-    typeof target === 'string'
-      ? document.querySelector(target)
-      : target;
+export function hydrate(component: ComponentDefinition, target: string | Element): void {
+  const el = typeof target === 'string' ? document.querySelector(target) : target;
 
   if (!el) {
     throw new Error(
@@ -104,9 +98,7 @@ export function hydrate(
 
     // Run the normal mount flow. The hydration-aware helpers in dom.ts
     // will claim existing nodes instead of creating new ones.
-    const ctx = component.setup
-      ? component.setup(instance.props)
-      : {};
+    const ctx = component.setup ? component.setup(instance.props) : {};
 
     const renderCtx: Record<string, any> = {
       ...ctx,

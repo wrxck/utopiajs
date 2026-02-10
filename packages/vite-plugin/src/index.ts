@@ -1,7 +1,7 @@
-import type { Plugin, UserConfig, ViteDevServer, ModuleNode, HmrContext } from 'vite'
-import { compile, parse, type SFCBlock } from '@matthesketh/utopia-compiler'
-import { createFilter, type FilterPattern } from 'vite'
-import path from 'node:path'
+import type { Plugin, UserConfig, ViteDevServer, ModuleNode, HmrContext } from 'vite';
+import { compile, parse, type SFCBlock } from '@matthesketh/utopia-compiler';
+import { createFilter, type FilterPattern } from 'vite';
+import path from 'node:path';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -15,14 +15,13 @@ export interface UtopiaPluginOptions {
    * Glob patterns to include when transforming `.utopia` files.
    * @default '**\/*.utopia'
    */
-  include?: FilterPattern
+  include?: FilterPattern;
 
   /**
    * Glob patterns to exclude from transformation.
    * @default undefined
    */
-  exclude?: FilterPattern
-
+  exclude?: FilterPattern;
 }
 
 // ---------------------------------------------------------------------------
@@ -30,19 +29,19 @@ export interface UtopiaPluginOptions {
 // ---------------------------------------------------------------------------
 
 /** File extension for Utopia single-file components. */
-const UTOPIA_EXT = '.utopia'
+const UTOPIA_EXT = '.utopia';
 
 /**
  * Suffix appended to `.utopia` file ids to produce virtual CSS module ids.
  * For example `./App.utopia` generates the virtual id `./App.utopia.css`.
  */
-const CSS_SUFFIX = '.css'
+const CSS_SUFFIX = '.css';
 
 /**
  * Prefix used for Vite virtual module resolution.
  * @see https://vitejs.dev/guide/api-plugin#virtual-modules-convention
  */
-const VIRTUAL_PREFIX = '\0'
+const VIRTUAL_PREFIX = '\0';
 
 // ---------------------------------------------------------------------------
 // CSS cache
@@ -54,7 +53,7 @@ const VIRTUAL_PREFIX = '\0'
  * `resolveId` / `load` hooks so that the virtual CSS module can serve the
  * correct stylesheet content.
  */
-const cssCache = new Map<string, string>()
+const cssCache = new Map<string, string>();
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -67,30 +66,30 @@ const cssCache = new Map<string, string>()
  * @returns The virtual CSS id (e.g. `/abs/path/App.utopia.css`).
  */
 function toCssId(utopiaId: string): string {
-  return utopiaId + CSS_SUFFIX
+  return utopiaId + CSS_SUFFIX;
 }
 
 /**
  * Check whether a module id refers to a virtual utopia CSS module.
  */
 function isVirtualCssId(id: string): boolean {
-  return id.endsWith(UTOPIA_EXT + CSS_SUFFIX)
+  return id.endsWith(UTOPIA_EXT + CSS_SUFFIX);
 }
 
 /**
  * Strip the `\0` virtual prefix if present.
  */
 function stripVirtualPrefix(id: string): string {
-  return id.startsWith(VIRTUAL_PREFIX) ? id.slice(VIRTUAL_PREFIX.length) : id
+  return id.startsWith(VIRTUAL_PREFIX) ? id.slice(VIRTUAL_PREFIX.length) : id;
 }
 
 /**
  * Recover the `.utopia` source path from a virtual CSS id.
  */
 function cssIdToUtopiaId(cssId: string): string {
-  const raw = stripVirtualPrefix(cssId)
+  const raw = stripVirtualPrefix(cssId);
   // Remove the trailing `.css`
-  return raw.slice(0, -CSS_SUFFIX.length)
+  return raw.slice(0, -CSS_SUFFIX.length);
 }
 
 // ---------------------------------------------------------------------------
@@ -119,19 +118,16 @@ function cssIdToUtopiaId(cssId: string): string {
  * @returns A Vite plugin object.
  */
 export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin {
-  const {
-    include = `**/*${UTOPIA_EXT}`,
-    exclude,
-  } = options
+  const { include = `**/*${UTOPIA_EXT}`, exclude } = options;
 
-  let filter: (id: string) => boolean
-  let server: ViteDevServer | undefined
+  let filter: (id: string) => boolean;
+  let server: ViteDevServer | undefined;
 
   /**
    * Track the previous SFC descriptor per file so we can diff blocks for
    * granular HMR.
    */
-  const prevDescriptors = new Map<string, ReturnType<typeof parse>>()
+  const prevDescriptors = new Map<string, ReturnType<typeof parse>>();
 
   return {
     name: 'utopia',
@@ -154,12 +150,12 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
               '@matthesketh/utopia-runtime': '@matthesketh/utopia-server/ssr-runtime',
             },
           },
-        }
+        };
       }
     },
 
     configResolved() {
-      filter = createFilter(include, exclude)
+      filter = createFilter(include, exclude);
     },
 
     // -------------------------------------------------------------------
@@ -167,7 +163,7 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
     // -------------------------------------------------------------------
 
     configureServer(_server) {
-      server = _server
+      server = _server;
     },
 
     // -------------------------------------------------------------------
@@ -182,25 +178,25 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
         return this.resolve('@matthesketh/utopia-server/ssr-runtime', importer, {
           skipSelf: true,
           ...options,
-        })
+        });
       }
 
       // Handle virtual CSS ids that originate from `.utopia` compiled output.
       if (isVirtualCssId(id)) {
         // If the id is already absolute, just add the virtual prefix.
         if (path.isAbsolute(id)) {
-          return VIRTUAL_PREFIX + id
+          return VIRTUAL_PREFIX + id;
         }
 
         // Relative import – resolve against importer directory.
         if (importer) {
-          const dir = path.dirname(importer)
-          const resolved = path.resolve(dir, id)
-          return VIRTUAL_PREFIX + resolved
+          const dir = path.dirname(importer);
+          const resolved = path.resolve(dir, id);
+          return VIRTUAL_PREFIX + resolved;
         }
       }
 
-      return undefined
+      return undefined;
     },
 
     // -------------------------------------------------------------------
@@ -208,17 +204,17 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
     // -------------------------------------------------------------------
 
     load(id) {
-      if (!id.startsWith(VIRTUAL_PREFIX)) return undefined
+      if (!id.startsWith(VIRTUAL_PREFIX)) return undefined;
 
-      const raw = stripVirtualPrefix(id)
+      const raw = stripVirtualPrefix(id);
 
       if (isVirtualCssId(raw)) {
-        const utopiaId = cssIdToUtopiaId(raw)
-        const css = cssCache.get(utopiaId) ?? ''
-        return css
+        const utopiaId = cssIdToUtopiaId(raw);
+        const css = cssCache.get(utopiaId) ?? '';
+        return css;
       }
 
-      return undefined
+      return undefined;
     },
 
     // -------------------------------------------------------------------
@@ -226,24 +222,24 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
     // -------------------------------------------------------------------
 
     transform(code, id) {
-      if (!id.endsWith(UTOPIA_EXT)) return undefined
-      if (!filter(id)) return undefined
+      if (!id.endsWith(UTOPIA_EXT)) return undefined;
+      if (!filter(id)) return undefined;
 
       const result = compile(code, {
         filename: id,
-      })
+      });
 
       // Cache the extracted CSS for the virtual module.
       if (result.css) {
-        cssCache.set(id, result.css)
+        cssCache.set(id, result.css);
       } else {
-        cssCache.delete(id)
+        cssCache.delete(id);
       }
 
       // Store the parsed descriptor for HMR diffing.
       try {
-        const descriptor = parse(code, id)
-        prevDescriptors.set(id, descriptor)
+        const descriptor = parse(code, id);
+        prevDescriptors.set(id, descriptor);
       } catch {
         // Parsing failures are non-fatal for the descriptor cache –
         // the compile call above will surface errors properly.
@@ -252,16 +248,16 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
       // Build the final module code.  If the component has styles we
       // append a CSS import so that Vite picks up the virtual module
       // and processes it through its CSS pipeline (postcss etc).
-      let output = result.code
+      let output = result.code;
       if (result.css) {
-        const cssImportId = toCssId(id)
-        output += `\nimport ${JSON.stringify(cssImportId)};\n`
+        const cssImportId = toCssId(id);
+        output += `\nimport ${JSON.stringify(cssImportId)};\n`;
       }
 
       return {
         code: output,
         map: null,
-      }
+      };
     },
 
     // -------------------------------------------------------------------
@@ -269,68 +265,64 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
     // -------------------------------------------------------------------
 
     handleHotUpdate(ctx: HmrContext) {
-      const { file, read, server: hmrServer, modules } = ctx
+      const { file, read, server: hmrServer, modules } = ctx;
 
-      if (!file.endsWith(UTOPIA_EXT)) return undefined
+      if (!file.endsWith(UTOPIA_EXT)) return undefined;
 
       return (async () => {
-        const source = await read()
+        const source = await read();
 
         // ------------------------------------------------------------------
         // Parse the new descriptor and compare with the previous one.
         // ------------------------------------------------------------------
-        let newDescriptor: ReturnType<typeof parse>
+        let newDescriptor: ReturnType<typeof parse>;
         try {
-          newDescriptor = parse(source, file)
+          newDescriptor = parse(source, file);
         } catch {
           // If parsing fails, fall through to a full update so the user
           // sees the compile error in the browser overlay.
-          return undefined
+          return undefined;
         }
 
-        const oldDescriptor = prevDescriptors.get(file)
-        prevDescriptors.set(file, newDescriptor)
+        const oldDescriptor = prevDescriptors.get(file);
+        prevDescriptors.set(file, newDescriptor);
 
         // ------------------------------------------------------------------
         // Determine what changed.
         // ------------------------------------------------------------------
-        const templateChanged = didBlockChange(
-          oldDescriptor?.template,
-          newDescriptor.template,
-        )
-        const scriptChanged = didBlockChange(
-          oldDescriptor?.script,
-          newDescriptor.script,
-        )
-        const styleChanged = didBlockChange(
-          oldDescriptor?.style,
-          newDescriptor.style,
-        )
+        const templateChanged = didBlockChange(oldDescriptor?.template, newDescriptor.template);
+        const scriptChanged = didBlockChange(oldDescriptor?.script, newDescriptor.script);
+        const styleChanged = didBlockChange(oldDescriptor?.style, newDescriptor.style);
 
         // ------------------------------------------------------------------
         // Style-only change  -->  update only the virtual CSS module.
         // ------------------------------------------------------------------
         if (styleChanged && !templateChanged && !scriptChanged) {
           // Re-compile to refresh the CSS cache.
-          const result = compile(source, {
-            filename: file,
-          })
+          let result: ReturnType<typeof compile>;
+          try {
+            result = compile(source, { filename: file });
+          } catch {
+            // Compile error — fall through to full update so the user
+            // sees the error in the browser overlay.
+            return undefined;
+          }
 
           if (result.css) {
-            cssCache.set(file, result.css)
+            cssCache.set(file, result.css);
           } else {
-            cssCache.delete(file)
+            cssCache.delete(file);
           }
 
           // Find the virtual CSS module in the module graph and invalidate it.
-          const cssId = VIRTUAL_PREFIX + toCssId(file)
-          const cssModule = hmrServer.moduleGraph.getModuleById(cssId)
+          const cssId = VIRTUAL_PREFIX + toCssId(file);
+          const cssModule = hmrServer.moduleGraph.getModuleById(cssId);
 
           if (cssModule) {
-            hmrServer.moduleGraph.invalidateModule(cssModule)
+            hmrServer.moduleGraph.invalidateModule(cssModule);
             // Return only the CSS module so Vite sends a style-only HMR
             // update (no component re-render).
-            return [cssModule]
+            return [cssModule];
           }
         }
 
@@ -338,38 +330,40 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
         // Template or script changed  -->  full component re-render.
         // ------------------------------------------------------------------
         // Invalidate both the component module and the CSS module.
-        const affectedModules: ModuleNode[] = []
+        const affectedModules: ModuleNode[] = [];
 
         for (const mod of modules) {
-          hmrServer.moduleGraph.invalidateModule(mod)
-          affectedModules.push(mod)
+          hmrServer.moduleGraph.invalidateModule(mod);
+          affectedModules.push(mod);
         }
 
         // Also invalidate the CSS module so it picks up any concurrent
         // style changes.
         if (styleChanged) {
-          const result = compile(source, {
-            filename: file,
-          })
-
-          if (result.css) {
-            cssCache.set(file, result.css)
-          } else {
-            cssCache.delete(file)
+          try {
+            const result = compile(source, { filename: file });
+            if (result.css) {
+              cssCache.set(file, result.css);
+            } else {
+              cssCache.delete(file);
+            }
+          } catch {
+            // Compile error — the component module update will surface
+            // the error through Vite's transform pipeline.
           }
 
-          const cssId = VIRTUAL_PREFIX + toCssId(file)
-          const cssModule = hmrServer.moduleGraph.getModuleById(cssId)
+          const cssId = VIRTUAL_PREFIX + toCssId(file);
+          const cssModule = hmrServer.moduleGraph.getModuleById(cssId);
           if (cssModule) {
-            hmrServer.moduleGraph.invalidateModule(cssModule)
-            affectedModules.push(cssModule)
+            hmrServer.moduleGraph.invalidateModule(cssModule);
+            affectedModules.push(cssModule);
           }
         }
 
-        return affectedModules.length > 0 ? affectedModules : undefined
-      })()
+        return affectedModules.length > 0 ? affectedModules : undefined;
+      })();
     },
-  }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -384,9 +378,9 @@ function didBlockChange(
   oldBlock: SFCBlock | undefined | null,
   newBlock: SFCBlock | undefined | null,
 ): boolean {
-  if (!oldBlock && !newBlock) return false
-  if (!oldBlock || !newBlock) return true
-  return oldBlock.content !== newBlock.content
+  if (!oldBlock && !newBlock) return false;
+  if (!oldBlock || !newBlock) return true;
+  return oldBlock.content !== newBlock.content;
 }
 
 // ---------------------------------------------------------------------------
@@ -418,16 +412,16 @@ export function defineConfig(userConfig: UserConfig = {}): UserConfig {
     resolve: userResolve,
     optimizeDeps: userOptimizeDeps,
     ...rest
-  } = userConfig
+  } = userConfig;
 
   // Check whether the user already included the utopia plugin.
   const hasUtopiaPlugin = (userPlugins as Plugin[]).some(
     (p) => p && typeof p === 'object' && 'name' in p && p.name === 'utopia',
-  )
+  );
 
   const plugins: Plugin[] = hasUtopiaPlugin
     ? (userPlugins as Plugin[])
-    : [utopiaPlugin(), ...(userPlugins as Plugin[])]
+    : [utopiaPlugin(), ...(userPlugins as Plugin[])];
 
   return {
     ...rest,
@@ -448,18 +442,25 @@ export function defineConfig(userConfig: UserConfig = {}): UserConfig {
       ...userOptimizeDeps,
       // Exclude UtopiaJS packages from Vite's dependency pre-bundling so
       // they go through the normal plugin pipeline.
-      exclude: mergeUnique(
-        userOptimizeDeps?.exclude ?? [],
-        ['@matthesketh/utopia-core', '@matthesketh/utopia-runtime', '@matthesketh/utopia-router', '@matthesketh/utopia-server'],
-      ),
+      exclude: mergeUnique(userOptimizeDeps?.exclude ?? [], [
+        '@matthesketh/utopia-core',
+        '@matthesketh/utopia-runtime',
+        '@matthesketh/utopia-router',
+        '@matthesketh/utopia-server',
+      ]),
     },
 
     ssr: {
       // Ensure UtopiaJS packages are bundled during SSR builds so the
       // runtime swap alias is applied correctly.
-      noExternal: ['@matthesketh/utopia-core', '@matthesketh/utopia-runtime', '@matthesketh/utopia-router', '@matthesketh/utopia-server'],
+      noExternal: [
+        '@matthesketh/utopia-core',
+        '@matthesketh/utopia-runtime',
+        '@matthesketh/utopia-router',
+        '@matthesketh/utopia-server',
+      ],
     },
-  }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -470,7 +471,6 @@ export function defineConfig(userConfig: UserConfig = {}): UserConfig {
  * Merge two string arrays, deduplicating entries.
  */
 function mergeUnique(base: string[], additions: string[]): string[] {
-  const set = new Set([...base, ...additions])
-  return [...set]
+  const set = new Set([...base, ...additions]);
+  return [...set];
 }
-

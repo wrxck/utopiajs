@@ -67,14 +67,15 @@ export function createMCPServer(config: MCPServerConfig): MCPServer {
     try {
       const result = await dispatch(request);
       return { jsonrpc: '2.0', id: request.id, result };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const rpcErr = err as { code?: number; message?: string; data?: unknown };
       return {
         jsonrpc: '2.0',
         id: request.id,
         error: {
-          code: err.code ?? -32603,
-          message: err.message ?? 'Internal error',
-          data: err.data,
+          code: rpcErr.code ?? -32603,
+          message: rpcErr.message ?? 'Internal error',
+          data: rpcErr.data,
         },
       };
     }

@@ -58,10 +58,36 @@ export interface MCPClient {
  * });
  * ```
  */
+// ---------------------------------------------------------------------------
+// Internal response shapes for typed RPC results
+// ---------------------------------------------------------------------------
+
+interface InitializeResult {
+  protocolVersion: string;
+  serverInfo: { name: string; version: string };
+  capabilities: Record<string, unknown>;
+}
+
+interface ToolsListResult {
+  tools: MCPToolDefinition[];
+}
+
+interface ResourcesListResult {
+  resources: MCPResourceDefinition[];
+}
+
+interface ResourceReadResult {
+  contents: MCPResourceContent[];
+}
+
+interface PromptsListResult {
+  prompts: MCPPromptDefinition[];
+}
+
 export function createMCPClient(config: MCPClientConfig): MCPClient {
   let requestId = 0;
 
-  async function rpc(method: string, params?: Record<string, unknown>): Promise<unknown> {
+  async function rpc<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T> {
     const request: JsonRpcRequest = {
       jsonrpc: '2.0',
       id: ++requestId,
@@ -87,74 +113,74 @@ export function createMCPClient(config: MCPClientConfig): MCPClient {
     const result: JsonRpcResponse = await response.json();
 
     if (result.error) {
-      const err = new Error(result.error.message) as any;
-      err.code = result.error.code;
-      err.data = result.error.data;
+      const err = Object.assign(new Error(result.error.message), {
+        code: result.error.code,
+        data: result.error.data,
+      });
       throw err;
     }
 
-    return result.result;
+    return result.result as T;
   }
 
   return {
     async initialize() {
-      const result = await rpc('initialize', {
+      return rpc<InitializeResult>('initialize', {
         protocolVersion: '2024-11-05',
         capabilities: {},
         clientInfo: { name: 'utopia-mcp-client', version: '1.0.0' },
       });
-      return result as any;
     },
 
     async listTools() {
-      const result = await rpc('tools/list') as any;
+      const result = await rpc<ToolsListResult>('tools/list');
       return result.tools ?? [];
     },
 
     async callTool(name: string, args?: Record<string, unknown>) {
-      const result = await rpc('tools/call', { name, arguments: args });
-      return result as MCPToolResult;
+      return rpc<MCPToolResult>('tools/call', { name, arguments: args });
     },
 
     async listResources() {
-      const result = await rpc('resources/list') as any;
+      const result = await rpc<ResourcesListResult>('resources/list');
       return result.resources ?? [];
     },
 
     async readResource(uri: string) {
-      const result = await rpc('resources/read', { uri }) as any;
-      return result.contents?.[0] ?? result;
+      const result = await rpc<ResourceReadResult>('resources/read', { uri });
+      return result.contents?.[0] ?? (result as unknown as MCPResourceContent);
     },
 
     async listPrompts() {
-      const result = await rpc('prompts/list') as any;
+      const result = await rpc<PromptsListResult>('prompts/list');
       return result.prompts ?? [];
     },
 
     async getPrompt(name: string, args?: Record<string, string>) {
-      const result = await rpc('prompts/get', { name, arguments: args });
-      return result as MCPPromptResult;
+      return rpc<MCPPromptResult>('prompts/get', { name, arguments: args });
     },
 
     async toToolHandlers(): Promise<ToolHandler[]> {
       const tools = await this.listTools();
 
-      return tools.map((tool): ToolHandler => ({
-        definition: {
-          name: tool.name,
-          description: tool.description,
-          parameters: tool.inputSchema,
-        },
-        handler: async (args: Record<string, unknown>) => {
-          const result = await this.callTool(tool.name, args);
-          if (result.isError) {
-            throw new Error(
-              result.content.map((c) => c.text ?? '').join('\n') || 'Tool call failed',
-            );
-          }
-          return result.content.map((c) => c.text ?? '').join('\n');
-        },
-      }));
+      return tools.map(
+        (tool): ToolHandler => ({
+          definition: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema,
+          },
+          handler: async (args: Record<string, unknown>) => {
+            const result = await this.callTool(tool.name, args);
+            if (result.isError) {
+              throw new Error(
+                result.content.map((c) => c.text ?? '').join('\n') || 'Tool call failed',
+              );
+            }
+            return result.content.map((c) => c.text ?? '').join('\n');
+          },
+        }),
+      );
     },
   };
 }

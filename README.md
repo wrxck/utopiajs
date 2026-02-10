@@ -2,7 +2,7 @@
 
 A compiler-first, signal-based UI framework with single-file components.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT--3.0--or--later-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-green.svg)](https://nodejs.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-workspace-F69220.svg)](https://pnpm.io/)
 
@@ -44,7 +44,8 @@ pnpm dev
 | `@matthesketh/utopia-router` | File-based routing with History API, navigation guards |
 | `@matthesketh/utopia-email` | Template-based email rendering with adapter pattern |
 | `@matthesketh/utopia-ai` | AI adapters (OpenAI, Anthropic, Google, Ollama) + MCP |
-| `create-utopia` | CLI scaffolding tool |
+| `@matthesketh/utopia-cli` | CLI tool: `utopia dev`, `utopia build`, `utopia preview` |
+| `create-utopia` | CLI scaffolding tool (`npx create-utopia`) |
 
 ## Example
 
@@ -76,6 +77,8 @@ The compiler transforms this into direct DOM operations with reactive `createEff
 
 - [Architecture](docs/architecture.md) — compilation pipeline, reactivity system, directives, routing
 - [Server-Side Rendering](docs/ssr.md) — runtime swap, hydration, VNode types, API reference
+- [AI & MCP](docs/ai.md) — AI adapters, tool calling, MCP server/client, streaming
+- [Email](docs/email.md) — email rendering, SMTP/Resend/SendGrid adapters, components
 
 ## Development
 

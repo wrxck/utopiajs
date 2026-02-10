@@ -35,13 +35,17 @@ describe('Email Components', () => {
     });
 
     it('renders slot content', () => {
-      const node = createComponent(EmailLayout, { width: 600 }, {
-        default: () => {
-          const p = createElement('p');
-          appendChild(p, createTextNode('Hello'));
-          return p;
+      const node = createComponent(
+        EmailLayout,
+        { width: 600 },
+        {
+          default: () => {
+            const p = createElement('p');
+            appendChild(p, createTextNode('Hello'));
+            return p;
+          },
         },
-      }) as VElement;
+      ) as VElement;
       const { html } = { html: serializeTree(node) };
       expect(html).toContain('Hello');
     });
@@ -88,13 +92,17 @@ describe('Email Components', () => {
     });
 
     it('renders slot content', () => {
-      const node = createComponent(EmailCard, {}, {
-        default: () => {
-          const span = createElement('span');
-          appendChild(span, createTextNode('Card content'));
-          return span;
+      const node = createComponent(
+        EmailCard,
+        {},
+        {
+          default: () => {
+            const span = createElement('span');
+            appendChild(span, createTextNode('Card content'));
+            return span;
+          },
         },
-      }) as VElement;
+      ) as VElement;
       expect(serializeTree(node)).toContain('Card content');
     });
   });
@@ -114,23 +122,35 @@ describe('Email Components', () => {
 
   describe('EmailHeading', () => {
     it('renders an h1 by default', () => {
-      const node = createComponent(EmailHeading, {}, {
-        default: () => createTextNode('Title'),
-      }) as VElement;
+      const node = createComponent(
+        EmailHeading,
+        {},
+        {
+          default: () => createTextNode('Title'),
+        },
+      ) as VElement;
       expect(node.tag).toBe('h1');
       expect(serializeTree(node)).toContain('28px');
     });
 
     it('renders h2 and h3', () => {
-      const h2 = createComponent(EmailHeading, { level: 2 }, {
-        default: () => createTextNode('Sub'),
-      }) as VElement;
+      const h2 = createComponent(
+        EmailHeading,
+        { level: 2 },
+        {
+          default: () => createTextNode('Sub'),
+        },
+      ) as VElement;
       expect(h2.tag).toBe('h2');
       expect(serializeTree(h2)).toContain('22px');
 
-      const h3 = createComponent(EmailHeading, { level: 3 }, {
-        default: () => createTextNode('Minor'),
-      }) as VElement;
+      const h3 = createComponent(
+        EmailHeading,
+        { level: 3 },
+        {
+          default: () => createTextNode('Minor'),
+        },
+      ) as VElement;
       expect(h3.tag).toBe('h3');
       expect(serializeTree(h3)).toContain('18px');
     });
@@ -138,18 +158,26 @@ describe('Email Components', () => {
 
   describe('EmailText', () => {
     it('renders a paragraph', () => {
-      const node = createComponent(EmailText, {}, {
-        default: () => createTextNode('Hello world'),
-      }) as VElement;
+      const node = createComponent(
+        EmailText,
+        {},
+        {
+          default: () => createTextNode('Hello world'),
+        },
+      ) as VElement;
       expect(node.tag).toBe('p');
       expect(serializeTree(node)).toContain('Hello world');
       expect(serializeTree(node)).toContain('16px');
     });
 
     it('accepts custom font size', () => {
-      const node = createComponent(EmailText, { fontSize: '14px' }, {
-        default: () => createTextNode('Small'),
-      }) as VElement;
+      const node = createComponent(
+        EmailText,
+        { fontSize: '14px' },
+        {
+          default: () => createTextNode('Small'),
+        },
+      ) as VElement;
       expect(serializeTree(node)).toContain('14px');
     });
   });

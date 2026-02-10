@@ -10,23 +10,23 @@ import type { EmailAdapter, EmailMessage, EmailResult, ResendConfig } from '../t
  * Requires `resend` as a peer dependency.
  */
 export function resendAdapter(config: ResendConfig): EmailAdapter {
-  let client: any = null;
+  let client: import('resend').Resend | null = null;
 
-  async function getClient(): Promise<any> {
+  async function getClient(): Promise<import('resend').Resend> {
     if (client) return client;
 
-    let Resend: any;
+    let ResendCtor: new (apiKey: string) => import('resend').Resend;
     try {
       const mod = await import('resend');
-      Resend = mod.Resend ?? mod.default;
+      ResendCtor = mod.Resend ?? mod.default;
     } catch {
       throw new Error(
         '@matthesketh/utopia-email: "resend" package is required for the Resend adapter. ' +
-        'Install it with: npm install resend',
+          'Install it with: npm install resend',
       );
     }
 
-    client = new Resend(config.apiKey);
+    client = new ResendCtor(config.apiKey);
     return client;
   }
 
@@ -56,10 +56,10 @@ export function resendAdapter(config: ResendConfig): EmailAdapter {
           success: true,
           messageId: result.data?.id ?? result.id,
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
           success: false,
-          error: err.message ?? String(err),
+          error: err instanceof Error ? err.message : String(err),
         };
       }
     },

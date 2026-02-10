@@ -34,7 +34,12 @@ export interface ToolResultContent {
   isError?: boolean;
 }
 
-export type MessageContent = string | TextContent | ImageContent | ToolCallContent | ToolResultContent;
+export type MessageContent =
+  | string
+  | TextContent
+  | ImageContent
+  | ToolCallContent
+  | ToolResultContent;
 
 export interface ChatMessage {
   role: MessageRole;
@@ -180,7 +185,10 @@ export interface AIHooks {
   /** Called before every chat request. Can modify the request. */
   onBeforeChat?: (request: ChatRequest) => ChatRequest | Promise<ChatRequest>;
   /** Called after every chat response. Can modify the response. */
-  onAfterChat?: (response: ChatResponse, request: ChatRequest) => ChatResponse | Promise<ChatResponse>;
+  onAfterChat?: (
+    response: ChatResponse,
+    request: ChatRequest,
+  ) => ChatResponse | Promise<ChatResponse>;
   /** Called on any adapter error. */
   onError?: (error: Error, context: { method: string; request?: ChatRequest }) => void;
 }

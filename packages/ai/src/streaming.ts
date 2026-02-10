@@ -42,7 +42,7 @@ export async function streamSSE(
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
+    Connection: 'keep-alive',
     'X-Accel-Buffering': 'no',
   });
 
@@ -83,10 +83,11 @@ export async function collectStream(stream: AsyncIterable<ChatChunk>): Promise<s
  * }
  * ```
  */
-export async function* parseSSEStream(
-  response: Response,
-): AsyncIterable<ChatChunk> {
-  const reader = response.body!.getReader();
+export async function* parseSSEStream(response: Response): AsyncIterable<ChatChunk> {
+  if (!response.body) {
+    throw new Error('Response body is null — streaming not supported');
+  }
+  const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
 

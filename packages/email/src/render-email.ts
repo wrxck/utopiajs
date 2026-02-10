@@ -19,8 +19,8 @@ import type { RenderEmailOptions, RenderEmailResult } from './types.js';
  *   5. Return { html, text, subject? }
  */
 export function renderEmail(
-  component: any,
-  props?: Record<string, any>,
+  component: unknown,
+  props?: Record<string, unknown>,
   options?: RenderEmailOptions,
 ): RenderEmailResult {
   const {
@@ -32,7 +32,11 @@ export function renderEmail(
   } = options ?? {};
 
   // Step 1: Render component to HTML + CSS
-  const { html: bodyHtml, css } = renderToString(component, props);
+  // Cast: email components are structurally compatible but typed as unknown at the API boundary
+  const { html: bodyHtml, css } = renderToString(
+    component as Parameters<typeof renderToString>[0],
+    props,
+  );
 
   // Step 2: Inline CSS into style attributes
   const inlinedBody = skipInlining ? bodyHtml : inlineCSS(bodyHtml, css);
