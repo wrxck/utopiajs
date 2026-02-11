@@ -10,35 +10,36 @@ import type { EmailAdapter, EmailMessage, EmailResult } from './types.js';
 
 // Simple test component
 const TestComponent = {
-  setup: (props: any) => ({ name: props.name ?? 'User' }),
-  render: (ctx: any) => {
+  setup: (props: Record<string, unknown>) => ({
+    name: typeof props.name === 'string' ? props.name : 'User',
+  }),
+  render: (ctx: Record<string, unknown>) => {
     const div = createElement('div');
     setAttr(div, 'class', 'email-body');
     const p = createElement('p');
-    appendChild(p, createTextNode(`Hello ${ctx.name}!`));
+    appendChild(p, createTextNode(`Hello ${String(ctx.name)}!`));
     appendChild(div, p);
     return div;
   },
 };
 
 // Mock adapter
-function createMockAdapter(): EmailAdapter & {
-  lastMessage: EmailMessage | null;
-  sendFn: ReturnType<typeof vi.fn>;
-} {
-  const sendFn = vi.fn<[EmailMessage], Promise<EmailResult>>().mockResolvedValue({
+function createMockAdapter() {
+  const sendFn = vi.fn<(msg: EmailMessage) => Promise<EmailResult>>().mockResolvedValue({
     success: true,
     messageId: 'test-123',
   });
 
-  return {
-    lastMessage: null,
+  const adapter = {
+    lastMessage: null as EmailMessage | null,
     sendFn,
     async send(message: EmailMessage): Promise<EmailResult> {
-      (this as any).lastMessage = message;
+      adapter.lastMessage = message;
       return sendFn(message);
     },
   };
+
+  return adapter;
 }
 
 describe('createMailer', () => {

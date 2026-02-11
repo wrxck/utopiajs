@@ -33,10 +33,10 @@ describe('renderEmail', () => {
 
   it('renders with props', () => {
     const Component = {
-      setup: (props: any) => ({ name: props.name }),
-      render: (ctx: any) => {
+      setup: (props: Record<string, unknown>) => ({ name: props.name }),
+      render: (ctx: Record<string, unknown>) => {
         const p = createElement('p');
-        appendChild(p, createTextNode(`Hello ${ctx.name}`));
+        appendChild(p, createTextNode(`Hello ${String(ctx.name)}`));
         return p;
       },
     };
