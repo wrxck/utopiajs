@@ -22,9 +22,15 @@ pnpm dev
 ## Features
 
 - **Fine-grained signals reactivity** — `signal()`, `computed()`, `effect()`, `batch()`, `untrack()`
+- **Shared signals** — cross-tab state sync via `sharedSignal()` using BroadcastChannel
 - **Single-file `.utopia` components** — template + script + scoped style in one file
 - **Compiler-first** — templates compile to direct DOM operations, no virtual DOM
+- **Compile-time accessibility checking** — `checkA11y()` reports missing alt text, ARIA roles, form labels, and more
+- **Component lifecycle hooks** — `onMount()` and `onDestroy()` for setup/teardown logic
+- **Reactive form validation** — `createForm()` with built-in validators, field-level errors, and dirty/touched tracking
+- **Template directives** — `u-if`, `u-else-if`, `u-for`, `u-model`, `u-bind`, `u-on`
 - **SvelteKit-style file-based routing** — `+page.utopia`, `+layout.utopia`, `[param]`, `[...rest]`, `(group)`
+- **Reactive route parameters** — `useQuery()` and `useParams()` for signal-based URL state
 - **Server-side rendering** with cursor-based hydration
 - **Template-based email** with SMTP, Resend, and SendGrid adapters
 - **AI integration** with OpenAI, Anthropic, Google, and Ollama adapters
@@ -36,12 +42,12 @@ pnpm dev
 
 | Package | Description |
 |---------|-------------|
-| `@matthesketh/utopia-core` | Signals reactivity system |
-| `@matthesketh/utopia-compiler` | SFC parser + template compiler + scoped CSS |
-| `@matthesketh/utopia-runtime` | DOM helpers, directives, component lifecycle, scheduler, hydration |
+| `@matthesketh/utopia-core` | Signals reactivity system + shared cross-tab signals |
+| `@matthesketh/utopia-compiler` | SFC parser + template compiler + scoped CSS + a11y checking |
+| `@matthesketh/utopia-runtime` | DOM helpers, directives, lifecycle hooks, form validation, scheduler, hydration |
 | `@matthesketh/utopia-server` | SSR: renderToString, renderToStream, server router, handler |
 | `@matthesketh/utopia-vite-plugin` | Vite transform for .utopia files, HMR, SSR alias resolution |
-| `@matthesketh/utopia-router` | File-based routing with History API, navigation guards |
+| `@matthesketh/utopia-router` | File-based routing with History API, navigation guards, reactive query/params |
 | `@matthesketh/utopia-email` | Template-based email rendering with adapter pattern |
 | `@matthesketh/utopia-ai` | AI adapters (OpenAI, Anthropic, Google, Ollama) + MCP |
 | `@matthesketh/utopia-cli` | CLI tool: `utopia dev`, `utopia build`, `utopia preview` |
