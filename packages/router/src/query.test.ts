@@ -7,7 +7,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { buildRouteTable } from './matcher.js';
 import { createRouter, currentRoute, navigate, destroy } from './router.js';
-import { queryParams, getQueryParam, setQueryParam, setQueryParams, getRouteParam } from './query.js';
+import {
+  queryParams,
+  getQueryParam,
+  setQueryParam,
+  setQueryParams,
+  getRouteParam,
+} from './query.js';
 import type { Route } from './types.js';
 
 // Helper to create a route table with a dynamic route.
