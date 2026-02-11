@@ -13,6 +13,44 @@ import { currentRoute, navigate } from './router.js';
 import type { RouteMatch } from './types.js';
 
 // ---------------------------------------------------------------------------
+// Pre-load cache — enables synchronous initial render
+// ---------------------------------------------------------------------------
+
+type ModuleImporter = () => Promise<Record<string, unknown>>;
+
+/** Cache for pre-loaded route modules. Keyed by the importer function ref. */
+const moduleCache = new Map<ModuleImporter, Record<string, unknown>>();
+
+/**
+ * Pre-load the current route's component (and layout) so that
+ * `createRouterView()` can render it synchronously on first paint.
+ *
+ * Call this **after** `createRouter()` and **before** `mount()`.
+ *
+ * @example
+ * ```ts
+ * createRouter(routes)
+ * await preloadRoute()
+ * mount(App, '#app')
+ * ```
+ */
+export async function preloadRoute(): Promise<void> {
+  const match = currentRoute.peek();
+  if (!match) return;
+
+  const promises: Promise<Record<string, unknown>>[] = [match.route.component()];
+  if (match.route.layout) {
+    promises.push(match.route.layout());
+  }
+
+  const modules = await Promise.all(promises);
+  moduleCache.set(match.route.component, modules[0]);
+  if (match.route.layout && modules.length > 1) {
+    moduleCache.set(match.route.layout, modules[1]);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // RouterView — Renders the current route's component
 // ---------------------------------------------------------------------------
 
@@ -42,6 +80,17 @@ export function createRouterView(): Node {
 
   // Monotonically increasing ID to invalidate stale async loads.
   let loadId = 0;
+
+  // ---- Synchronous initial render from pre-loaded cache ----
+  const initialMatch = currentRoute.peek();
+  if (initialMatch) {
+    const syncResult = tryRenderFromCache(initialMatch);
+    if (syncResult) {
+      container.appendChild(syncResult.node);
+      currentCleanup = syncResult.cleanup;
+      currentMatch = initialMatch;
+    }
+  }
 
   effect(() => {
     const match = currentRoute();
@@ -98,6 +147,51 @@ interface LoadResult {
 }
 
 /**
+ * Attempt to render a route synchronously from the pre-load cache.
+ * Returns null if the route's modules are not cached.
+ */
+function tryRenderFromCache(match: RouteMatch): LoadResult | null {
+  const cachedPage = moduleCache.get(match.route.component);
+  if (!cachedPage) return null;
+
+  if (match.route.layout && !moduleCache.has(match.route.layout)) return null;
+
+  const cachedLayout = match.route.layout ? moduleCache.get(match.route.layout)! : null;
+
+  // Consume the cache entries (one-time use).
+  moduleCache.delete(match.route.component);
+  if (match.route.layout) moduleCache.delete(match.route.layout);
+
+  const PageComponent = cachedPage.default ?? cachedPage;
+  const LayoutComponent = cachedLayout ? (cachedLayout.default ?? cachedLayout) : null;
+
+  const pageNode = renderComponent(PageComponent, {
+    params: match.params,
+    url: match.url,
+  });
+
+  let node: Node;
+  if (LayoutComponent) {
+    node = renderComponent(LayoutComponent, {
+      params: match.params,
+      url: match.url,
+      children: pageNode,
+    });
+  } else {
+    node = pageNode;
+  }
+
+  return {
+    node,
+    cleanup: () => {
+      if (node.parentNode) {
+        node.parentNode.removeChild(node);
+      }
+    },
+  };
+}
+
+/**
  * Load a route's component (and optional layout), rendering them off-DOM.
  *
  * Returns the rendered node and a cleanup function. Does NOT touch the
@@ -108,15 +202,28 @@ interface LoadResult {
  */
 async function loadRouteComponent(match: RouteMatch): Promise<LoadResult | null> {
   try {
-    // Load component module(s) in parallel.
-    const promises: Promise<Record<string, unknown>>[] = [match.route.component()];
-    if (match.route.layout) {
-      promises.push(match.route.layout());
-    }
+    // Check the pre-load cache first.
+    const cachedPage = moduleCache.get(match.route.component);
+    const cachedLayout = match.route.layout ? moduleCache.get(match.route.layout) : undefined;
 
-    const modules = await Promise.all(promises);
-    const pageModule = modules[0];
-    const layoutModule = modules.length > 1 ? modules[1] : null;
+    let pageModule: Record<string, unknown>;
+    let layoutModule: Record<string, unknown> | null = null;
+
+    if (cachedPage) {
+      pageModule = cachedPage;
+      layoutModule = cachedLayout ?? null;
+      moduleCache.delete(match.route.component);
+      if (match.route.layout) moduleCache.delete(match.route.layout);
+    } else {
+      // Load component module(s) in parallel.
+      const promises: Promise<Record<string, unknown>>[] = [match.route.component()];
+      if (match.route.layout) {
+        promises.push(match.route.layout());
+      }
+      const modules = await Promise.all(promises);
+      pageModule = modules[0];
+      layoutModule = modules.length > 1 ? modules[1] : null;
+    }
 
     // Check if the route has changed while we were loading.
     // If so, don't mount — the new route's loader will handle it.

@@ -33,7 +33,7 @@ export {
 // Router components (render functions)
 // ---------------------------------------------------------------------------
 
-export { createRouterView, createLink } from './components.js';
+export { createRouterView, createLink, preloadRoute } from './components.js';
 
 // ---------------------------------------------------------------------------
 // Query & route parameter utilities
