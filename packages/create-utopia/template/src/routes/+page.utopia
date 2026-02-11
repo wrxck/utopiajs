@@ -60,3 +60,25 @@ button:hover {
   border-color: #4a9eff;
 }
 </style>
+
+<test>
+import { describe, it, expect } from 'vitest'
+import { render, fireEvent, nextTick } from '@matthesketh/utopia-test'
+
+describe('+page', () => {
+  it('renders the welcome heading', () => {
+    const { getByText, unmount } = render(self)
+    expect(getByText('Welcome to UtopiaJS')).toBeTruthy()
+    unmount()
+  })
+
+  it('increments the counter on click', async () => {
+    const { getByText, getBySelector, unmount } = render(self)
+    const btn = getByText('Increment')
+    fireEvent.click(btn)
+    await nextTick()
+    expect(getByText('Count: 1')).toBeTruthy()
+    unmount()
+  })
+})
+</test>
