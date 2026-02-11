@@ -34,3 +34,15 @@ export {
 // ---------------------------------------------------------------------------
 
 export { createRouterView, createLink } from './components.js';
+
+// ---------------------------------------------------------------------------
+// Query & route parameter utilities
+// ---------------------------------------------------------------------------
+
+export {
+  queryParams,
+  getQueryParam,
+  setQueryParam,
+  setQueryParams,
+  getRouteParam,
+} from './query.js';
