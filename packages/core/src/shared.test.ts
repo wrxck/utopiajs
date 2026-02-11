@@ -11,7 +11,10 @@ import { sharedSignal, type SharedSignal } from './shared';
 // ---------------------------------------------------------------------------
 
 // Track all channels by name so we can simulate cross-tab messaging.
-const channels: Map<string, Set<{ onmessage: ((e: MessageEvent) => void) | null; postMessage: (data: any) => void }>> = new Map();
+const channels: Map<
+  string,
+  Set<{ onmessage: ((e: MessageEvent) => void) | null; postMessage: (data: any) => void }>
+> = new Map();
 
 class MockBroadcastChannel {
   name: string;
