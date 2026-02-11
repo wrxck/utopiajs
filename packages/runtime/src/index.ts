@@ -34,6 +34,8 @@ export {
   pushDisposer,
   startCapturingDisposers,
   stopCapturingDisposers,
+  onMount,
+  onDestroy,
 } from './component.js';
 
 export type { ComponentDefinition, ComponentInstance } from './component.js';
