@@ -30,6 +30,53 @@ export function stopCapturingDisposers(prev: (() => void)[] | null): (() => void
 }
 
 // ---------------------------------------------------------------------------
+// Lifecycle hook capture mechanism
+// ---------------------------------------------------------------------------
+
+let currentMountCallbacks: (() => void)[] | null = null;
+let currentDestroyCallbacks: (() => void)[] | null = null;
+
+export function startCapturingLifecycle(): void {
+  currentMountCallbacks = [];
+  currentDestroyCallbacks = [];
+}
+
+export function stopCapturingLifecycle(): {
+  mount: (() => void)[];
+  destroy: (() => void)[];
+} {
+  const mount = currentMountCallbacks ?? [];
+  const destroy = currentDestroyCallbacks ?? [];
+  currentMountCallbacks = null;
+  currentDestroyCallbacks = null;
+  return { mount, destroy };
+}
+
+/**
+ * Register a callback to run after the component is mounted to the DOM.
+ * Must be called during component setup.
+ */
+export function onMount(fn: () => void): void {
+  if (currentMountCallbacks !== null) {
+    currentMountCallbacks.push(fn);
+  } else {
+    console.warn('[utopia] onMount() called outside of component setup');
+  }
+}
+
+/**
+ * Register a callback to run when the component is unmounted.
+ * Must be called during component setup.
+ */
+export function onDestroy(fn: () => void): void {
+  if (currentDestroyCallbacks !== null) {
+    currentDestroyCallbacks.push(fn);
+  } else {
+    console.warn('[utopia] onDestroy() called outside of component setup');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -78,6 +125,7 @@ export function createComponentInstance(
 ): ComponentInstance {
   let styleElement: HTMLStyleElement | null = null;
   let disposers: (() => void)[] = [];
+  let destroyCallbacks: (() => void)[] = [];
 
   const instance: ComponentInstance = {
     el: null,
@@ -91,8 +139,11 @@ export function createComponentInstance(
         return;
       }
 
-      // 1. Run setup() to obtain the reactive context.
+      // 1. Run setup() to obtain the reactive context, capturing lifecycle hooks.
+      startCapturingLifecycle();
       const ctx = definition.setup ? definition.setup(instance.props) : {};
+      const lifecycle = stopCapturingLifecycle();
+      destroyCallbacks = lifecycle.destroy;
 
       // Merge slots into the render context.
       const renderCtx: Record<string, unknown> = {
@@ -114,9 +165,20 @@ export function createComponentInstance(
         styleElement.textContent = definition.styles;
         document.head.appendChild(styleElement);
       }
+
+      // 5. Run onMount callbacks after DOM insertion.
+      for (const cb of lifecycle.mount) {
+        cb();
+      }
     },
 
     unmount(): void {
+      // Run onDestroy callbacks before teardown.
+      for (const cb of destroyCallbacks) {
+        cb();
+      }
+      destroyCallbacks = [];
+
       // Dispose all reactive effects created during render.
       for (const dispose of disposers) {
         dispose();
