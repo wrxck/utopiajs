@@ -66,3 +66,20 @@ export function createEffect(fn: () => void | (() => void)): () => void {
   pushDisposer(dispose);
   return dispose;
 }
+
+// ---------------------------------------------------------------------------
+// Form validation
+// ---------------------------------------------------------------------------
+export {
+  createForm,
+  required,
+  minLength,
+  maxLength,
+  min,
+  max,
+  email,
+  pattern,
+  validate,
+} from './form.js';
+
+export type { ValidationRule, FieldConfig, FormField, Form } from './form.js';
