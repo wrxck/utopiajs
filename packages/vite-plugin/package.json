@@ -1,6 +1,6 @@
 {
   "name": "@matthesketh/utopia-vite-plugin",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Vite plugin for UtopiaJS .utopia files",
   "type": "module",
   "license": "MIT",

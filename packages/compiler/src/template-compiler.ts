@@ -267,7 +267,7 @@ class TemplateParser {
       if (this.lookingAt('{{')) {
         flush();
         this.pos += 2;
-        const endIdx = this.source.indexOf('}}', this.pos);
+        const endIdx = this.findInterpolationEnd(this.pos);
         if (endIdx === -1) throw this.error('Unterminated interpolation {{ }}');
         const expression = this.source.slice(this.pos, endIdx).trim();
         nodes.push({ type: NodeType.Interpolation, expression });
@@ -280,6 +280,53 @@ class TemplateParser {
 
     flush();
     return nodes;
+  }
+
+  // ---- Interpolation end finder -------------------------------------------
+
+  /**
+   * Find the position of the closing `}}` for an interpolation expression,
+   * respecting JavaScript string literals so that `}}` inside quotes is not
+   * treated as the end delimiter.
+   *
+   * Handles single-quoted, double-quoted, and template literal strings,
+   * including escaped characters within them.
+   */
+  private findInterpolationEnd(start: number): number {
+    let pos = start;
+    let inSingle = false;
+    let inDouble = false;
+    let inBacktick = false;
+
+    while (pos < this.source.length - 1) {
+      const ch = this.source[pos];
+
+      // Skip escaped characters inside strings.
+      if ((inSingle || inDouble || inBacktick) && ch === '\\') {
+        pos += 2;
+        continue;
+      }
+
+      if (!inDouble && !inBacktick && ch === "'") {
+        inSingle = !inSingle;
+      } else if (!inSingle && !inBacktick && ch === '"') {
+        inDouble = !inDouble;
+      } else if (!inSingle && !inDouble && ch === '`') {
+        inBacktick = !inBacktick;
+      } else if (
+        !inSingle &&
+        !inDouble &&
+        !inBacktick &&
+        ch === '}' &&
+        this.source[pos + 1] === '}'
+      ) {
+        return pos;
+      }
+
+      pos++;
+    }
+
+    return -1;
   }
 
   // ---- Low-level helpers --------------------------------------------------
@@ -487,7 +534,7 @@ class CodeGenerator {
         : '';
 
     const fnBody = this.code.map((l) => `  ${l}`).join('\n');
-    const moduleCode = `${importLine}function __render() {\n${fnBody}\n}\n`;
+    const moduleCode = `${importLine}function __render(_ctx) {\n${fnBody}\n}\n`;
 
     return { code: moduleCode, helpers: this.helpers };
   }
@@ -520,6 +567,11 @@ class CodeGenerator {
     const forDir = node.directives.find((d) => d.kind === 'for');
     if (forDir) {
       return this.genFor(node, forDir, scope);
+    }
+
+    // Slot element — renders content from the parent's $slots.
+    if (node.tag === 'slot') {
+      return this.genSlot(node);
     }
 
     // Component reference? (PascalCase)
@@ -837,6 +889,37 @@ class CodeGenerator {
     }
   }
 
+  // ---- Slot rendering -----------------------------------------------------
+
+  /**
+   * Generate code for a `<slot />` element.
+   *
+   * Named slots use `<slot name="foo" />`, defaulting to "default".
+   * The generated code reads from `_ctx.$slots[name]()` if available,
+   * otherwise renders a comment placeholder.
+   */
+  private genSlot(node: ElementNode): string {
+    const nameAttr = node.attrs.find((a) => a.name === 'name');
+    const slotName = nameAttr?.value ?? 'default';
+    const slotVar = this.freshVar();
+    this.helpers.add('createComment');
+
+    if (slotName === 'default') {
+      // For the default slot, also check _ctx.children as a fallback.
+      // The router's layout system passes children as a Node prop rather
+      // than through the $slots mechanism.
+      this.emit(
+        `const ${slotVar} = _ctx && _ctx.$slots && _ctx.$slots['default'] ? _ctx.$slots['default']() : (_ctx && _ctx.children instanceof Node ? _ctx.children : createComment('slot'))`,
+      );
+    } else {
+      this.emit(
+        `const ${slotVar} = _ctx && _ctx.$slots && _ctx.$slots['${escapeStr(slotName)}'] ? _ctx.$slots['${escapeStr(slotName)}']() : createComment('slot')`,
+      );
+    }
+
+    return slotVar;
+  }
+
   // ---- Component generation -----------------------------------------------
 
   private genComponent(node: ElementNode, scope: LocalScope): string {
@@ -861,7 +944,54 @@ class CodeGenerator {
 
     const propsStr = propEntries.length > 0 ? `{ ${propEntries.join(', ')} }` : '{}';
     this.helpers.add('createComponent');
-    this.emit(`const ${compVar} = createComponent(${node.tag}, ${propsStr})`);
+
+    // Compile children as a default slot factory if children are present.
+    const substantiveChildren = node.children.filter(
+      (c) =>
+        c.type === NodeType.Element ||
+        c.type === NodeType.Interpolation ||
+        (c.type === NodeType.Text && c.content.trim() !== ''),
+    );
+
+    if (substantiveChildren.length > 0) {
+      const slotFnVar = this.freshVar();
+      const savedCode = this.code;
+      this.code = [];
+
+      // Generate a wrapper for slot children.
+      if (substantiveChildren.length === 1 && substantiveChildren[0].type === NodeType.Element) {
+        const innerVar = this.genNode(substantiveChildren[0], scope);
+        this.emit(`return ${innerVar}`);
+      } else {
+        this.helpers.add('createElement');
+        this.helpers.add('appendChild');
+        const fragVar = this.freshVar();
+        this.emit(`const ${fragVar} = createElement('div')`);
+        for (const child of node.children) {
+          const childVar = this.genNode(child, scope);
+          if (childVar) {
+            this.emit(`appendChild(${fragVar}, ${childVar})`);
+          }
+        }
+        this.emit(`return ${fragVar}`);
+      }
+
+      const slotLines = [...this.code];
+      this.code = savedCode;
+
+      this.emit(`const ${slotFnVar} = () => {`);
+      for (const line of slotLines) {
+        this.emit(`  ${line}`);
+      }
+      this.emit(`}`);
+
+      this.emit(
+        `const ${compVar} = createComponent(${node.tag}, ${propsStr}, { default: ${slotFnVar} })`,
+      );
+    } else {
+      this.emit(`const ${compVar} = createComponent(${node.tag}, ${propsStr})`);
+    }
+
     return compVar;
   }
 

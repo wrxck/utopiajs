@@ -316,7 +316,7 @@ describe('Template Compilation', () => {
     expect(result.code).toContain('setAttr(');
     expect(result.code).toContain("'class', 'app'");
     expect(result.code).toContain('createTextNode(');
-    expect(result.code).toContain('function __render()');
+    expect(result.code).toContain('function __render(_ctx)');
     expect(result.helpers.has('createElement')).toBe(true);
     expect(result.helpers.has('setAttr')).toBe(true);
   });
@@ -489,7 +489,7 @@ describe('Template Compilation', () => {
     `;
     const result = compileTemplate(template);
     // Should compile without error.
-    expect(result.code).toContain('function __render()');
+    expect(result.code).toContain('function __render(_ctx)');
     expect(result.code).not.toContain('_ctx.');
     // Check all helpers are imported.
     expect(result.helpers.has('createElement')).toBe(true);
@@ -670,7 +670,7 @@ h1 { color: blue; }
     const result = compile(fullSFC, { filename: 'Counter.utopia' });
 
     // Code should contain the render function and ComponentDefinition export.
-    expect(result.code).toContain('function __render()');
+    expect(result.code).toContain('function __render(_ctx)');
     expect(result.code).toContain('export default { render: __render }');
     // Code should contain the user script.
     expect(result.code).toContain("import { signal } from '@matthesketh/utopia-core'");
@@ -703,7 +703,7 @@ const x = 1
 </script>
 `;
     const result = compile(source);
-    expect(result.code).toContain('function __render()');
+    expect(result.code).toContain('function __render(_ctx)');
     expect(result.code).toContain('export default { render: __render }');
     expect(result.code).toContain('const x = 1');
     expect(result.css).toBe('');
@@ -716,7 +716,7 @@ const x = 1
 </template>
 `;
     const result = compile(source);
-    expect(result.code).toContain('function __render()');
+    expect(result.code).toContain('function __render(_ctx)');
     expect(result.code).toContain('export default { render: __render }');
     expect(result.code).toContain("createElement('div')");
   });

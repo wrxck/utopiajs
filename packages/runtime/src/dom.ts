@@ -138,7 +138,13 @@ export function setAttr(el: Element, name: string, value: unknown): void {
     if (value == null || value === false) {
       el.removeAttribute('class');
     } else if (typeof value === 'string') {
-      el.className = value;
+      // SVG elements have className as a read-only SVGAnimatedString —
+      // use setAttribute instead.
+      if (el instanceof SVGElement) {
+        el.setAttribute('class', value);
+      } else {
+        el.className = value;
+      }
     } else if (typeof value === 'object' && value !== null) {
       const classes: string[] = [];
       const obj = value as Record<string, unknown>;
@@ -147,7 +153,12 @@ export function setAttr(el: Element, name: string, value: unknown): void {
           classes.push(key);
         }
       }
-      el.className = classes.join(' ');
+      const classStr = classes.join(' ');
+      if (el instanceof SVGElement) {
+        el.setAttribute('class', classStr);
+      } else {
+        el.className = classStr;
+      }
     }
     return;
   }
