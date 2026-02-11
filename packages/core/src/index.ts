@@ -531,3 +531,10 @@ export function untrack<T>(fn: () => T): T {
     popSubscriber();
   }
 }
+
+// ---------------------------------------------------------------------------
+// Shared signals (cross-tab sync via BroadcastChannel)
+// ---------------------------------------------------------------------------
+
+export { sharedSignal } from './shared.js';
+export type { SharedSignal, SharedSignalOptions } from './shared.js';
