@@ -18,10 +18,12 @@ export {
   type StyleCompileOptions,
   type StyleCompileResult,
 } from './style-compiler';
+export { checkA11y, type A11yWarning, type A11yOptions } from './a11y';
 
 import { parse } from './parser';
-import { compileTemplate } from './template-compiler';
+import { compileTemplate, parseTemplate } from './template-compiler';
 import { compileStyle, generateScopeId } from './style-compiler';
+import { checkA11y, type A11yWarning, type A11yOptions } from './a11y';
 
 // ---- Public types ----------------------------------------------------------
 
@@ -30,6 +32,8 @@ export interface CompileOptions {
   filename?: string;
   /** Override the scope ID for testing. */
   scopeId?: string;
+  /** Accessibility checking options. Pass false to disable entirely. */
+  a11y?: A11yOptions | false;
 }
 
 export interface CompileResult {
@@ -39,6 +43,8 @@ export interface CompileResult {
   css: string;
   /** Source map (reserved for future use). */
   map?: unknown;
+  /** Accessibility warnings from template analysis. */
+  a11y: A11yWarning[];
 }
 
 // ---- Main compile function -------------------------------------------------
@@ -83,13 +89,20 @@ export function compile(source: string, options: CompileOptions = {}): CompileRe
     scopeId = styleResult.scopeId;
   }
 
-  // 3. Compile the template block.
+  // 3. Compile the template block and run a11y checks.
   let renderModule = '';
+  let a11yWarnings: A11yWarning[] = [];
   if (descriptor.template) {
     const templateResult = compileTemplate(descriptor.template.content, {
       scopeId: scopeId ?? undefined,
     });
     renderModule = templateResult.code;
+
+    // Run a11y checks unless explicitly disabled.
+    if (options.a11y !== false) {
+      const ast = parseTemplate(descriptor.template.content);
+      a11yWarnings = checkA11y(ast, options.a11y ?? undefined);
+    }
   }
 
   // 4. Assemble the final JavaScript module.
@@ -129,7 +142,7 @@ export function compile(source: string, options: CompileOptions = {}): CompileRe
 
   const code = parts.join('\n\n') + '\n';
 
-  return { code, css };
+  return { code, css, a11y: a11yWarnings };
 }
 
 // ---- Internal helpers -------------------------------------------------------
