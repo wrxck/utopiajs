@@ -12,6 +12,41 @@
 //      DOM tree at component mount time.
 // ---------------------------------------------------------------------------
 
+// ---- Regex Constants --------------------------------------------------------
+
+/** Matches valid tag-name characters: letters, digits, hyphens, underscores. */
+export const TAG_NAME_CHAR_RE = /[a-zA-Z0-9\-_]/;
+
+/** Matches valid attribute-name characters: letters, digits, hyphens, underscores, colon, @, dot. */
+export const ATTR_NAME_CHAR_RE = /[a-zA-Z0-9\-_:@.]/;
+
+/** Matches characters that terminate an unquoted attribute value. */
+export const ATTR_VALUE_END_RE = /[\s/>]/;
+
+/** Matches a single whitespace character. */
+export const WHITESPACE_RE = /\s/;
+
+/** Matches the start of a tag name (alphabetical character). */
+export const TAG_START_CHAR_RE = /[a-zA-Z]/;
+
+/**
+ * Parses a u-for expression: "item in expr" or "(item, index) in expr".
+ * Safe against ReDoS: uses possessive-style grouping with non-overlapping alternation.
+ */
+export const U_FOR_EXPR_RE = /^\s*(?:\(\s*(\w+)\s*(?:,\s*(\w+)\s*)?\)|(\w+))\s+in\s+(.+)$/;
+
+/** Matches a PascalCase component tag name. */
+export const COMPONENT_TAG_RE = /^[A-Z][a-zA-Z0-9_$]*$/;
+
+/** Matches backslash characters (for escaping in string output). */
+export const BACKSLASH_RE = /\\/g;
+
+/** Matches single-quote characters (for escaping in string output). */
+export const SINGLE_QUOTE_RE = /'/g;
+
+/** Matches HTML entities: named (&amp;), decimal (&#123;), or hex (&#xFF;). */
+export const HTML_ENTITY_RE = /&(?:#(\d+)|#x([0-9a-fA-F]+)|(\w+));/g;
+
 // ---- Public API ------------------------------------------------------------
 
 export interface TemplateCompileOptions {
@@ -333,7 +368,7 @@ class TemplateParser {
 
   private readTagName(): string {
     const start = this.pos;
-    while (this.pos < this.source.length && /[a-zA-Z0-9\-_]/.test(this.source[this.pos])) {
+    while (this.pos < this.source.length && TAG_NAME_CHAR_RE.test(this.source[this.pos])) {
       this.pos++;
     }
     const name = this.source.slice(start, this.pos);
@@ -344,7 +379,7 @@ class TemplateParser {
   private readAttributeName(): string {
     const start = this.pos;
     // Allow: word chars, `-`, `:`, `@`, `.`
-    while (this.pos < this.source.length && /[a-zA-Z0-9\-_:@.]/.test(this.source[this.pos])) {
+    while (this.pos < this.source.length && ATTR_NAME_CHAR_RE.test(this.source[this.pos])) {
       this.pos++;
     }
     return this.source.slice(start, this.pos);
@@ -363,14 +398,14 @@ class TemplateParser {
     }
     // Unquoted value — read until whitespace or `>`.
     const start = this.pos;
-    while (this.pos < this.source.length && !/[\s/>]/.test(this.source[this.pos])) {
+    while (this.pos < this.source.length && !ATTR_VALUE_END_RE.test(this.source[this.pos])) {
       this.pos++;
     }
     return this.source.slice(start, this.pos);
   }
 
   private skipWhitespace(): void {
-    while (this.pos < this.source.length && /\s/.test(this.source[this.pos])) {
+    while (this.pos < this.source.length && WHITESPACE_RE.test(this.source[this.pos])) {
       this.pos++;
     }
   }
@@ -382,7 +417,7 @@ class TemplateParser {
   /** Returns true when the char after `<` looks like the start of a tag name. */
   private peekTagStart(): boolean {
     const next = this.source[this.pos + 1];
-    return next !== undefined && /[a-zA-Z]/.test(next);
+    return next !== undefined && TAG_START_CHAR_RE.test(next);
   }
 
   private expect(str: string): void {
@@ -820,9 +855,7 @@ class CodeGenerator {
     this.emit(`const ${anchorVar} = createComment('u-for')`);
 
     // Parse "item in expr" or "(item, index) in expr"
-    const forMatch = dir.expression.match(
-      /^\s*(?:\(\s*(\w+)\s*(?:,\s*(\w+)\s*)?\)|(\w+))\s+in\s+(.+)$/,
-    );
+    const forMatch = dir.expression.match(U_FOR_EXPR_RE);
     if (!forMatch) {
       throw new Error(`Invalid u-for expression: "${dir.expression}"`);
     }
@@ -1088,11 +1121,11 @@ class CodeGenerator {
  * Heuristic: starts with uppercase.
  */
 function isComponentTag(tag: string): boolean {
-  return /^[A-Z][a-zA-Z0-9_$]*$/.test(tag);
+  return COMPONENT_TAG_RE.test(tag);
 }
 
 function escapeStr(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return s.replace(BACKSLASH_RE, '\\\\').replace(SINGLE_QUOTE_RE, "\\'");
 }
 
 /**
@@ -1127,7 +1160,8 @@ const ENTITY_MAP: Record<string, string> = {
 };
 
 function decodeEntities(text: string): string {
-  return text.replace(/&(?:#(\d+)|#x([0-9a-fA-F]+)|(\w+));/g, (match, dec, hex, named) => {
+  HTML_ENTITY_RE.lastIndex = 0;
+  return text.replace(HTML_ENTITY_RE, (match, dec, hex, named) => {
     if (dec) {
       const code = parseInt(dec, 10);
       if (code >= 0 && code <= 0x10ffff) {
