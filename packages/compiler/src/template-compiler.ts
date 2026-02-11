@@ -471,7 +471,15 @@ function classifyDirective(name: string, value: string | null): Directive | null
 }
 
 function isDirectiveKind(s: string): s is DirectiveKind {
-  return s === 'on' || s === 'bind' || s === 'if' || s === 'else' || s === 'else-if' || s === 'for' || s === 'model';
+  return (
+    s === 'on' ||
+    s === 'bind' ||
+    s === 'if' ||
+    s === 'else' ||
+    s === 'else-if' ||
+    s === 'for' ||
+    s === 'model'
+  );
 }
 
 // ===========================================================================
@@ -602,7 +610,8 @@ class CodeGenerator {
 
     // Directives (excluding structural ones).
     for (const dir of node.directives) {
-      if (dir.kind === 'if' || dir.kind === 'else' || dir.kind === 'else-if' || dir.kind === 'for') continue;
+      if (dir.kind === 'if' || dir.kind === 'else' || dir.kind === 'else-if' || dir.kind === 'for')
+        continue;
       this.genDirective(elVar, dir, scope);
     }
 

@@ -907,9 +907,7 @@ describe('u-else-if directive', () => {
   });
 
   it('generates nested createIf for u-if + u-else-if', () => {
-    const result = compileTemplate(
-      '<div u-if="a">A</div><div u-else-if="b">B</div>',
-    );
+    const result = compileTemplate('<div u-if="a">A</div><div u-else-if="b">B</div>');
     // The outer createIf should exist
     expect(result.code).toContain('createIf(');
     // Should contain two createIf calls (one nested inside the false branch)
