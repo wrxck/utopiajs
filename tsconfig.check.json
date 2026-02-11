@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@matthesketh/utopia-core": ["packages/core/src/index.ts"],
+      "@matthesketh/utopia-runtime": ["packages/runtime/src/index.ts"],
+      "@matthesketh/utopia-compiler": ["packages/compiler/src/index.ts"],
+      "@matthesketh/utopia-router": ["packages/router/src/index.ts"],
+      "@matthesketh/utopia-server/ssr-runtime": ["packages/server/src/ssr-runtime.ts"],
+      "@matthesketh/utopia-server": ["packages/server/src/index.ts"],
+      "@matthesketh/utopia-email": ["packages/email/src/index.ts"],
+      "@matthesketh/utopia-email/smtp": ["packages/email/src/adapters/smtp.ts"],
+      "@matthesketh/utopia-email/resend": ["packages/email/src/adapters/resend.ts"],
+      "@matthesketh/utopia-email/sendgrid": ["packages/email/src/adapters/sendgrid.ts"],
+      "@matthesketh/utopia-ai": ["packages/ai/src/index.ts"],
+      "@matthesketh/utopia-ai/openai": ["packages/ai/src/adapters/openai.ts"],
+      "@matthesketh/utopia-ai/anthropic": ["packages/ai/src/adapters/anthropic.ts"],
+      "@matthesketh/utopia-ai/google": ["packages/ai/src/adapters/google.ts"],
+      "@matthesketh/utopia-ai/ollama": ["packages/ai/src/adapters/ollama.ts"],
+      "@matthesketh/utopia-ai/mcp": ["packages/ai/src/mcp/index.ts"],
+      "@matthesketh/utopia-vite-plugin": ["packages/vite-plugin/src/index.ts"]
+    }
+  },
+  "exclude": ["node_modules", "**/dist/**", "examples/**", "packages/create-utopia/template/**"]
+}

@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { signal, effect as coreEffect } from '@matthesketh/utopia-core';
+import { signal, effect as coreEffect, type ReadonlySignal } from '@matthesketh/utopia-core';
 
 import {
   createElement,
@@ -66,7 +66,7 @@ describe('DOM helpers', () => {
     });
 
     it('converts non-string values to strings', () => {
-      const node = createTextNode(42 as any);
+      const node = createTextNode(String(42));
       expect(node.data).toBe('42');
     });
   });
@@ -112,7 +112,7 @@ describe('DOM helpers', () => {
     let el: HTMLElement;
 
     beforeEach(() => {
-      el = createElement('div');
+      el = createElement('div') as HTMLElement;
     });
 
     it('sets a plain string attribute', () => {
@@ -217,7 +217,7 @@ describe('DOM helpers', () => {
 
   describe('addEventListener', () => {
     it('adds an event listener and returns a cleanup function', () => {
-      const el = createElement('button');
+      const el = createElement('button') as HTMLElement;
       const handler = vi.fn();
 
       const cleanup = addEventListener(el, 'click', handler);
@@ -232,7 +232,7 @@ describe('DOM helpers', () => {
     });
 
     it('supports multiple listeners for the same event', () => {
-      const el = createElement('div');
+      const el = createElement('div') as HTMLElement;
       const a = vi.fn();
       const b = vi.fn();
 
@@ -591,7 +591,7 @@ describe('Directives', () => {
         setup: (props) => ({ message: props.message ?? 'default' }),
         render: (ctx) => {
           const el = createElement('p');
-          el.textContent = ctx.message;
+          el.textContent = String(ctx.message);
           return el;
         },
       };
@@ -618,8 +618,9 @@ describe('Directives', () => {
       const definition: ComponentDefinition = {
         render: (ctx) => {
           const wrapper = createElement('div');
-          if (ctx.$slots && ctx.$slots.default) {
-            wrapper.appendChild(ctx.$slots.default());
+          const slots = ctx.$slots as Record<string, (() => Node) | undefined> | undefined;
+          if (slots?.default) {
+            wrapper.appendChild(slots.default());
           }
           return wrapper;
         },
@@ -692,7 +693,7 @@ describe('Component lifecycle', () => {
         setup: () => ({ text: 'mounted' }),
         render: (ctx) => {
           const el = createElement('h1');
-          el.textContent = ctx.text;
+          el.textContent = String(ctx.text);
           return el;
         },
       };
@@ -942,12 +943,13 @@ describe('Hydration', () => {
     const definition: ComponentDefinition = {
       setup: () => ({ count }),
       render: (ctx) => {
+        const countFn = ctx.count as ReadonlySignal<number>;
         const h1 = createElement('h1');
         const textNode = createTextNode('');
-        setText(textNode, String(ctx.count()));
+        setText(textNode, String(countFn()));
         appendChild(h1, textNode);
         // Set up the reactive effect like the compiler would
-        coreEffect(() => setText(textNode, String(ctx.count())));
+        coreEffect(() => setText(textNode, String(countFn())));
         return h1;
       },
     };
@@ -1015,6 +1017,7 @@ describe('Effect disposal on unmount', () => {
     const definition: ComponentDefinition = {
       setup: () => ({ count }),
       render: (ctx) => {
+        const countFn = ctx.count as ReadonlySignal<number>;
         const el = createElement('div');
         const textNode = createTextNode('');
         appendChild(el, textNode);
@@ -1023,7 +1026,7 @@ describe('Effect disposal on unmount', () => {
         // (which pushes a disposer) to reactively update the text.
         createEffect(() => {
           effectRunCount();
-          setText(textNode, String(ctx.count()));
+          setText(textNode, String(countFn()));
         });
 
         return el;

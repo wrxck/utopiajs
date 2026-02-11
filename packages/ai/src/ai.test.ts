@@ -14,7 +14,21 @@ import type {
   ChatRequest,
   ChatResponse,
   ChatChunk,
+  MessageContent,
+  ImageContent,
+  ToolCallContent,
+  ToolResultContent,
 } from './types.js';
+import type {
+  MCPToolResult,
+  MCPPromptResult,
+  MCPResourceContent,
+  MCPToolDefinition,
+  MCPResourceDefinition,
+  MCPPromptDefinition,
+  MCPPromptArgument,
+} from './mcp/types.js';
+import type { ServerResponse } from 'node:http';
 
 // ---------------------------------------------------------------------------
 // Mock adapter
@@ -256,6 +270,33 @@ describe('ai.run - tool calling loop', () => {
 // MCP Server
 // ---------------------------------------------------------------------------
 
+/** Result shape from the MCP `initialize` method. */
+interface MCPInitializeResult {
+  protocolVersion: string;
+  capabilities: { tools?: object; resources?: object; prompts?: object };
+  serverInfo: { name: string; version: string };
+}
+
+/** Result shape from the MCP `tools/list` method. */
+interface MCPToolsListResult {
+  tools: Array<Pick<MCPToolDefinition, 'name' | 'description' | 'inputSchema'>>;
+}
+
+/** Result shape from the MCP `resources/list` method. */
+interface MCPResourcesListResult {
+  resources: Array<Pick<MCPResourceDefinition, 'uri' | 'name' | 'description' | 'mimeType'>>;
+}
+
+/** Result shape from the MCP `resources/read` method. */
+interface MCPResourcesReadResult {
+  contents: MCPResourceContent[];
+}
+
+/** Result shape from the MCP `prompts/list` method. */
+interface MCPPromptsListResult {
+  prompts: Array<Pick<MCPPromptDefinition, 'name' | 'description'> & { arguments?: MCPPromptArgument[] }>;
+}
+
 describe('MCP Server', () => {
   function createTestServer() {
     return createMCPServer({
@@ -329,7 +370,7 @@ describe('MCP Server', () => {
     });
 
     expect(response.error).toBeUndefined();
-    const result = response.result as any;
+    const result = response.result as MCPInitializeResult;
     expect(result.protocolVersion).toBe('2024-11-05');
     expect(result.serverInfo.name).toBe('test-server');
     expect(result.capabilities.tools).toBeDefined();
@@ -345,7 +386,7 @@ describe('MCP Server', () => {
       method: 'tools/list',
     });
 
-    const result = response.result as any;
+    const result = response.result as MCPToolsListResult;
     expect(result.tools).toHaveLength(1);
     expect(result.tools[0].name).toBe('add');
   });
@@ -359,7 +400,7 @@ describe('MCP Server', () => {
       params: { name: 'add', arguments: { a: 3, b: 4 } },
     });
 
-    const result = response.result as any;
+    const result = response.result as MCPToolResult;
     expect(result.content[0].text).toBe('7');
   });
 
@@ -384,7 +425,7 @@ describe('MCP Server', () => {
       method: 'resources/list',
     });
 
-    const result = response.result as any;
+    const result = response.result as MCPResourcesListResult;
     expect(result.resources).toHaveLength(1);
     expect(result.resources[0].uri).toBe('config://app');
   });
@@ -398,9 +439,9 @@ describe('MCP Server', () => {
       params: { uri: 'config://app' },
     });
 
-    const result = response.result as any;
+    const result = response.result as MCPResourcesReadResult;
     expect(result.contents[0].uri).toBe('config://app');
-    const parsed = JSON.parse(result.contents[0].text);
+    const parsed = JSON.parse(result.contents[0].text!);
     expect(parsed.theme).toBe('dark');
   });
 
@@ -412,7 +453,7 @@ describe('MCP Server', () => {
       method: 'prompts/list',
     });
 
-    const result = response.result as any;
+    const result = response.result as MCPPromptsListResult;
     expect(result.prompts).toHaveLength(1);
     expect(result.prompts[0].name).toBe('greeting');
   });
@@ -426,7 +467,7 @@ describe('MCP Server', () => {
       params: { name: 'greeting', arguments: { name: 'Alice' } },
     });
 
-    const result = response.result as any;
+    const result = response.result as MCPPromptResult;
     expect(result.messages[0].content.text).toBe('Say hello to Alice');
   });
 
@@ -489,6 +530,10 @@ function mockRes() {
     writeHead: vi.fn(),
     write: vi.fn(),
     end: vi.fn(),
+  } as unknown as ServerResponse & {
+    writeHead: ReturnType<typeof vi.fn>;
+    write: ReturnType<typeof vi.fn>;
+    end: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -513,7 +558,7 @@ describe('streamSSE', () => {
       // no chunks
     }
 
-    await streamSSE(res as any, emptyStream());
+    await streamSSE(res, emptyStream());
 
     expect(res.writeHead).toHaveBeenCalledWith(200, {
       'Content-Type': 'text/event-stream',
@@ -530,10 +575,10 @@ describe('streamSSE', () => {
       yield { delta: ' World', finishReason: 'stop' };
     }
 
-    await streamSSE(res as any, twoChunks());
+    await streamSSE(res, twoChunks());
 
     // Two data writes for chunks + 1 for [DONE]
-    const writes = res.write.mock.calls.map((c: any[]) => c[0]);
+    const writes = res.write.mock.calls.map((c: unknown[]) => c[0] as string);
     expect(writes).toHaveLength(3);
 
     // First chunk
@@ -552,9 +597,9 @@ describe('streamSSE', () => {
       yield { delta: 'Hi' };
     }
 
-    await streamSSE(res as any, oneChunk());
+    await streamSSE(res, oneChunk());
 
-    const writes = res.write.mock.calls.map((c: any[]) => c[0]);
+    const writes = res.write.mock.calls.map((c: unknown[]) => c[0] as string);
     expect(writes[writes.length - 1]).toBe('data: [DONE]\n\n');
     expect(res.end).toHaveBeenCalled();
   });
@@ -569,7 +614,7 @@ describe('streamSSE', () => {
       yield { delta: 'c' };
     }
 
-    await streamSSE(res as any, threeChunks(), { onChunk });
+    await streamSSE(res, threeChunks(), { onChunk });
 
     expect(onChunk).toHaveBeenCalledTimes(3);
     expect(onChunk).toHaveBeenNthCalledWith(1, { delta: 'a' });
@@ -830,17 +875,17 @@ describe('ai.run - multiple tool calls in one round', () => {
     expect(messages[3].role).toBe('tool');
 
     // Verify assistant message contains both tool calls
-    const assistantContent = messages[1].content as any[];
+    const assistantContent = messages[1].content as ToolCallContent[];
     expect(assistantContent).toHaveLength(2);
     expect(assistantContent[0].name).toBe('get_weather');
     expect(assistantContent[1].name).toBe('get_time');
 
     // Verify tool result messages
-    const toolResult0 = (messages[2].content as any[])[0];
+    const toolResult0 = (messages[2].content as ToolResultContent[])[0];
     expect(toolResult0.type).toBe('tool_result');
     expect(toolResult0.id).toBe('call_a');
 
-    const toolResult1 = (messages[3].content as any[])[0];
+    const toolResult1 = (messages[3].content as ToolResultContent[])[0];
     expect(toolResult1.type).toBe('tool_result');
     expect(toolResult1.id).toBe('call_b');
   });
@@ -886,11 +931,11 @@ describe('edge cases', () => {
 
     // Verify the request was passed through with multimodal content
     const sentRequest = chatSpy.mock.calls[0][0] as ChatRequest;
-    const content = sentRequest.messages[0].content as any[];
+    const content = sentRequest.messages[0].content as Exclude<MessageContent, string>[];
     expect(content).toHaveLength(2);
     expect(content[0].type).toBe('text');
     expect(content[1].type).toBe('image');
-    expect(content[1].source).toBe('data:image/png;base64,iVBORw0KGgoAAAANS...');
+    expect((content[1] as ImageContent).source).toBe('data:image/png;base64,iVBORw0KGgoAAAANS...');
   });
 
   it('should handle tool call with empty arguments {}', async () => {

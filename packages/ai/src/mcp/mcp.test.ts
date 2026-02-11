@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createMCPHandler } from './handler.js';
 import { createMCPClient } from './client.js';
 import { createMCPServer } from './server.js';
@@ -13,8 +14,18 @@ import type { MCPServer } from './server.js';
 // Test helpers
 // ---------------------------------------------------------------------------
 
-function mockReq(method: string, url: string, body?: string) {
-  const req = new EventEmitter() as any;
+interface MockRequest extends EventEmitter {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+}
+
+interface ResourceReadResult {
+  contents: Array<{ uri: string; text?: string; mimeType?: string }>;
+}
+
+function mockReq(method: string, url: string, body?: string): MockRequest {
+  const req = new EventEmitter() as MockRequest;
   req.method = method;
   req.url = url;
   req.headers = { host: 'localhost' };
@@ -39,7 +50,7 @@ function mockRes() {
     _body: '',
     _status: 200,
   };
-  res.writeHead.mockImplementation((status: number, headers?: any) => {
+  res.writeHead.mockImplementation((status: number, headers?: Record<string, string>) => {
     res._status = status;
     if (headers) Object.assign(res._headers, headers);
   });
@@ -118,7 +129,7 @@ describe('MCP Handler', () => {
     const req = mockReq('POST', '/', body);
     const res = mockRes();
 
-    handler(req, res as any);
+    handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
 
     // Wait for the async handler to complete
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -137,7 +148,7 @@ describe('MCP Handler', () => {
     const req = mockReq('OPTIONS', '/');
     const res = mockRes();
 
-    handler(req, res as any);
+    handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -158,7 +169,7 @@ describe('MCP Handler', () => {
     const req = mockReq('POST', '/', '{not valid json!!!');
     const res = mockRes();
 
-    handler(req, res as any);
+    handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -176,7 +187,7 @@ describe('MCP Handler', () => {
     const req = mockReq('GET', '/sse');
     const res = mockRes();
 
-    handler(req, res as any);
+    handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -193,7 +204,7 @@ describe('MCP Handler', () => {
     const req = mockReq('PUT', '/');
     const res = mockRes();
 
-    handler(req, res as any);
+    handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -206,7 +217,7 @@ describe('MCP Handler', () => {
     const req = mockReq('DELETE', '/resource');
     const res = mockRes();
 
-    handler(req, res as any);
+    handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -217,7 +228,7 @@ describe('MCP Handler', () => {
     const req = mockReq('PUT', '/');
     const res = mockRes();
 
-    handler(req, res as any);
+    handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -236,7 +247,7 @@ describe('MCP Handler', () => {
     const req = mockReq('POST', '/', body);
     const res = mockRes();
 
-    handler(req, res as any);
+    handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -263,8 +274,13 @@ describe('MCP Client', () => {
     globalThis.fetch = originalFetch;
   });
 
+  /** Access the stubbed fetch as a vitest mock. */
+  function fetchMock(): ReturnType<typeof vi.fn> {
+    return globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+  }
+
   function mockFetchResponse(result: unknown, id: number = 1) {
-    (globalThis.fetch as any).mockResolvedValueOnce({
+    fetchMock().mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         jsonrpc: '2.0',
@@ -287,7 +303,7 @@ describe('MCP Client', () => {
     const result = await client.initialize();
 
     expect(globalThis.fetch).toHaveBeenCalledOnce();
-    const [url, options] = (globalThis.fetch as any).mock.calls[0];
+    const [url, options] = fetchMock().mock.calls[0];
     expect(url).toBe('http://localhost:3001/mcp');
     expect(options.method).toBe('POST');
     expect(options.headers['Content-Type']).toBe('application/json');
@@ -331,7 +347,7 @@ describe('MCP Client', () => {
     expect(result[0].name).toBe('get_weather');
     expect(result[1].name).toBe('search');
 
-    const body = JSON.parse((globalThis.fetch as any).mock.calls[0][1].body);
+    const body = JSON.parse(fetchMock().mock.calls[0][1].body);
     expect(body.method).toBe('tools/list');
   });
 
@@ -345,7 +361,7 @@ describe('MCP Client', () => {
     const client = createMCPClient({ url: 'http://localhost:3001/mcp' });
     const result = await client.callTool('get_weather', { city: 'NYC' });
 
-    const body = JSON.parse((globalThis.fetch as any).mock.calls[0][1].body);
+    const body = JSON.parse(fetchMock().mock.calls[0][1].body);
     expect(body.method).toBe('tools/call');
     expect(body.params.name).toBe('get_weather');
     expect(body.params.arguments).toEqual({ city: 'NYC' });
@@ -365,7 +381,7 @@ describe('MCP Client', () => {
     expect(result[0].uri).toBe('config://app');
     expect(result[0].name).toBe('App Config');
 
-    const body = JSON.parse((globalThis.fetch as any).mock.calls[0][1].body);
+    const body = JSON.parse(fetchMock().mock.calls[0][1].body);
     expect(body.method).toBe('resources/list');
   });
 
@@ -384,7 +400,7 @@ describe('MCP Client', () => {
     const client = createMCPClient({ url: 'http://localhost:3001/mcp' });
     const result = await client.readResource('config://app');
 
-    const body = JSON.parse((globalThis.fetch as any).mock.calls[0][1].body);
+    const body = JSON.parse(fetchMock().mock.calls[0][1].body);
     expect(body.method).toBe('resources/read');
     expect(body.params.uri).toBe('config://app');
 
@@ -462,7 +478,7 @@ describe('MCP Client', () => {
   });
 
   it('should throw on JSON-RPC error from server', async () => {
-    (globalThis.fetch as any).mockResolvedValueOnce({
+    fetchMock().mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         jsonrpc: '2.0',
@@ -482,7 +498,7 @@ describe('MCP Client', () => {
 
     try {
       // Reset the mock for a second attempt
-      (globalThis.fetch as any).mockResolvedValueOnce({
+      fetchMock().mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           jsonrpc: '2.0',
@@ -492,14 +508,15 @@ describe('MCP Client', () => {
         text: async () => '{}',
       });
       await client.listTools();
-    } catch (err: any) {
-      expect(err.message).toBe('Method not found');
-      expect(err.code).toBe(-32601);
+    } catch (err: unknown) {
+      const rpcErr = err as { message: string; code: number };
+      expect(rpcErr.message).toBe('Method not found');
+      expect(rpcErr.code).toBe(-32601);
     }
   });
 
   it('should throw on network failure', async () => {
-    (globalThis.fetch as any).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    fetchMock().mockRejectedValueOnce(new TypeError('Failed to fetch'));
 
     const client = createMCPClient({ url: 'http://localhost:3001/mcp' });
 
@@ -507,7 +524,7 @@ describe('MCP Client', () => {
   });
 
   it('should throw on non-ok HTTP response', async () => {
-    (globalThis.fetch as any).mockResolvedValueOnce({
+    fetchMock().mockResolvedValueOnce({
       ok: false,
       status: 500,
       text: async () => 'Internal Server Error',
@@ -530,7 +547,7 @@ describe('MCP Client', () => {
 
     await client.listTools();
 
-    const [, options] = (globalThis.fetch as any).mock.calls[0];
+    const [, options] = fetchMock().mock.calls[0];
     expect(options.headers['Authorization']).toBe('Bearer token123');
     expect(options.headers['Content-Type']).toBe('application/json');
   });
@@ -543,8 +560,8 @@ describe('MCP Client', () => {
     await client.listTools();
     await client.listResources();
 
-    const body1 = JSON.parse((globalThis.fetch as any).mock.calls[0][1].body);
-    const body2 = JSON.parse((globalThis.fetch as any).mock.calls[1][1].body);
+    const body1 = JSON.parse(fetchMock().mock.calls[0][1].body);
+    const body2 = JSON.parse(fetchMock().mock.calls[1][1].body);
     expect(body1.id).toBe(1);
     expect(body2.id).toBe(2);
   });
@@ -602,7 +619,7 @@ describe('MCP Server — template URI matching with regex special characters', (
     });
 
     expect(response.error).toBeUndefined();
-    const result = response.result as any;
+    const result = response.result as ResourceReadResult;
     expect(result.contents[0].uri).toBe('config://app.json');
     expect(result.contents[0].text).toBe('{"ok":true}');
   });
@@ -668,7 +685,7 @@ describe('MCP Server — template URI matching with regex special characters', (
     });
 
     expect(response.error).toBeUndefined();
-    const result = response.result as any;
+    const result = response.result as ResourceReadResult;
     expect(result.contents[0].uri).toBe('files://docs/readme.md');
 
     // But the dot in ".md" should be literal — "Xmd" should NOT match

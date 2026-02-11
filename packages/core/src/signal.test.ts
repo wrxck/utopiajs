@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { describe, it, expect, vi } from 'vitest';
-import { signal, computed, effect, batch, untrack } from './index';
+import { signal, computed, effect, batch, untrack, type ReadonlySignal } from './index';
 
 // ---------------------------------------------------------------------------
 // signal — basic read / write
@@ -34,7 +34,7 @@ describe('signal', () => {
 
   it('does not notify subscribers when value is the same (Object.is)', () => {
     const s = signal(1);
-    const fn = vi.fn(() => s());
+    const fn = vi.fn(() => { s(); });
 
     effect(fn);
     fn.mockClear(); // clear the initial synchronous run
@@ -45,7 +45,7 @@ describe('signal', () => {
 
   it('handles NaN correctly (NaN === NaN via Object.is)', () => {
     const s = signal(NaN);
-    const fn = vi.fn(() => s());
+    const fn = vi.fn(() => { s(); });
 
     effect(fn);
     fn.mockClear();
@@ -376,7 +376,8 @@ describe('diamond dependency', () => {
     const c = computed(() => a() * 10);
 
     const fn = vi.fn(() => {
-      return b() + c();
+      b();
+      c();
     });
 
     effect(fn);
@@ -621,7 +622,7 @@ describe('edge cases', () => {
   it('effect does not re-run when set to the same object reference', () => {
     const obj = { count: 0 };
     const s = signal(obj);
-    const fn = vi.fn(() => s());
+    const fn = vi.fn(() => { s(); });
 
     effect(fn);
     fn.mockClear();
@@ -632,7 +633,7 @@ describe('edge cases', () => {
 
   it('effect re-runs when set to a different object with same shape', () => {
     const s = signal({ count: 0 });
-    const fn = vi.fn(() => s());
+    const fn = vi.fn(() => { s(); });
 
     effect(fn);
     fn.mockClear();
@@ -659,8 +660,8 @@ describe('edge cases', () => {
     const log1: number[] = [];
     const log2: number[] = [];
 
-    effect(() => log1.push(s()));
-    effect(() => log2.push(s()));
+    effect(() => { log1.push(s()); });
+    effect(() => { log2.push(s()); });
 
     s.set(1);
 
@@ -923,7 +924,7 @@ describe('error handling', () => {
 describe('circular dependencies', () => {
   it('detects circular dependency in computed chain', () => {
     const s = signal(0);
-    const computeds: any[] = [];
+    const computeds: ReadonlySignal<number>[] = [];
 
     computeds.push(computed(() => s() + 1));
     for (let i = 1; i <= 100; i++) {
