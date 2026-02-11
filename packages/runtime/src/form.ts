@@ -23,7 +23,13 @@
 //   form.handleSubmit(fn)       // validates all, calls fn if valid
 // ============================================================================
 
-import { signal, computed, batch, type Signal, type ReadonlySignal } from '@matthesketh/utopia-core';
+import {
+  signal,
+  computed,
+  batch,
+  type Signal,
+  type ReadonlySignal,
+} from '@matthesketh/utopia-core';
 
 // ---------------------------------------------------------------------------
 // Validation rule types
@@ -110,9 +116,7 @@ export interface Form<T extends Record<string, FieldConfig<any>>> {
  * });
  * ```
  */
-export function createForm<T extends Record<string, FieldConfig<any>>>(
-  config: T,
-): Form<T> {
+export function createForm<T extends Record<string, FieldConfig<any>>>(config: T): Form<T> {
   const fieldEntries: [string, FormField<any>][] = [];
 
   for (const [key, fieldConfig] of Object.entries(config)) {
@@ -285,10 +289,7 @@ export function email(message = 'Invalid email address'): ValidationRule<string>
 }
 
 /** String must match the given regex pattern. */
-export function pattern(
-  regex: RegExp,
-  message = 'Invalid format',
-): ValidationRule<string> {
+export function pattern(regex: RegExp, message = 'Invalid format'): ValidationRule<string> {
   return (value) => {
     if (typeof value !== 'string' || value === '') return null;
     if (!regex.test(value)) return message;

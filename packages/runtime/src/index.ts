@@ -80,9 +80,4 @@ export {
   validate,
 } from './form.js';
 
-export type {
-  ValidationRule,
-  FieldConfig,
-  FormField,
-  Form,
-} from './form.js';
+export type { ValidationRule, FieldConfig, FormField, Form } from './form.js';
