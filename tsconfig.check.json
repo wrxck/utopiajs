@@ -19,7 +19,9 @@
       "@matthesketh/utopia-ai/google": ["packages/ai/src/adapters/google.ts"],
       "@matthesketh/utopia-ai/ollama": ["packages/ai/src/adapters/ollama.ts"],
       "@matthesketh/utopia-ai/mcp": ["packages/ai/src/mcp/index.ts"],
-      "@matthesketh/utopia-vite-plugin": ["packages/vite-plugin/src/index.ts"]
+      "@matthesketh/utopia-vite-plugin": ["packages/vite-plugin/src/index.ts"],
+      "@matthesketh/utopia-test": ["packages/test/src/index.ts"],
+      "@matthesketh/utopia-test/plugin": ["packages/test/src/vitest-plugin.ts"]
     }
   },
   "exclude": ["node_modules", "**/dist/**", "examples/**", "packages/create-utopia/template/**"]

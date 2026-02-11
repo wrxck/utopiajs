@@ -35,10 +35,12 @@
     "dev": "tsup src/index.ts --format esm --watch"
   },
   "dependencies": {
-    "@matthesketh/utopia-vite-plugin": "workspace:*"
+    "@matthesketh/utopia-vite-plugin": "workspace:*",
+    "@matthesketh/utopia-test": "workspace:*"
   },
   "peerDependencies": {
-    "vite": "^6.0.0 || ^7.0.0"
+    "vite": "^6.0.0 || ^7.0.0",
+    "vitest": "^3.0.0"
   },
   "devDependencies": {
     "vite": "^7.3.1"
