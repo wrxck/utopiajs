@@ -25,6 +25,22 @@ interface ProjectOptions {
 type CSSPreprocessor = ProjectOptions['cssPreprocessor'];
 
 // ---------------------------------------------------------------------------
+// Regex constants
+// ---------------------------------------------------------------------------
+
+/** Validates a legal npm package name (with optional scope). */
+export const VALID_PACKAGE_NAME_RE = /^(?:@[a-z0-9-*~][a-z0-9-*._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
+
+/** Matches one or more whitespace characters. */
+export const WHITESPACE_RE = /\s+/g;
+
+/** Matches a leading dot or underscore. */
+export const LEADING_SPECIAL_RE = /^[._]/;
+
+/** Matches characters that are invalid in a package name. */
+export const INVALID_CHARS_RE = /[^a-z0-9-~]+/g;
+
+// ---------------------------------------------------------------------------
 // Validation helpers
 // ---------------------------------------------------------------------------
 
@@ -33,7 +49,7 @@ type CSSPreprocessor = ProjectOptions['cssPreprocessor'];
  * Based on the validate-npm-package-name specification.
  */
 function isValidPackageName(name: string): boolean {
-  return /^(?:@[a-z0-9-*~][a-z0-9-*._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/.test(name);
+  return VALID_PACKAGE_NAME_RE.test(name);
 }
 
 /**
@@ -44,9 +60,9 @@ function toValidPackageName(name: string): string {
   return name
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/^[._]/, '')
-    .replace(/[^a-z0-9-~]+/g, '-');
+    .replace(WHITESPACE_RE, '-')
+    .replace(LEADING_SPECIAL_RE, '')
+    .replace(INVALID_CHARS_RE, '-');
 }
 
 /**
@@ -428,12 +444,15 @@ function printSuccessBox(projectName: string, root: string): void {
   console.log();
 }
 
+/** Matches ANSI escape codes for stripping. */
+// eslint-disable-next-line no-control-regex
+export const ANSI_ESCAPE_RE = /\u001B\[[0-9;]*m/g;
+
 /**
  * Strips ANSI escape codes for length measurement.
  */
 function stripAnsi(str: string): string {
-  // eslint-disable-next-line no-control-regex
-  return str.replace(/\u001B\[[0-9;]*m/g, '');
+  return str.replace(ANSI_ESCAPE_RE, '');
 }
 
 // ---------------------------------------------------------------------------

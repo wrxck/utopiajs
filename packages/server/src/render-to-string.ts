@@ -6,17 +6,24 @@ import type { VNode, VElement } from './vnode.js';
 import type { ComponentDefinition } from './ssr-runtime.js';
 import { createComponent, flushStyles } from './ssr-runtime.js';
 
-const VALID_TAG = /^[a-zA-Z][a-zA-Z0-9-]*$/;
+export const VALID_TAG = /^[a-zA-Z][a-zA-Z0-9-]*$/;
 function validateTag(tag: string): string {
   if (!VALID_TAG.test(tag)) throw new Error(`Invalid tag name: ${tag}`);
   return tag;
 }
 
-const VALID_ATTR = /^[a-zA-Z_:@][a-zA-Z0-9_.:-]*$/;
+export const VALID_ATTR = /^[a-zA-Z_:@][a-zA-Z0-9_.:-]*$/;
 function validateAttr(name: string): string {
   if (!VALID_ATTR.test(name)) throw new Error(`Invalid attribute name: ${name}`);
   return name;
 }
+
+// Regex constants for HTML escaping.
+export const AMPERSAND_RE = /&/g;
+export const LESS_THAN_RE = /</g;
+export const GREATER_THAN_RE = />/g;
+export const DOUBLE_QUOTE_RE = /"/g;
+export const DOUBLE_DASH_RE = /--/g;
 
 // HTML void elements (self-closing, no closing tag).
 const VOID_ELEMENTS = new Set([
@@ -40,14 +47,17 @@ const VOID_ELEMENTS = new Set([
  * Escape special HTML characters in text content.
  */
 function escapeHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return str
+    .replace(AMPERSAND_RE, '&amp;')
+    .replace(LESS_THAN_RE, '&lt;')
+    .replace(GREATER_THAN_RE, '&gt;');
 }
 
 /**
  * Escape special characters in attribute values.
  */
 function escapeAttr(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  return str.replace(AMPERSAND_RE, '&amp;').replace(DOUBLE_QUOTE_RE, '&quot;');
 }
 
 /**
@@ -55,7 +65,7 @@ function escapeAttr(str: string): string {
  * prematurely close the comment.
  */
 function escapeComment(str: string): string {
-  return str.replace(/--/g, '-\u200B-');
+  return str.replace(DOUBLE_DASH_RE, '-\u200B-');
 }
 
 /**

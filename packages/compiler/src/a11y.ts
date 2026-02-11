@@ -21,6 +21,11 @@
 import type { TemplateNode, ElementNode, Attribute, Directive } from './template-compiler';
 import { NodeType } from './template-compiler';
 
+// ---- Regex Constants --------------------------------------------------------
+
+/** Matches heading tags h1 through h6 and captures the level number. */
+export const HEADING_LEVEL_RE = /^h([1-6])$/;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -251,7 +256,7 @@ const rules: Record<string, RuleCheck> = {
   },
 
   'heading-order'(node, warnings, ctx) {
-    const match = node.tag.match(/^h([1-6])$/);
+    const match = node.tag.match(HEADING_LEVEL_RE);
     if (!match) return;
     const level = parseInt(match[1], 10);
     if (ctx.lastHeadingLevel > 0 && level > ctx.lastHeadingLevel + 1) {

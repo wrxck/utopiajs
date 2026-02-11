@@ -69,10 +69,15 @@ export function wrapEmailDocument(options: WrapEmailDocumentOptions): string {
 </html>`;
 }
 
+export const AMPERSAND_RE = /&/g;
+export const LESS_THAN_RE = /</g;
+export const GREATER_THAN_RE = />/g;
+export const DOUBLE_QUOTE_RE = /"/g;
+
 function escapeHtml(str: string): string {
   return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(AMPERSAND_RE, '&amp;')
+    .replace(LESS_THAN_RE, '&lt;')
+    .replace(GREATER_THAN_RE, '&gt;')
+    .replace(DOUBLE_QUOTE_RE, '&quot;');
 }
