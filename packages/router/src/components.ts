@@ -328,12 +328,18 @@ function clearContainer(container: HTMLElement): void {
   }
 }
 
+export const AMPERSAND_RE = /&/g;
+export const LESS_THAN_RE = /</g;
+export const GREATER_THAN_RE = />/g;
+export const DOUBLE_QUOTE_RE = /"/g;
+export const SINGLE_QUOTE_RE = /'/g;
+
 /** Escape HTML entities to prevent XSS in error messages. */
 function escapeHtml(str: string): string {
   return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;');
+    .replace(AMPERSAND_RE, '&amp;')
+    .replace(LESS_THAN_RE, '&lt;')
+    .replace(GREATER_THAN_RE, '&gt;')
+    .replace(DOUBLE_QUOTE_RE, '&quot;')
+    .replace(SINGLE_QUOTE_RE, '&#x27;');
 }

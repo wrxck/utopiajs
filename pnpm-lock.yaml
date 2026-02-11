@@ -66,9 +66,15 @@ importers:
 
   packages/cli:
     dependencies:
+      '@matthesketh/utopia-test':
+        specifier: workspace:*
+        version: link:../test
       '@matthesketh/utopia-vite-plugin':
         specifier: workspace:*
         version: link:../vite-plugin
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@25.2.2)(happy-dom@20.5.0)(jsdom@24.1.3)
     devDependencies:
       vite:
         specifier: ^7.3.1
@@ -146,6 +152,22 @@ importers:
       '@matthesketh/utopia-router':
         specifier: workspace:*
         version: link:../router
+
+  packages/test:
+    dependencies:
+      '@matthesketh/utopia-compiler':
+        specifier: workspace:*
+        version: link:../compiler
+      '@matthesketh/utopia-runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@25.2.2)(happy-dom@20.5.0)(jsdom@24.1.3)
+    devDependencies:
+      vite:
+        specifier: ^7.3.1
+        version: 7.3.1(@types/node@25.2.2)
 
   packages/vite-plugin:
     dependencies:

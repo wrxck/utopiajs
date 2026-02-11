@@ -24,8 +24,17 @@ export interface SFCDescriptor {
   template: SFCBlock | null;
   script: SFCBlock | null;
   style: SFCBlock | null;
+  test: SFCBlock | null;
   filename: string;
 }
+
+// ---- Regex Constants --------------------------------------------------------
+
+/** Matches opening tags for the known SFC block types. */
+export const BLOCK_RE = /<(template|script|style|test)([\s][^>]*)?\s*>/g;
+
+/** Matches a single attribute in an opening tag (name, optional quoted/unquoted value). */
+export const ATTR_RE = /([a-zA-Z_][\w-]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g;
 
 // ---- Implementation --------------------------------------------------------
 
@@ -40,18 +49,19 @@ export function parse(source: string, filename: string = 'anonymous.utopia'): SF
     template: null,
     script: null,
     style: null,
+    test: null,
     filename,
   };
 
   // We use a regex to locate opening tags for the three known block types.
   // This is safe because we only need to find *top-level* tags — they are
   // never nested inside one another.
-  const blockRe = /<(template|script|style)([\s][^>]*)?\s*>/g;
+  BLOCK_RE.lastIndex = 0;
 
   let match: RegExpExecArray | null;
 
-  while ((match = blockRe.exec(source)) !== null) {
-    const tagName = match[1] as 'template' | 'script' | 'style';
+  while ((match = BLOCK_RE.exec(source)) !== null) {
+    const tagName = match[1] as 'template' | 'script' | 'style' | 'test';
     const attrString = match[2] || '';
     const openTagStart = match.index;
     const openTagEnd = openTagStart + match[0].length;
@@ -93,15 +103,13 @@ export function parse(source: string, filename: string = 'anonymous.utopia'): SF
 
     // Advance past the closing tag so the regex doesn't match inside the
     // block content (e.g. a nested <template> inside the template block).
-    blockRe.lastIndex = blockEnd;
+    BLOCK_RE.lastIndex = blockEnd;
   }
 
   return descriptor;
 }
 
 // ---- Attribute parsing -----------------------------------------------------
-
-const ATTR_RE = /([a-zA-Z_][\w-]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g;
 
 function parseAttributes(raw: string): Record<string, string | true> {
   const attrs: Record<string, string | true> = {};
