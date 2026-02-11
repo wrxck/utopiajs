@@ -293,6 +293,13 @@ export function mount(component: ComponentDefinition, _target: unknown) {
 }
 
 // ---------------------------------------------------------------------------
+// Lifecycle hooks — no-op on server
+// ---------------------------------------------------------------------------
+
+export function onMount(_fn: () => void): void {}
+export function onDestroy(_fn: () => void): void {}
+
+// ---------------------------------------------------------------------------
 // Scheduler — no-op on server
 // ---------------------------------------------------------------------------
 

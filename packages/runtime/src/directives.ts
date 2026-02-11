@@ -11,6 +11,8 @@ import {
   createComponentInstance,
   startCapturingDisposers,
   stopCapturingDisposers,
+  startCapturingLifecycle,
+  stopCapturingLifecycle,
 } from './component.js';
 import type { ComponentDefinition } from './component.js';
 
@@ -176,9 +178,10 @@ export function createComponent(
     }
   }
 
-  // Run the render pipeline. The instance is not mounted to a specific target
-  // here — the caller is responsible for inserting `instance.el` into the DOM.
+  // Run the render pipeline, capturing lifecycle hooks during setup.
+  startCapturingLifecycle();
   const ctx = Component.setup ? Component.setup(instance.props) : {};
+  const lifecycle = stopCapturingLifecycle();
 
   // Merge slots into the render context so templates can reference them.
   const renderCtx: Record<string, unknown> = {
@@ -199,9 +202,18 @@ export function createComponent(
     document.head.appendChild(style);
   }
 
-  // Attach a cleanup function to the node so callers can dispose effects.
+  // Run onMount callbacks.
+  for (const cb of lifecycle.mount) {
+    cb();
+  }
+
+  // Attach a cleanup function to the node so callers can dispose effects
+  // and run onDestroy callbacks.
   const node = instance.el;
   (node as DisposableNode).__cleanup = () => {
+    for (const cb of lifecycle.destroy) {
+      cb();
+    }
     for (const dispose of disposers) {
       dispose();
     }
