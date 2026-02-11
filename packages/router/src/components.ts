@@ -20,8 +20,8 @@ import type { RouteMatch } from './types.js';
  * Creates a DOM node that renders the current route's component.
  *
  * When the route changes:
- * 1. The old component is unmounted (removed from DOM)
- * 2. The new component is lazily loaded
+ * 1. The new component is lazily loaded (old content stays visible)
+ * 2. Once loaded, the old component is swapped out atomically
  * 3. If the route has a layout, the page is wrapped in the layout
  * 4. If loading fails and an error component exists, it is shown instead
  *
@@ -40,6 +40,9 @@ export function createRouterView(): Node {
   let currentCleanup: (() => void) | null = null;
   let currentMatch: RouteMatch | null = null;
 
+  // Monotonically increasing ID to invalidate stale async loads.
+  let loadId = 0;
+
   effect(() => {
     const match = currentRoute();
 
@@ -49,19 +52,17 @@ export function createRouterView(): Node {
     }
     currentMatch = match;
 
-    // Clean up previous component.
-    if (currentCleanup) {
-      currentCleanup();
-      currentCleanup = null;
-    }
-
-    // Clear the container.
-    while (container.firstChild) {
-      container.removeChild(container.firstChild);
-    }
+    // Increment load ID so any in-flight load from a previous navigation
+    // will bail out when it completes.
+    const thisLoadId = ++loadId;
 
     if (!match) {
-      // No matching route — render nothing (or a 404 placeholder).
+      // No matching route — clean up old content and show 404.
+      if (currentCleanup) {
+        currentCleanup();
+        currentCleanup = null;
+      }
+      clearContainer(container);
       const notFound = document.createElement('div');
       notFound.setAttribute('data-utopia-not-found', '');
       notFound.textContent = 'Page not found';
@@ -70,23 +71,42 @@ export function createRouterView(): Node {
     }
 
     // Load the route component (and layout/error if present).
-    loadRouteComponent(match, container).then((cleanupFn) => {
-      currentCleanup = cleanupFn;
+    // The old content remains visible during loading to prevent flicker.
+    loadRouteComponent(match).then((result) => {
+      // If a newer navigation happened while we were loading, discard.
+      if (thisLoadId !== loadId) return;
+      if (!result) return;
+
+      // Atomic swap: clean up old content, mount new content.
+      if (currentCleanup) {
+        currentCleanup();
+        currentCleanup = null;
+      }
+      clearContainer(container);
+      container.appendChild(result.node);
+      currentCleanup = result.cleanup;
     });
   });
 
   return container;
 }
 
+/** Result of loading a route component, ready for mounting. */
+interface LoadResult {
+  node: Node;
+  cleanup: () => void;
+}
+
 /**
- * Load and mount a route's component, optionally wrapping in a layout.
+ * Load a route's component (and optional layout), rendering them off-DOM.
  *
- * @returns A cleanup function to unmount the component
+ * Returns the rendered node and a cleanup function. Does NOT touch the
+ * container — the caller handles the swap so old content stays visible
+ * during the async load.
+ *
+ * @returns A LoadResult, or null if the route changed while loading
  */
-async function loadRouteComponent(
-  match: RouteMatch,
-  container: HTMLElement,
-): Promise<(() => void) | null> {
+async function loadRouteComponent(match: RouteMatch): Promise<LoadResult | null> {
   try {
     // Load component module(s) in parallel.
     const promises: Promise<Record<string, unknown>>[] = [match.route.component()];
@@ -108,33 +128,32 @@ async function loadRouteComponent(
     const PageComponent = pageModule.default ?? pageModule;
     const LayoutComponent = layoutModule ? (layoutModule.default ?? layoutModule) : null;
 
-    // Clear container before mounting (in case another load snuck in).
-    while (container.firstChild) {
-      container.removeChild(container.firstChild);
-    }
-
     // Render the page component.
     const pageNode = renderComponent(PageComponent, {
       params: match.params,
       url: match.url,
     });
 
+    let node: Node;
     if (LayoutComponent) {
       // Render layout with the page as a child slot.
-      const layoutNode = renderComponent(LayoutComponent, {
+      node = renderComponent(LayoutComponent, {
         params: match.params,
         url: match.url,
         children: pageNode,
       });
-      container.appendChild(layoutNode);
     } else {
-      container.appendChild(pageNode);
+      node = pageNode;
     }
 
-    return () => {
-      while (container.firstChild) {
-        container.removeChild(container.firstChild);
-      }
+    return {
+      node,
+      cleanup: () => {
+        // Remove the node from DOM when cleaning up.
+        if (node.parentNode) {
+          node.parentNode.removeChild(node);
+        }
+      },
     };
   } catch (err) {
     // Loading failed — try to show an error component.
@@ -142,28 +161,33 @@ async function loadRouteComponent(
       try {
         const errorModule = await match.route.error();
         const ErrorComponent = errorModule.default ?? errorModule;
-        while (container.firstChild) {
-          container.removeChild(container.firstChild);
-        }
         const errorNode = renderComponent(ErrorComponent, {
           error: err,
           params: match.params,
           url: match.url,
         });
-        container.appendChild(errorNode);
+
+        return {
+          node: errorNode,
+          cleanup: () => {
+            if (errorNode.parentNode) {
+              errorNode.parentNode.removeChild(errorNode);
+            }
+          },
+        };
       } catch {
         // Error component also failed — show fallback.
-        renderFallbackError(container, err);
+        return {
+          node: createFallbackErrorNode(err),
+          cleanup: () => {},
+        };
       }
     } else {
-      renderFallbackError(container, err);
+      return {
+        node: createFallbackErrorNode(err),
+        cleanup: () => {},
+      };
     }
-
-    return () => {
-      while (container.firstChild) {
-        container.removeChild(container.firstChild);
-      }
-    };
   }
 }
 
@@ -206,12 +230,9 @@ function renderComponent(component: unknown, props: Record<string, unknown>): No
 }
 
 /**
- * Render a fallback error message when no error component is available.
+ * Create a fallback error DOM node when no error component is available.
  */
-function renderFallbackError(container: HTMLElement, error: unknown): void {
-  while (container.firstChild) {
-    container.removeChild(container.firstChild);
-  }
+function createFallbackErrorNode(error: unknown): Node {
   const errorDiv = document.createElement('div');
   errorDiv.setAttribute('data-utopia-error', '');
   errorDiv.style.cssText = 'padding:2rem;color:#dc2626;font-family:monospace;';
@@ -221,7 +242,7 @@ function renderFallbackError(container: HTMLElement, error: unknown): void {
       error instanceof Error ? error.message : String(error),
     )}</pre>
   `;
-  container.appendChild(errorDiv);
+  return errorDiv;
 }
 
 // ---------------------------------------------------------------------------
@@ -299,6 +320,13 @@ export function createLink(props: {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Remove all child nodes from a container. */
+function clearContainer(container: HTMLElement): void {
+  while (container.firstChild) {
+    container.removeChild(container.firstChild);
+  }
+}
 
 /** Escape HTML entities to prevent XSS in error messages. */
 function escapeHtml(str: string): string {

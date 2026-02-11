@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-02-11
+
+### Fixed
+
+- `@matthesketh/utopia-router` — **Navigation flicker fix**: `createRouterView` now keeps old page content visible during async component loading, then swaps atomically. Previously, the container was cleared before the async load completed, causing a flash of empty content (just navbar/footer) between page transitions.
+
+### Changed
+
+- `@matthesketh/utopia-router` — `loadRouteComponent` refactored to return a `LoadResult` (node + cleanup) instead of directly mutating the container, enabling the atomic swap pattern
+- `@matthesketh/utopia-router` — Stale navigation loads are now tracked via a monotonic `loadId` counter, preventing race conditions when rapidly navigating between pages
+- `create-utopia` — Template dependency versions updated to `^0.3.0`
+
 ## [0.2.0] - 2026-02-10
 
 ### Added

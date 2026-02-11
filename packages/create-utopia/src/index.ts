@@ -180,12 +180,12 @@ function scaffoldProject(root: string, options: ProjectOptions): void {
 
   // Add email dependency
   if (useEmail && deps) {
-    deps['@matthesketh/utopia-email'] = '^0.1.0';
+    deps['@matthesketh/utopia-email'] = '^0.3.0';
   }
 
   // Add AI dependency
   if (useAI && deps) {
-    deps['@matthesketh/utopia-ai'] = '^0.1.0';
+    deps['@matthesketh/utopia-ai'] = '^0.3.0';
   }
 
   fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
@@ -209,7 +209,7 @@ function scaffoldProject(root: string, options: ProjectOptions): void {
     const ssrPkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8')) as Record<string, unknown>;
     const ssrDeps = ssrPkg['dependencies'] as Record<string, string>;
     const ssrDevDeps = ssrPkg['devDependencies'] as Record<string, string>;
-    ssrDeps['@matthesketh/utopia-server'] = '^0.1.0';
+    ssrDeps['@matthesketh/utopia-server'] = '^0.3.0';
     ssrDeps['express'] = '^4.21.0';
     // Move vite to dependencies for the SSR server
     if (ssrDevDeps['vite']) {
