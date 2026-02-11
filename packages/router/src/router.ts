@@ -20,6 +20,13 @@ import { matchRoute } from './matcher.js';
 import type { Route, RouteMatch, BeforeNavigateHook } from './types.js';
 
 // ---------------------------------------------------------------------------
+// Regex constants
+// ---------------------------------------------------------------------------
+
+/** Validates that a hash fragment is a safe DOM id (alphanumeric, hyphens, underscores). */
+export const VALID_DOM_ID_RE = /^[A-Za-z0-9_-]+$/;
+
+// ---------------------------------------------------------------------------
 // Router state (reactive signals)
 // ---------------------------------------------------------------------------
 
@@ -253,11 +260,15 @@ export async function navigate(url: string, options: { replace?: boolean } = {})
     // Scroll to top on forward navigation (not back/forward).
     requestAnimationFrame(() => {
       // If the URL has a hash, scroll to the element.
+      // Validate the hash is a safe DOM id to prevent DOM clobbering / selector injection.
       if (fullUrl.hash) {
-        const el = document.getElementById(fullUrl.hash.slice(1));
-        if (el) {
-          el.scrollIntoView();
-          return;
+        const hashId = fullUrl.hash.slice(1);
+        if (hashId && VALID_DOM_ID_RE.test(hashId)) {
+          const el = document.getElementById(hashId);
+          if (el) {
+            el.scrollIntoView();
+            return;
+          }
         }
       }
       window.scrollTo(0, 0);

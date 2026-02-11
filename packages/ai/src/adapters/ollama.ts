@@ -51,6 +51,9 @@ interface OllamaChatResponse {
   eval_count?: number;
 }
 
+/** Matches a trailing slash for URL normalization. */
+export const TRAILING_SLASH_RE = /\/$/;
+
 /** Monotonic counter for generating unique tool call IDs. */
 let ollamaToolCallCounter = 0;
 
@@ -67,7 +70,7 @@ let ollamaToolCallCounter = 0;
  * ```
  */
 export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
-  const baseURL = (config.baseURL ?? 'http://localhost:11434').replace(/\/$/, '');
+  const baseURL = (config.baseURL ?? 'http://localhost:11434').replace(TRAILING_SLASH_RE, '');
 
   return {
     async chat(request: ChatRequest): Promise<ChatResponse> {

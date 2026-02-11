@@ -17,6 +17,43 @@
 import type { Route, RouteMatch } from './types.js';
 
 // ---------------------------------------------------------------------------
+// Regex constants — all patterns extracted for auditability and reuse
+// ---------------------------------------------------------------------------
+
+/** Matches backslash characters for path normalization (replace with '/'). */
+export const BACKSLASH_RE = /\\/g;
+
+/** Matches the +page filename at the end of a path (with optional leading slash). */
+export const PAGE_FILE_RE = /\/?\+page\.\w+$/;
+
+/** Matches +layout or +error filenames at the end of a path (with optional leading slash). */
+export const LAYOUT_OR_ERROR_FILE_RE = /\/?\+(layout|error)\.\w+$/;
+
+/** Matches a route-group segment like `(groupName)`. */
+export const GROUP_SEGMENT_RE = /^\(.+\)$/;
+
+/** Matches a catch-all/rest-param segment like `[...rest]`. */
+export const REST_PARAM_RE = /^\[\.\.\..+\]$/;
+
+/** Matches a dynamic-param segment like `[slug]`. */
+export const DYNAMIC_PARAM_RE = /^\[.+\]$/;
+
+/** Matches the root route exactly. */
+export const ROOT_ROUTE_RE = /^\/$/;
+
+/** Matches special regex characters that need escaping. */
+export const REGEX_SPECIAL_CHARS_RE = /[.*+?^${}()|[\]\\]/g;
+
+/** Tests whether a normalized path is a +page file. */
+export const PAGE_FILE_TEST_RE = /\+page\.\w+$/;
+
+/** Tests whether a normalized path is a +layout file. */
+export const LAYOUT_FILE_TEST_RE = /\+layout\.\w+$/;
+
+/** Tests whether a normalized path is a +error file. */
+export const ERROR_FILE_TEST_RE = /\+error\.\w+$/;
+
+// ---------------------------------------------------------------------------
 // filePathToRoute — Convert a file path to a URL route pattern
 // ---------------------------------------------------------------------------
 
@@ -36,7 +73,7 @@ import type { Route, RouteMatch } from './types.js';
  */
 export function filePathToRoute(filePath: string): string {
   // Normalize separators to forward slashes.
-  let normalized = filePath.replace(/\\/g, '/');
+  let normalized = filePath.replace(BACKSLASH_RE, '/');
 
   // Strip the leading routes directory prefix.
   // Accept both 'src/routes/' and just 'routes/' or a bare path with +page.
@@ -46,10 +83,10 @@ export function filePathToRoute(filePath: string): string {
   }
 
   // Remove the +page.utopia (or +page.ts, +page.js, etc.) filename at the end.
-  normalized = normalized.replace(/\/?\+page\.\w+$/, '');
+  normalized = normalized.replace(PAGE_FILE_RE, '');
 
   // Remove the +layout.utopia or +error.utopia filenames.
-  normalized = normalized.replace(/\/?\+(layout|error)\.\w+$/, '');
+  normalized = normalized.replace(LAYOUT_OR_ERROR_FILE_RE, '');
 
   // Split into segments and process each one.
   const segments = normalized.split('/').filter(Boolean);
@@ -57,19 +94,19 @@ export function filePathToRoute(filePath: string): string {
 
   for (const segment of segments) {
     // Route groups: (groupName) — stripped from URL.
-    if (/^\(.+\)$/.test(segment)) {
+    if (GROUP_SEGMENT_RE.test(segment)) {
       continue;
     }
 
     // Catch-all: [...paramName]
-    if (/^\[\.\.\..+\]$/.test(segment)) {
+    if (REST_PARAM_RE.test(segment)) {
       const paramName = segment.slice(4, -1); // strip '[...' and ']'
       routeSegments.push(`*${paramName}`);
       continue;
     }
 
     // Dynamic parameter: [paramName]
-    if (/^\[.+\]$/.test(segment)) {
+    if (DYNAMIC_PARAM_RE.test(segment)) {
       const paramName = segment.slice(1, -1); // strip '[' and ']'
       routeSegments.push(`:${paramName}`);
       continue;
@@ -106,7 +143,7 @@ export function compilePattern(pattern: string): { regex: RegExp; params: string
   // Handle root route.
   if (pattern === '/') {
     return {
-      regex: /^\/$/,
+      regex: ROOT_ROUTE_RE,
       params: [],
     };
   }
@@ -137,6 +174,7 @@ export function compilePattern(pattern: string): { regex: RegExp; params: string
   regexStr = '^' + regexStr + '/?$';
 
   return {
+    // Dynamic regex — built from sanitized input (segments are escaped via escapeRegex).
     regex: new RegExp(regexStr),
     params,
   };
@@ -146,7 +184,7 @@ export function compilePattern(pattern: string): { regex: RegExp; params: string
  * Escape special regex characters in a string.
  */
 function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return str.replace(REGEX_SPECIAL_CHARS_RE, '\\$&');
 }
 
 // ---------------------------------------------------------------------------
@@ -220,13 +258,13 @@ export function buildRouteTable(
 
   // Classify each manifest entry.
   for (const [filePath, importFn] of Object.entries(manifest)) {
-    const normalized = filePath.replace(/\\/g, '/');
+    const normalized = filePath.replace(BACKSLASH_RE, '/');
 
-    if (/\+page\.\w+$/.test(normalized)) {
+    if (PAGE_FILE_TEST_RE.test(normalized)) {
       pages.set(normalized, importFn);
-    } else if (/\+layout\.\w+$/.test(normalized)) {
+    } else if (LAYOUT_FILE_TEST_RE.test(normalized)) {
       layouts.set(normalized, importFn);
-    } else if (/\+error\.\w+$/.test(normalized)) {
+    } else if (ERROR_FILE_TEST_RE.test(normalized)) {
       errors.set(normalized, importFn);
     }
   }
@@ -316,7 +354,7 @@ function findNearestSpecialFile(
   pageFilePath: string,
   specialFiles: Map<string, () => Promise<Record<string, unknown>>>,
 ): (() => Promise<Record<string, unknown>>) | undefined {
-  const normalized = pageFilePath.replace(/\\/g, '/');
+  const normalized = pageFilePath.replace(BACKSLASH_RE, '/');
 
   // Get the directory of the page file.
   const lastSlash = normalized.lastIndexOf('/');
@@ -325,7 +363,7 @@ function findNearestSpecialFile(
   // Walk up directories looking for a matching special file.
   while (dir) {
     for (const [specialPath, importFn] of specialFiles) {
-      const specialNorm = specialPath.replace(/\\/g, '/');
+      const specialNorm = specialPath.replace(BACKSLASH_RE, '/');
       const specialLastSlash = specialNorm.lastIndexOf('/');
       const specialDir = specialLastSlash !== -1 ? specialNorm.slice(0, specialLastSlash) : '';
 
