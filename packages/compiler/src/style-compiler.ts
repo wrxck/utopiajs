@@ -17,6 +17,19 @@
 // option).
 // ---------------------------------------------------------------------------
 
+// ---- Regex Constants --------------------------------------------------------
+
+/** Matches a single whitespace character. */
+export const WHITESPACE_RE = /\s/;
+
+/** Matches @keyframes at-rule headers (including vendor-prefixed variants). */
+export const KEYFRAMES_RE = /^@(?:-\w+-)?keyframes\b/;
+
+/** Matches trailing pseudo-elements and pseudo-classes on a CSS selector. */
+export const PSEUDO_SELECTOR_RE = /(?:::?[\w-]+(?:\([^)]*\))?)+$/;
+
+// ---- Types ------------------------------------------------------------------
+
 export interface StyleCompileOptions {
   /** The raw CSS source. */
   source: string;
@@ -100,7 +113,7 @@ function scopeSelectors(css: string, scopeId: string): string {
 
   while (pos < css.length) {
     // Skip whitespace.
-    if (/\s/.test(css[pos])) {
+    if (WHITESPACE_RE.test(css[pos])) {
       result.push(css[pos]);
       pos++;
       continue;
@@ -176,7 +189,7 @@ function consumeAtRule(css: string, pos: number, scopeId: string): ConsumeResult
   const header = css.slice(start, headerEnd);
 
   // Is this @keyframes?  If so, don't scope the contents.
-  const isKeyframes = /^@(?:-\w+-)?keyframes\b/.test(header.trim());
+  const isKeyframes = KEYFRAMES_RE.test(header.trim());
 
   // Find the matching closing brace.
   depth = 1;
@@ -268,8 +281,7 @@ function scopeSingleSelector(selector: string, scopeId: string): string {
 
   // Match trailing pseudo-elements/classes: e.g. `:hover`, `::before`,
   // `:nth-child(2n)`.
-  const pseudoRe = /(?:::?[\w-]+(?:\([^)]*\))?)+$/;
-  const pseudoMatch = selector.match(pseudoRe);
+  const pseudoMatch = selector.match(PSEUDO_SELECTOR_RE);
 
   if (pseudoMatch) {
     const beforePseudo = selector.slice(0, pseudoMatch.index!);

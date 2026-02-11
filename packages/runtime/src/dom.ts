@@ -46,6 +46,16 @@ const SVG_TAGS = new Set([
 ]);
 
 // ---------------------------------------------------------------------------
+// Regex constants
+// ---------------------------------------------------------------------------
+
+/** Matches uppercase letters for camelCase → kebab-case conversion. */
+export const UPPER_CASE_RE = /([A-Z])/g;
+
+/** Matches kebab-case segments for kebab-case → camelCase conversion. */
+export const KEBAB_CHAR_RE = /-([a-z])/g;
+
+// ---------------------------------------------------------------------------
 // Node creation
 // ---------------------------------------------------------------------------
 
@@ -178,7 +188,7 @@ export function setAttr(el: Element, name: string, value: unknown): void {
         const val = styleObj[prop];
         if (val != null) {
           // Support both camelCase and kebab-case property names
-          htmlEl.style.setProperty(prop.replace(/([A-Z])/g, '-$1').toLowerCase(), String(val));
+          htmlEl.style.setProperty(prop.replace(UPPER_CASE_RE, '-$1').toLowerCase(), String(val));
         }
       }
     }
@@ -221,7 +231,7 @@ export function setAttr(el: Element, name: string, value: unknown): void {
 
   // --- dataset (data-*) attributes -----------------------------------------
   if (name.startsWith('data-')) {
-    const key = name.slice(5).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+    const key = name.slice(5).replace(KEBAB_CHAR_RE, (_, c: string) => c.toUpperCase());
     (el as HTMLElement).dataset[key] = value == null ? '' : String(value);
     return;
   }
