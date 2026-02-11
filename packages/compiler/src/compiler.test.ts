@@ -892,3 +892,59 @@ describe('isComponentTag validation', () => {
     expect(result.helpers.has('createComponent')).toBe(true);
   });
 });
+
+// ===========================================================================
+// u-else-if directive
+// ===========================================================================
+
+describe('u-else-if directive', () => {
+  it('parses u-else-if as a directive with kind else-if and an expression', () => {
+    const ast = parseTemplate('<div u-else-if="x > 1">content</div>');
+    expect(ast).toHaveLength(1);
+    const el = ast[0] as any;
+    expect(el.directives).toHaveLength(1);
+    expect(el.directives[0].kind).toBe('else-if');
+    expect(el.directives[0].expression).toBe('x > 1');
+  });
+
+  it('generates nested createIf for u-if + u-else-if', () => {
+    const result = compileTemplate('<div u-if="a">A</div><div u-else-if="b">B</div>');
+    // The outer createIf should exist
+    expect(result.code).toContain('createIf(');
+    // Should contain two createIf calls (one nested inside the false branch)
+    const createIfCount = (result.code.match(/createIf\(/g) || []).length;
+    expect(createIfCount).toBe(2);
+    // Both conditions should appear
+    expect(result.code).toContain('Boolean(a)');
+    expect(result.code).toContain('Boolean(b)');
+  });
+
+  it('generates correct chain for u-if + u-else-if + u-else', () => {
+    const result = compileTemplate(
+      '<div u-if="a">A</div><div u-else-if="b">B</div><div u-else>C</div>',
+    );
+    const createIfCount = (result.code.match(/createIf\(/g) || []).length;
+    expect(createIfCount).toBe(2);
+    expect(result.code).toContain('Boolean(a)');
+    expect(result.code).toContain('Boolean(b)');
+    // The else branch should create a div with text C
+    expect(result.code).toContain('"C"');
+  });
+
+  it('chains multiple u-else-if branches correctly', () => {
+    const result = compileTemplate(
+      '<div u-if="a">A</div><div u-else-if="b">B</div><div u-else-if="c">C</div><div u-else>D</div>',
+    );
+    const createIfCount = (result.code.match(/createIf\(/g) || []).length;
+    expect(createIfCount).toBe(3);
+    expect(result.code).toContain('Boolean(a)');
+    expect(result.code).toContain('Boolean(b)');
+    expect(result.code).toContain('Boolean(c)');
+  });
+
+  it('silently skips orphaned u-else-if without preceding u-if', () => {
+    // Should not throw — just ignore the orphan
+    const result = compileTemplate('<div u-else-if="x">orphan</div>');
+    expect(result.code).not.toContain('createIf');
+  });
+});
