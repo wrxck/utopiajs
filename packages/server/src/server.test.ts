@@ -297,10 +297,10 @@ describe('SSR runtime helpers', () => {
   describe('createComponent', () => {
     it('creates and renders a component', () => {
       const def = {
-        setup: (props: any) => ({ msg: props.msg ?? 'default' }),
-        render: (ctx: any) => {
+        setup: (props: Record<string, unknown>) => ({ msg: props.msg ?? 'default' }),
+        render: (ctx: Record<string, unknown>) => {
           const el = createElement('p');
-          const text = createTextNode(ctx.msg);
+          const text = createTextNode(String(ctx.msg));
           appendChild(el, text);
           return el;
         },
@@ -411,10 +411,10 @@ describe('renderToString', () => {
 
   it('renders with setup and props', () => {
     const Component = {
-      setup: (props: any) => ({ name: props.name }),
-      render: (ctx: any) => {
+      setup: (props: Record<string, unknown>) => ({ name: props.name }),
+      render: (ctx: Record<string, unknown>) => {
         const p = createElement('p');
-        const text = createTextNode(ctx.name);
+        const text = createTextNode(String(ctx.name));
         appendChild(p, text);
         return p;
       },
@@ -437,13 +437,13 @@ describe('renderToString', () => {
   it('renders conditional content (u-if)', () => {
     const Component = {
       setup: () => ({ show: signal(true) }),
-      render: (ctx: any) => {
+      render: (ctx: Record<string, unknown>) => {
         const div = createElement('div');
         const anchor = createComment('u-if');
         appendChild(div, anchor);
         createIf(
           anchor,
-          () => ctx.show(),
+          () => (ctx.show as () => boolean)(),
           () => {
             const span = createElement('span');
             appendChild(span, createTextNode('visible'));
@@ -461,13 +461,13 @@ describe('renderToString', () => {
   it('renders list content (u-for)', () => {
     const Component = {
       setup: () => ({ items: signal(['a', 'b']) }),
-      render: (ctx: any) => {
+      render: (ctx: Record<string, unknown>) => {
         const ul = createElement('ul');
         const anchor = createComment('u-for');
         appendChild(ul, anchor);
         createFor(
           anchor,
-          () => ctx.items(),
+          () => (ctx.items as () => string[])(),
           (item: string) => {
             const li = createElement('li');
             appendChild(li, createTextNode(item));

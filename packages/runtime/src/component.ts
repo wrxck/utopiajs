@@ -39,9 +39,9 @@ export function stopCapturingDisposers(prev: (() => void)[] | null): (() => void
  */
 export interface ComponentDefinition {
   /** The `<script>` block compiled into a setup function. */
-  setup?: (props: Record<string, unknown>) => Record<string, unknown>;
+  setup?(props: Record<string, unknown>): Record<string, unknown>;
   /** The `<template>` block compiled into a render function. */
-  render: (ctx: Record<string, unknown>) => Node;
+  render(ctx: Record<string, unknown>): Node;
   /** Scoped CSS extracted from the `<style>` block, if any. */
   styles?: string;
 }

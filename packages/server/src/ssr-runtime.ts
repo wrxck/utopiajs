@@ -234,8 +234,8 @@ export function createFor<T>(
 // ---------------------------------------------------------------------------
 
 export interface ComponentDefinition {
-  setup?: (props: Record<string, unknown>) => Record<string, unknown>;
-  render: (ctx: Record<string, unknown>) => VNode;
+  setup?(props: Record<string, unknown>): Record<string, unknown>;
+  render(ctx: Record<string, unknown>): VNode;
   styles?: string;
 }
 

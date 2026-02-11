@@ -29,6 +29,11 @@ import {
 import { createLink } from './components.js';
 import type { Route, RouteMatch } from './types.js';
 
+/** Extended anchor type exposing the dispose function attached by createLink. */
+interface LinkWithDispose extends HTMLAnchorElement {
+  __dispose?: () => void;
+}
+
 // ============================================================================
 // 1. filePathToRoute
 // ============================================================================
@@ -787,9 +792,9 @@ describe('createLink', () => {
     });
 
     // The dispose function should be attached when activeClass is provided.
-    expect(typeof (link as any).__dispose).toBe('function');
+    expect(typeof (link as LinkWithDispose).__dispose).toBe('function');
     // Calling dispose should not throw.
-    (link as any).__dispose();
+    (link as LinkWithDispose).__dispose!();
   });
 
   it('createLink does not attach dispose without activeClass', () => {
@@ -802,6 +807,6 @@ describe('createLink', () => {
     });
 
     // Without activeClass, no effect is created, so no __dispose.
-    expect((link as any).__dispose).toBeUndefined();
+    expect((link as LinkWithDispose).__dispose).toBeUndefined();
   });
 });

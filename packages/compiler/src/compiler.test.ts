@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { parse, SFCParseError } from './parser';
 import { compileTemplate, parseTemplate } from './template-compiler';
+import type { ElementNode, TemplateNode, TextNode } from './template-compiler';
 import { compileStyle, generateScopeId } from './style-compiler';
 import { compile } from './index';
 
@@ -123,10 +124,10 @@ describe('Template Parser', () => {
   it('parses nested elements', () => {
     const ast = parseTemplate('<div><span>text</span></div>');
     expect(ast).toHaveLength(1);
-    const div = ast[0] as any;
+    const div = ast[0] as ElementNode;
     expect(div.tag).toBe('div');
     expect(div.children).toHaveLength(1);
-    const span = div.children[0];
+    const span = div.children[0] as ElementNode;
     expect(span.tag).toBe('span');
     expect(span.children).toHaveLength(1);
     expect(span.children[0]).toMatchObject({ type: 2, content: 'text' });
@@ -134,7 +135,7 @@ describe('Template Parser', () => {
 
   it('parses static attributes', () => {
     const ast = parseTemplate('<div class="foo" id="bar"></div>');
-    const el = ast[0] as any;
+    const el = ast[0] as ElementNode;
     expect(el.attrs).toEqual([
       { name: 'class', value: 'foo' },
       { name: 'id', value: 'bar' },
@@ -143,21 +144,21 @@ describe('Template Parser', () => {
 
   it('parses boolean attributes', () => {
     const ast = parseTemplate('<input disabled />');
-    const el = ast[0] as any;
+    const el = ast[0] as ElementNode;
     expect(el.attrs).toEqual([{ name: 'disabled', value: null }]);
     expect(el.selfClosing).toBe(true);
   });
 
   it('parses single-quoted attribute values', () => {
     const ast = parseTemplate("<div class='foo'></div>");
-    const el = ast[0] as any;
+    const el = ast[0] as ElementNode;
     expect(el.attrs[0]).toEqual({ name: 'class', value: 'foo' });
   });
 
   it('parses void elements without explicit self-close', () => {
     const ast = parseTemplate('<br>');
     expect(ast).toHaveLength(1);
-    const el = ast[0] as any;
+    const el = ast[0] as ElementNode;
     expect(el.tag).toBe('br');
     expect(el.selfClosing).toBe(true);
   });
@@ -165,7 +166,7 @@ describe('Template Parser', () => {
   it('parses self-closing tags', () => {
     const ast = parseTemplate('<img src="x.png" />');
     expect(ast).toHaveLength(1);
-    const el = ast[0] as any;
+    const el = ast[0] as ElementNode;
     expect(el.tag).toBe('img');
     expect(el.selfClosing).toBe(true);
     expect(el.attrs).toEqual([{ name: 'src', value: 'x.png' }]);
@@ -173,7 +174,7 @@ describe('Template Parser', () => {
 
   it('parses text interpolation', () => {
     const ast = parseTemplate('<p>Hello {{ name() }}</p>');
-    const p = ast[0] as any;
+    const p = ast[0] as ElementNode;
     expect(p.children).toHaveLength(2);
     expect(p.children[0]).toMatchObject({ type: 2, content: 'Hello ' });
     expect(p.children[1]).toMatchObject({ type: 3, expression: 'name()' });
@@ -181,7 +182,7 @@ describe('Template Parser', () => {
 
   it('parses multiple interpolations in text', () => {
     const ast = parseTemplate('<p>{{ a() }} and {{ b() }}</p>');
-    const p = ast[0] as any;
+    const p = ast[0] as ElementNode;
     expect(p.children).toHaveLength(3);
     expect(p.children[0]).toMatchObject({ type: 3, expression: 'a()' });
     expect(p.children[1]).toMatchObject({ type: 2, content: ' and ' });
@@ -190,7 +191,7 @@ describe('Template Parser', () => {
 
   it('parses @click event shorthand', () => {
     const ast = parseTemplate('<button @click="handler">Go</button>');
-    const btn = ast[0] as any;
+    const btn = ast[0] as ElementNode;
     expect(btn.directives).toHaveLength(1);
     expect(btn.directives[0]).toMatchObject({
       kind: 'on',
@@ -201,7 +202,7 @@ describe('Template Parser', () => {
 
   it('parses u-on:event directive', () => {
     const ast = parseTemplate('<button u-on:click="handler">Go</button>');
-    const btn = ast[0] as any;
+    const btn = ast[0] as ElementNode;
     expect(btn.directives).toHaveLength(1);
     expect(btn.directives[0]).toMatchObject({
       kind: 'on',
@@ -212,7 +213,7 @@ describe('Template Parser', () => {
 
   it('parses :attr bind shorthand', () => {
     const ast = parseTemplate('<input :value="name()" />');
-    const el = ast[0] as any;
+    const el = ast[0] as ElementNode;
     expect(el.directives).toHaveLength(1);
     expect(el.directives[0]).toMatchObject({
       kind: 'bind',
@@ -223,7 +224,7 @@ describe('Template Parser', () => {
 
   it('parses u-bind:attr directive', () => {
     const ast = parseTemplate('<input u-bind:value="name()" />');
-    const el = ast[0] as any;
+    const el = ast[0] as ElementNode;
     expect(el.directives[0]).toMatchObject({
       kind: 'bind',
       arg: 'value',
@@ -233,7 +234,7 @@ describe('Template Parser', () => {
 
   it('parses u-if directive', () => {
     const ast = parseTemplate('<div u-if="show()">conditional</div>');
-    const el = ast[0] as any;
+    const el = ast[0] as ElementNode;
     expect(el.directives).toHaveLength(1);
     expect(el.directives[0]).toMatchObject({
       kind: 'if',
@@ -243,7 +244,7 @@ describe('Template Parser', () => {
 
   it('parses u-for directive', () => {
     const ast = parseTemplate('<li u-for="item in items()">{{ item }}</li>');
-    const el = ast[0] as any;
+    const el = ast[0] as ElementNode;
     expect(el.directives).toHaveLength(1);
     expect(el.directives[0]).toMatchObject({
       kind: 'for',
@@ -253,7 +254,7 @@ describe('Template Parser', () => {
 
   it('parses u-model directive', () => {
     const ast = parseTemplate('<input u-model="name" />');
-    const el = ast[0] as any;
+    const el = ast[0] as ElementNode;
     expect(el.directives).toHaveLength(1);
     expect(el.directives[0]).toMatchObject({
       kind: 'model',
@@ -270,25 +271,25 @@ describe('Template Parser', () => {
 
   it('parses PascalCase component tags', () => {
     const ast = parseTemplate('<MyComponent foo="bar" />');
-    const el = ast[0] as any;
+    const el = ast[0] as ElementNode;
     expect(el.tag).toBe('MyComponent');
     expect(el.attrs).toEqual([{ name: 'foo', value: 'bar' }]);
   });
 
   it('parses deeply nested structures', () => {
     const ast = parseTemplate('<div><ul><li><a href="#">link</a></li></ul></div>');
-    const div = ast[0] as any;
-    const ul = div.children.find((c: any) => c.type === 1);
-    const li = ul.children.find((c: any) => c.type === 1);
-    const a = li.children.find((c: any) => c.type === 1);
+    const div = ast[0] as ElementNode;
+    const ul = div.children.find((c: TemplateNode) => c.type === 1) as ElementNode;
+    const li = ul.children.find((c: TemplateNode) => c.type === 1) as ElementNode;
+    const a = li.children.find((c: TemplateNode) => c.type === 1) as ElementNode;
     expect(a.tag).toBe('a');
     expect(a.attrs[0]).toEqual({ name: 'href', value: '#' });
-    expect(a.children.find((c: any) => c.type === 2).content).toBe('link');
+    expect((a.children.find((c: TemplateNode) => c.type === 2) as TextNode).content).toBe('link');
   });
 
   it('parses event modifier syntax', () => {
     const ast = parseTemplate('<button @click.prevent="handler">Go</button>');
-    const btn = ast[0] as any;
+    const btn = ast[0] as ElementNode;
     expect(btn.directives[0]).toMatchObject({
       kind: 'on',
       arg: 'click',
