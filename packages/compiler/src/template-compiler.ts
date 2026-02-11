@@ -88,7 +88,7 @@ export interface Directive {
   modifiers: string[];
 }
 
-export type DirectiveKind = 'on' | 'bind' | 'if' | 'else' | 'for' | 'model';
+export type DirectiveKind = 'on' | 'bind' | 'if' | 'else' | 'else-if' | 'for' | 'model';
 
 // ===========================================================================
 // Phase 1 — Recursive-descent HTML parser
@@ -471,7 +471,7 @@ function classifyDirective(name: string, value: string | null): Directive | null
 }
 
 function isDirectiveKind(s: string): s is DirectiveKind {
-  return s === 'on' || s === 'bind' || s === 'if' || s === 'else' || s === 'for' || s === 'model';
+  return s === 'on' || s === 'bind' || s === 'if' || s === 'else' || s === 'else-if' || s === 'for' || s === 'model';
 }
 
 // ===========================================================================
@@ -602,7 +602,7 @@ class CodeGenerator {
 
     // Directives (excluding structural ones).
     for (const dir of node.directives) {
-      if (dir.kind === 'if' || dir.kind === 'else' || dir.kind === 'for') continue;
+      if (dir.kind === 'if' || dir.kind === 'else' || dir.kind === 'else-if' || dir.kind === 'for') continue;
       this.genDirective(elVar, dir, scope);
     }
 
@@ -716,6 +716,7 @@ class CodeGenerator {
     node: ElementNode,
     dir: Directive,
     scope: LocalScope,
+    elseIfChain?: { node: ElementNode; dir: Directive }[],
     elseNode?: ElementNode,
   ): string {
     this.helpers.add('createIf');
@@ -726,10 +727,10 @@ class CodeGenerator {
 
     const condition = this.resolveExpression(dir.expression, scope);
 
-    // Strip the u-if directive and generate the element in a nested function.
+    // Strip the u-if/u-else-if directive and generate the element in a nested function.
     const strippedNode: ElementNode = {
       ...node,
-      directives: node.directives.filter((d) => d.kind !== 'if'),
+      directives: node.directives.filter((d) => d.kind !== 'if' && d.kind !== 'else-if'),
     };
 
     const trueFnVar = this.freshVar();
@@ -746,9 +747,35 @@ class CodeGenerator {
     this.emit(`  return ${innerVar}`);
     this.emit(`}`);
 
-    // Generate the else branch if a u-else sibling was found.
+    // Generate the else branch: could be an else-if chain, a plain u-else, or nothing.
     let elseArg = '';
-    if (elseNode) {
+    if (elseIfChain && elseIfChain.length > 0) {
+      // The false branch is a nested createIf for the first else-if.
+      const firstElseIf = elseIfChain[0];
+      const remainingElseIfs = elseIfChain.slice(1);
+
+      const falseFnVar = this.freshVar();
+      const savedCode2 = this.code;
+      this.code = [];
+      const nestedAnchor = this.genIf(
+        firstElseIf.node,
+        firstElseIf.dir,
+        scope,
+        remainingElseIfs.length > 0 ? remainingElseIfs : undefined,
+        elseNode,
+      );
+      const nestedLines = [...this.code];
+      this.code = savedCode2;
+
+      this.emit(`const ${falseFnVar} = () => {`);
+      for (const line of nestedLines) {
+        this.emit(`  ${line}`);
+      }
+      this.emit(`  return ${nestedAnchor}`);
+      this.emit(`}`);
+
+      elseArg = `, ${falseFnVar}`;
+    } else if (elseNode) {
       const falseFnVar = this.freshVar();
       const strippedElse: ElementNode = {
         ...elseNode,
@@ -833,7 +860,7 @@ class CodeGenerator {
     return anchorVar;
   }
 
-  // ---- Children processing (handles u-if / u-else pairing) ----------------
+  // ---- Children processing (handles u-if / u-else-if / u-else pairing) ----
 
   private genChildren(parentVar: string, children: TemplateNode[], scope: LocalScope): void {
     this.deferredCallsStack.push([]);
@@ -842,34 +869,50 @@ class CodeGenerator {
     while (i < children.length) {
       const child = children[i];
 
-      // Detect u-if elements and look ahead for a paired u-else sibling.
+      // Detect u-if elements and look ahead for a chain of u-else-if / u-else siblings.
       if (child.type === NodeType.Element) {
         const ifDir = child.directives.find((d) => d.kind === 'if');
         if (ifDir) {
+          const elseIfChain: { node: ElementNode; dir: Directive }[] = [];
           let elseNode: ElementNode | undefined;
           let skipTo = i + 1;
 
           for (let j = i + 1; j < children.length; j++) {
             const next = children[j];
-            // Skip whitespace-only text between u-if and u-else.
+            // Skip whitespace-only text between chained directives.
             if (next.type === NodeType.Text && !next.content.trim()) continue;
-            if (next.type === NodeType.Element && next.directives.some((d) => d.kind === 'else')) {
-              elseNode = next;
-              skipTo = j + 1;
+
+            if (next.type === NodeType.Element) {
+              const elseIfDir = next.directives.find((d) => d.kind === 'else-if');
+              if (elseIfDir) {
+                elseIfChain.push({ node: next, dir: elseIfDir });
+                skipTo = j + 1;
+                continue;
+              }
+              if (next.directives.some((d) => d.kind === 'else')) {
+                elseNode = next;
+                skipTo = j + 1;
+              }
             }
             break;
           }
 
-          const childVar = this.genIf(child, ifDir, scope, elseNode);
+          const childVar = this.genIf(
+            child,
+            ifDir,
+            scope,
+            elseIfChain.length > 0 ? elseIfChain : undefined,
+            elseNode,
+          );
           this.helpers.add('appendChild');
           this.emit(`appendChild(${parentVar}, ${childVar})`);
           i = skipTo;
           continue;
         }
 
-        // Skip u-else elements that weren't consumed by a preceding u-if
-        // (orphaned u-else — silently ignore).
-        if (child.directives.some((d) => d.kind === 'else')) {
+        // Skip u-else and u-else-if elements that weren't consumed by a preceding u-if
+        // (orphaned — silently ignore).
+        if (child.directives.some((d) => d.kind === 'else' || d.kind === 'else-if')) {
           i++;
           continue;
         }
