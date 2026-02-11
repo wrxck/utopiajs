@@ -108,6 +108,35 @@ const x = 1
     expect(result.script!.content).toBe('');
     expect(result.style!.content).toBe('');
   });
+
+  it('parses a <test> block and returns its content', () => {
+    const source = `
+<template><div>Hello</div></template>
+
+<test>
+import { describe, it } from 'vitest'
+describe('test', () => { it('works', () => {}) })
+</test>
+`;
+    const result = parse(source, 'test.utopia');
+    expect(result.test).not.toBeNull();
+    expect(result.test!.content).toContain("describe('test'");
+  });
+
+  it('returns test as null when no <test> block is present', () => {
+    const source = `<template><div>Hello</div></template>`;
+    const result = parse(source);
+    expect(result.test).toBeNull();
+  });
+
+  it('throws on duplicate <test> blocks', () => {
+    const source = `
+<template><div></div></template>
+<test>first</test>
+<test>second</test>
+`;
+    expect(() => parse(source)).toThrow(/[Dd]uplicate/);
+  });
 });
 
 // ===========================================================================
@@ -827,6 +856,33 @@ function inc() { count.update(n => n + 1) }
     const result = compile(source, { scopeId: 'data-u-custom' });
     expect(result.css).toContain('.x[data-u-custom]');
     expect(result.code).toContain('data-u-custom');
+  });
+
+  it('ignores <test> block — test code is not in compiled output', () => {
+    const source = `
+<template>
+  <div>Hello</div>
+</template>
+
+<script>
+const x = 1
+</script>
+
+<test>
+import { describe, it, expect } from 'vitest'
+describe('my test', () => {
+  it('should work', () => { expect(true).toBe(true) })
+})
+</test>
+`;
+    const result = compile(source);
+    expect(result.code).toContain('function __render(_ctx)');
+    expect(result.code).toContain('const x = 1');
+    // Test block content must NOT appear in compiled output.
+    expect(result.code).not.toContain('describe(');
+    expect(result.code).not.toContain('my test');
+    expect(result.code).not.toContain('should work');
+    expect(result.css).toBe('');
   });
 });
 

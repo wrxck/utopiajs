@@ -293,6 +293,14 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
         const templateChanged = didBlockChange(oldDescriptor?.template, newDescriptor.template);
         const scriptChanged = didBlockChange(oldDescriptor?.script, newDescriptor.script);
         const styleChanged = didBlockChange(oldDescriptor?.style, newDescriptor.style);
+        const testChanged = didBlockChange(oldDescriptor?.test, newDescriptor.test);
+
+        // ------------------------------------------------------------------
+        // Test-only change  -->  skip browser refresh entirely.
+        // ------------------------------------------------------------------
+        if (testChanged && !templateChanged && !scriptChanged && !styleChanged) {
+          return [];
+        }
 
         // ------------------------------------------------------------------
         // Style-only change  -->  update only the virtual CSS module.

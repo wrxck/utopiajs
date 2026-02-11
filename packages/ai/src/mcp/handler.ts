@@ -6,6 +6,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { MCPServer } from './server.js';
 import type { JsonRpcRequest } from './types.js';
 
+export interface MCPHandlerOptions {
+  corsOrigin?: string;
+}
+
 /**
  * Create a Node.js HTTP handler for an MCP server.
  *
@@ -20,7 +24,7 @@ import type { JsonRpcRequest } from './types.js';
  * import { createMCPHandler } from '@matthesketh/utopia-ai/mcp';
  *
  * const mcp = createMCPServer({ name: 'my-app', tools: [...] });
- * const handler = createMCPHandler(mcp);
+ * const handler = createMCPHandler(mcp, { corsOrigin: 'https://example.com' });
  *
  * http.createServer(handler).listen(3001);
  * // or use as middleware: app.use('/mcp', handler);
@@ -28,10 +32,13 @@ import type { JsonRpcRequest } from './types.js';
  */
 export function createMCPHandler(
   server: MCPServer,
+  options?: MCPHandlerOptions,
 ): (req: IncomingMessage, res: ServerResponse) => void {
+  const corsOrigin = options?.corsOrigin ?? '*';
+
   return async (req: IncomingMessage, res: ServerResponse) => {
     // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Origin', corsOrigin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
@@ -74,6 +81,10 @@ async function handlePost(
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(response));
   } catch (err: unknown) {
+    // Only expose error details for JSON parse errors (SyntaxError).
+    // All other errors get a generic message to prevent information leakage.
+    const data = err instanceof SyntaxError ? err.message : 'Invalid request';
+
     res.writeHead(400, { 'Content-Type': 'application/json' });
     res.end(
       JSON.stringify({
@@ -82,7 +93,7 @@ async function handlePost(
         error: {
           code: -32700,
           message: 'Parse error',
-          data: err instanceof Error ? err.message : String(err),
+          data,
         },
       }),
     );

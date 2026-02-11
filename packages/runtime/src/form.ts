@@ -225,6 +225,16 @@ function createField<T>(config: FieldConfig<T>): FormField<T> {
 }
 
 // ---------------------------------------------------------------------------
+// Regex constants
+// ---------------------------------------------------------------------------
+
+/** Simple but practical email validation pattern. */
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** RFC 5321 maximum email address length. */
+const MAX_EMAIL_LENGTH = 254;
+
+// ---------------------------------------------------------------------------
 // Built-in validation rules
 // ---------------------------------------------------------------------------
 
@@ -282,8 +292,9 @@ export function email(message = 'Invalid email address'): ValidationRule<string>
   return (value) => {
     if (typeof value !== 'string') return null;
     if (value === '') return null; // Use required() for presence check.
-    // Simple but practical email regex.
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return message;
+    // Reject strings exceeding RFC 5321 max email length to mitigate ReDoS.
+    if (value.length > MAX_EMAIL_LENGTH) return message;
+    if (!EMAIL_RE.test(value)) return message;
     return null;
   };
 }

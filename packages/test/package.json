@@ -1,21 +1,20 @@
 {
-  "name": "@matthesketh/utopia-vite-plugin",
+  "name": "@matthesketh/utopia-test",
   "version": "0.5.0",
-  "description": "Vite plugin for UtopiaJS .utopia files",
+  "description": "Testing utilities for UtopiaJS components",
   "type": "module",
   "license": "MIT",
   "author": "Matt <matt@matthesketh.pro>",
   "repository": {
     "type": "git",
     "url": "https://github.com/wrxck/utopiajs.git",
-    "directory": "packages/vite-plugin"
+    "directory": "packages/test"
   },
-  "homepage": "https://github.com/wrxck/utopiajs/tree/main/packages/vite-plugin",
+  "homepage": "https://github.com/wrxck/utopiajs/tree/main/packages/test",
   "keywords": [
-    "vite",
-    "plugin",
-    "hmr",
-    "transform",
+    "testing",
+    "test",
+    "component-testing",
     "utopiajs"
   ],
   "engines": {
@@ -33,20 +32,26 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./plugin": {
+      "types": "./dist/vitest-plugin.d.ts",
+      "import": "./dist/vitest-plugin.js",
+      "require": "./dist/vitest-plugin.cjs"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts",
-    "dev": "tsup src/index.ts --format esm,cjs --dts --watch"
+    "build": "tsup src/index.ts src/vitest-plugin.ts --format esm,cjs --dts",
+    "dev": "tsup src/index.ts src/vitest-plugin.ts --format esm,cjs --dts --watch"
   },
   "dependencies": {
-    "@matthesketh/utopia-compiler": "workspace:*"
+    "@matthesketh/utopia-compiler": "workspace:*",
+    "@matthesketh/utopia-runtime": "workspace:*"
   },
   "peerDependencies": {
-    "vite": "^6.0.0 || ^7.0.0"
+    "vitest": "^3.0.0"
   },
   "devDependencies": {
     "vite": "^7.3.1"
