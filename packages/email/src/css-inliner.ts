@@ -7,6 +7,72 @@
 // well-formed (no unclosed tags, no malformed attributes).
 // ============================================================================
 
+// ---------------------------------------------------------------------------
+// Regex Constants
+// ---------------------------------------------------------------------------
+
+/** Matches CSS block comments. */
+export const CSS_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
+
+/** Matches a single whitespace character. */
+export const WHITESPACE_CHAR_RE = /\s/;
+
+/** Matches the child combinator (>) with optional surrounding whitespace. */
+export const CHILD_COMBINATOR_RE = /\s*>\s*/g;
+
+/** Matches CSS ID selectors (e.g. #my-id). */
+export const ID_SELECTOR_RE = /#[a-zA-Z_-][\w-]*/g;
+
+/** Matches CSS class selectors (e.g. .my-class). */
+export const CLASS_SELECTOR_RE = /\.[a-zA-Z_-][\w-]*/g;
+
+/** Matches CSS attribute selectors (e.g. [type="text"]). */
+export const ATTR_SELECTOR_RE = /\[[^\]]+\]/g;
+
+/** Matches CSS pseudo-classes (e.g. :hover, :nth-child(2)). */
+export const PSEUDO_CLASS_RE = /:[\w-]+(\([^)]*\))?/g;
+
+/** Matches CSS combinator characters used to split selector segments. */
+export const COMBINATOR_SPLIT_RE = /[\s>+~]+/;
+
+/** Matches a leading HTML tag name at the start of a selector segment. */
+export const LEADING_TAG_RE = /^([a-zA-Z][\w-]*)/;
+
+/** Matches a leading ID selector at the start of a selector segment. */
+export const LEADING_ID_RE = /^#([a-zA-Z_-][\w-]*)/;
+
+/** Matches a leading class selector at the start of a selector segment. */
+export const LEADING_CLASS_RE = /^\.([a-zA-Z_-][\w-]*)/;
+
+/** Matches a leading attribute selector at the start of a selector segment. */
+export const LEADING_ATTR_RE = /^\[([^\]]+)\]/;
+
+/** Matches leading/trailing quote characters. */
+export const QUOTE_WRAP_RE = /^["']|["']$/g;
+
+/** Matches a leading pseudo-class at the start of a selector segment. */
+export const LEADING_PSEUDO_RE = /^:[\w-]+(\([^)]*\))?/;
+
+/** Matches whitespace runs (for splitting). */
+export const WHITESPACE_RUN_RE = /\s+/;
+
+/** Matches an opening HTML tag, capturing tag name and attributes. */
+export const OPENING_TAG_RE = /<([a-zA-Z][\w-]*)(\s[^>]*?)?\s*\/?>/g;
+
+/** Matches any HTML tag (opening or closing), capturing tag name and attributes. */
+export const ALL_TAGS_RE = /<\/?([a-zA-Z][\w-]*)(\s[^>]*?)?\s*\/?>/g;
+
+/** Matches an HTML attribute name and optional quoted value. */
+export const ATTR_PARSE_RE = /([a-zA-Z_:][\w:.-]*)\s*(?:=\s*"([^"]*)")?/g;
+
+/** Matches an existing style="..." attribute in an HTML tag. */
+export const STYLE_ATTR_RE = /style="[^"]*"/;
+
+/** Matches trailing CSS attribute selector operator chars (~, |, ^, $, *). */
+export const ATTR_OPERATOR_SUFFIX_RE = /[~|^$*]$/;
+
+// ---------------------------------------------------------------------------
+
 interface CSSRule {
   selector: string;
   declarations: string;
@@ -34,12 +100,12 @@ interface MatchedStyle {
 function parseCSS(css: string): CSSRule[] {
   const rules: CSSRule[] = [];
   // Remove comments
-  const cleaned = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const cleaned = css.replace(CSS_COMMENT_RE, '');
 
   let i = 0;
   while (i < cleaned.length) {
     // Skip whitespace
-    while (i < cleaned.length && /\s/.test(cleaned[i])) i++;
+    while (i < cleaned.length && WHITESPACE_CHAR_RE.test(cleaned[i])) i++;
     if (i >= cleaned.length) break;
 
     // Skip @-rules (e.g. @media, @keyframes) — find matching closing brace
@@ -96,28 +162,28 @@ function calculateSpecificity(selector: string): Specificity {
   let types = 0;
 
   // Remove child/descendant combinators for counting
-  const parts = selector.replace(/\s*>\s*/g, ' ').trim();
+  const parts = selector.replace(CHILD_COMBINATOR_RE, ' ').trim();
 
   // Count #id
-  const idMatches = parts.match(/#[a-zA-Z_-][\w-]*/g);
+  const idMatches = parts.match(ID_SELECTOR_RE);
   if (idMatches) ids = idMatches.length;
 
   // Count .class, [attr], :pseudo-class (but not ::pseudo-element)
-  const classMatches = parts.match(/\.[a-zA-Z_-][\w-]*/g);
+  const classMatches = parts.match(CLASS_SELECTOR_RE);
   if (classMatches) classes += classMatches.length;
-  const attrMatches = parts.match(/\[[^\]]+\]/g);
+  const attrMatches = parts.match(ATTR_SELECTOR_RE);
   if (attrMatches) classes += attrMatches.length;
 
   // Count type selectors (tag names)
   // Split by combinators, then check each simple selector for a leading tag name
-  const segments = parts.split(/[\s>+~]+/);
+  const segments = parts.split(COMBINATOR_SPLIT_RE);
   for (const seg of segments) {
     // Strip IDs, classes, attributes, pseudo-classes from the segment
     const stripped = seg
-      .replace(/#[a-zA-Z_-][\w-]*/g, '')
-      .replace(/\.[a-zA-Z_-][\w-]*/g, '')
-      .replace(/\[[^\]]+\]/g, '')
-      .replace(/:[\w-]+(\([^)]*\))?/g, '')
+      .replace(ID_SELECTOR_RE, '')
+      .replace(CLASS_SELECTOR_RE, '')
+      .replace(ATTR_SELECTOR_RE, '')
+      .replace(PSEUDO_CLASS_RE, '')
       .trim();
     if (stripped && stripped !== '*') {
       types++;
@@ -177,7 +243,7 @@ function matchesSimpleSelector(
   let remaining = selector;
 
   // Extract tag (must be first if present)
-  const tagMatch = remaining.match(/^([a-zA-Z][\w-]*)/);
+  const tagMatch = remaining.match(LEADING_TAG_RE);
   if (tagMatch) {
     if (tag.toLowerCase() !== tagMatch[1].toLowerCase()) return false;
     remaining = remaining.slice(tagMatch[1].length);
@@ -186,17 +252,17 @@ function matchesSimpleSelector(
   // Check all parts
   while (remaining.length > 0) {
     if (remaining[0] === '#') {
-      const idMatch = remaining.match(/^#([a-zA-Z_-][\w-]*)/);
+      const idMatch = remaining.match(LEADING_ID_RE);
       if (!idMatch) return false;
       if (id !== idMatch[1]) return false;
       remaining = remaining.slice(idMatch[0].length);
     } else if (remaining[0] === '.') {
-      const classMatch = remaining.match(/^\.([a-zA-Z_-][\w-]*)/);
+      const classMatch = remaining.match(LEADING_CLASS_RE);
       if (!classMatch) return false;
       if (!classes.includes(classMatch[1])) return false;
       remaining = remaining.slice(classMatch[0].length);
     } else if (remaining[0] === '[') {
-      const attrMatch = remaining.match(/^\[([^\]]+)\]/);
+      const attrMatch = remaining.match(LEADING_ATTR_RE);
       if (!attrMatch) return false;
       const attrExpr = attrMatch[1];
       // Handle [attr="value"], [attr], [attr^="value"], etc.
@@ -205,20 +271,17 @@ function matchesSimpleSelector(
         // Just check attribute existence
         if (!(attrExpr.trim() in attrs)) return false;
       } else {
-        const attrName = attrExpr
-          .slice(0, eqIdx)
-          .replace(/[~|^$*]$/, '')
-          .trim();
+        const attrName = attrExpr.slice(0, eqIdx).replace(ATTR_OPERATOR_SUFFIX_RE, '').trim();
         const attrValue = attrExpr
           .slice(eqIdx + 1)
-          .replace(/^["']|["']$/g, '')
+          .replace(QUOTE_WRAP_RE, '')
           .trim();
         if (attrs[attrName] !== attrValue) return false;
       }
       remaining = remaining.slice(attrMatch[0].length);
     } else if (remaining[0] === ':') {
       // Skip pseudo-classes for email inlining
-      const pseudoMatch = remaining.match(/^:[\w-]+(\([^)]*\))?/);
+      const pseudoMatch = remaining.match(LEADING_PSEUDO_RE);
       if (!pseudoMatch) return false;
       remaining = remaining.slice(pseudoMatch[0].length);
     } else if (remaining[0] === '*') {
@@ -238,7 +301,7 @@ function matchesSimpleSelector(
 function selectorMatches(selector: string, element: ParsedElement): boolean {
   // Handle child combinator (>)
   if (selector.includes('>')) {
-    const parts = selector.split(/\s*>\s*/);
+    const parts = selector.split(CHILD_COMBINATOR_RE);
     const targetSelector = parts[parts.length - 1].trim();
 
     if (
@@ -272,7 +335,7 @@ function selectorMatches(selector: string, element: ParsedElement): boolean {
   }
 
   // Handle descendant combinator (space)
-  const parts = selector.split(/\s+/);
+  const parts = selector.split(WHITESPACE_RUN_RE);
   if (parts.length === 1) {
     return matchesSimpleSelector(parts[0], element.tag, element.classes, element.id, element.attrs);
   }
@@ -387,13 +450,12 @@ export function inlineCSS(html: string, css: string): string {
   if (rules.length === 0) return html;
 
   // Find all opening tags and their positions
-  const tagRegex = /<([a-zA-Z][\w-]*)(\s[^>]*?)?\s*\/?>/g;
   const elements: ParsedElement[] = [];
   const ancestorStack: AncestorInfo[] = [];
 
   // Track tag nesting for ancestor info
   // We'll do a single pass collecting opening/closing tags
-  const allTagsRegex = /<\/?([a-zA-Z][\w-]*)(\s[^>]*?)?\s*\/?>/g;
+  ALL_TAGS_RE.lastIndex = 0;
   const voidElements = new Set([
     'area',
     'base',
@@ -412,7 +474,7 @@ export function inlineCSS(html: string, css: string): string {
   ]);
 
   let match;
-  while ((match = allTagsRegex.exec(html)) !== null) {
+  while ((match = ALL_TAGS_RE.exec(html)) !== null) {
     const fullTag = match[0];
     const isClosing = fullTag[1] === '/';
     const tagName = match[1].toLowerCase();
@@ -431,13 +493,13 @@ export function inlineCSS(html: string, css: string): string {
 
     // Parse attributes
     const attrs: Record<string, string> = {};
-    const attrRegex = /([a-zA-Z_:][\w:.-]*)\s*(?:=\s*"([^"]*)")?/g;
+    ATTR_PARSE_RE.lastIndex = 0;
     let attrMatch;
-    while ((attrMatch = attrRegex.exec(attrsStr)) !== null) {
+    while ((attrMatch = ATTR_PARSE_RE.exec(attrsStr)) !== null) {
       attrs[attrMatch[1]] = attrMatch[2] ?? '';
     }
 
-    const classes = (attrs['class'] || '').split(/\s+/).filter(Boolean);
+    const classes = (attrs['class'] || '').split(WHITESPACE_RUN_RE).filter(Boolean);
     const id = attrs['id'] || '';
     const existingStyle = attrs['style'] || '';
 
@@ -499,7 +561,7 @@ export function inlineCSS(html: string, css: string): string {
 
     if (element.existingStyle) {
       // Replace existing style attribute
-      newTag = originalTag.replace(/style="[^"]*"/, `style="${mergedStyle}"`);
+      newTag = originalTag.replace(STYLE_ATTR_RE, `style="${mergedStyle}"`);
     } else {
       // Insert style attribute before the closing >
       const insertPos = originalTag.endsWith('/>')

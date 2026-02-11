@@ -180,9 +180,16 @@ export function createMCPServer(config: MCPServerConfig): MCPServer {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Matches regex special characters that need escaping. */
+export const REGEX_SPECIAL_CHARS_RE = /[.*+?^${}()|[\]\\]/g;
+
+/** Matches escaped template placeholders like `\{id\}` after regex-escaping. */
+export const TEMPLATE_PLACEHOLDER_RE = /\\\{[^\\}]+\\\}/g;
+
 function matchesTemplate(pattern: string, uri: string): boolean {
-  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = escaped.replace(/\\\{[^\\}]+\\\}/g, '([^/]+)');
+  const escaped = pattern.replace(REGEX_SPECIAL_CHARS_RE, '\\$&');
+  const regex = escaped.replace(TEMPLATE_PLACEHOLDER_RE, '([^/]+)');
+  // Dynamic RegExp built from sanitized (escaped) input — safe to construct inline.
   return new RegExp(`^${regex}$`).test(uri);
 }
 
