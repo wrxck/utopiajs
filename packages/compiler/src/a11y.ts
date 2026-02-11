@@ -44,23 +44,87 @@ export interface A11yOptions {
 // ---------------------------------------------------------------------------
 
 const VALID_ARIA_ROLES = new Set([
-  'alert', 'alertdialog', 'application', 'article', 'banner', 'button',
-  'cell', 'checkbox', 'columnheader', 'combobox', 'complementary',
-  'contentinfo', 'definition', 'dialog', 'directory', 'document',
-  'feed', 'figure', 'form', 'grid', 'gridcell', 'group', 'heading',
-  'img', 'link', 'list', 'listbox', 'listitem', 'log', 'main',
-  'marquee', 'math', 'menu', 'menubar', 'menuitem', 'menuitemcheckbox',
-  'menuitemradio', 'meter', 'navigation', 'none', 'note', 'option',
-  'presentation', 'progressbar', 'radio', 'radiogroup', 'region',
-  'row', 'rowgroup', 'rowheader', 'scrollbar', 'search', 'searchbox',
-  'separator', 'slider', 'spinbutton', 'status', 'switch', 'tab',
-  'table', 'tablist', 'tabpanel', 'term', 'textbox', 'timer',
-  'toolbar', 'tooltip', 'tree', 'treegrid', 'treeitem',
+  'alert',
+  'alertdialog',
+  'application',
+  'article',
+  'banner',
+  'button',
+  'cell',
+  'checkbox',
+  'columnheader',
+  'combobox',
+  'complementary',
+  'contentinfo',
+  'definition',
+  'dialog',
+  'directory',
+  'document',
+  'feed',
+  'figure',
+  'form',
+  'grid',
+  'gridcell',
+  'group',
+  'heading',
+  'img',
+  'link',
+  'list',
+  'listbox',
+  'listitem',
+  'log',
+  'main',
+  'marquee',
+  'math',
+  'menu',
+  'menubar',
+  'menuitem',
+  'menuitemcheckbox',
+  'menuitemradio',
+  'meter',
+  'navigation',
+  'none',
+  'note',
+  'option',
+  'presentation',
+  'progressbar',
+  'radio',
+  'radiogroup',
+  'region',
+  'row',
+  'rowgroup',
+  'rowheader',
+  'scrollbar',
+  'search',
+  'searchbox',
+  'separator',
+  'slider',
+  'spinbutton',
+  'status',
+  'switch',
+  'tab',
+  'table',
+  'tablist',
+  'tabpanel',
+  'term',
+  'textbox',
+  'timer',
+  'toolbar',
+  'tooltip',
+  'tree',
+  'treegrid',
+  'treeitem',
 ]);
 
 // Elements that are natively interactive (have implicit keyboard support).
 const INTERACTIVE_ELEMENTS = new Set([
-  'a', 'button', 'input', 'select', 'textarea', 'details', 'summary',
+  'a',
+  'button',
+  'input',
+  'select',
+  'textarea',
+  'details',
+  'summary',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -76,9 +140,7 @@ function hasAttr(node: ElementNode, name: string): boolean {
 }
 
 function hasDirective(node: ElementNode, kind: string, arg?: string): boolean {
-  return node.directives.some(
-    (d) => d.kind === kind && (arg === undefined || d.arg === arg),
-  );
+  return node.directives.some((d) => d.kind === kind && (arg === undefined || d.arg === arg));
 }
 
 function hasBoundAttr(node: ElementNode, name: string): boolean {
@@ -88,8 +150,7 @@ function hasBoundAttr(node: ElementNode, name: string): boolean {
 function hasTextContent(node: ElementNode): boolean {
   return node.children.some(
     (c) =>
-      (c.type === NodeType.Text && c.content.trim() !== '') ||
-      c.type === NodeType.Interpolation,
+      (c.type === NodeType.Text && c.content.trim() !== '') || c.type === NodeType.Interpolation,
   );
 }
 
@@ -153,9 +214,7 @@ const rules: Record<string, RuleCheck> = {
     if (hasTextContent(node)) return;
     if (hasAttr(node, 'aria-label') || hasAttr(node, 'aria-labelledby')) return;
     // Check if it has child elements (could be an icon).
-    const hasChildElements = node.children.some(
-      (c) => c.type === NodeType.Element,
-    );
+    const hasChildElements = node.children.some((c) => c.type === NodeType.Element);
     if (hasChildElements) return; // Assume child elements provide content.
     warnings.push({
       rule: 'anchor-content',
@@ -294,10 +353,7 @@ function walkNodes(
  * // [{ rule: 'img-alt', message: '...', tag: 'img' }]
  * ```
  */
-export function checkA11y(
-  ast: TemplateNode[],
-  options?: A11yOptions,
-): A11yWarning[] {
+export function checkA11y(ast: TemplateNode[], options?: A11yOptions): A11yWarning[] {
   const disabled = new Set(options?.disable ?? []);
   const enabledRules = Object.entries(rules)
     .filter(([id]) => !disabled.has(id))
