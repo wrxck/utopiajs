@@ -3,9 +3,10 @@
 // ============================================================================
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { STYLE_CLOSE_RE } from './render-to-stream.js';
 
 function escapeStyleContent(css: string): string {
-  return css.replace(/<\/style/gi, '<\\/style');
+  return css.replace(STYLE_CLOSE_RE, '<\\/style');
 }
 
 export interface HandlerOptions {

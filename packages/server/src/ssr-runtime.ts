@@ -10,6 +10,8 @@
 import { signal, computed, batch, untrack } from '@matthesketh/utopia-core';
 import type { VElement, VText, VComment, VNode } from './vnode.js';
 
+export const UPPER_CASE_RE = /([A-Z])/g;
+
 // Re-export reactivity primitives (these work identically on the server).
 export { signal, computed, batch, untrack };
 
@@ -81,7 +83,7 @@ export function setAttr(el: VElement, name: string, value: unknown): void {
       const styleObj = value as Record<string, unknown>;
       for (const prop of Object.keys(styleObj)) {
         if (styleObj[prop] != null) {
-          const cssName = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+          const cssName = prop.replace(UPPER_CASE_RE, '-$1').toLowerCase();
           parts.push(`${cssName}: ${styleObj[prop]}`);
         }
       }
