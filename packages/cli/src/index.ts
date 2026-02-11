@@ -14,10 +14,12 @@ import {
   build as viteBuild,
   preview as vitePreview,
   type InlineConfig,
+  type Plugin,
   type ServerOptions,
   type PreviewOptions,
 } from 'vite';
 import utopia from '@matthesketh/utopia-vite-plugin';
+import { utopiaTestPlugin } from '@matthesketh/utopia-test/plugin';
 
 // ---- Argument parsing -------------------------------------------------------
 
@@ -143,6 +145,23 @@ async function preview(args: ParsedArgs): Promise<void> {
   server.printUrls();
 }
 
+async function test(args: ParsedArgs): Promise<void> {
+  const { startVitest } = await import('vitest/node');
+
+  const config = buildInlineConfig(args, 'test');
+
+  // Always inject the utopia test plugin alongside the main utopia plugin.
+  const plugins = config.plugins ?? [];
+  (plugins as Plugin[]).push(utopiaTestPlugin());
+  config.plugins = plugins;
+
+  const vitest = await startVitest('test', args.rest, {
+    ...config,
+  });
+
+  await vitest?.close();
+}
+
 function printVersion(): void {
   const require = createRequire(import.meta.url);
   const pkg = require('../package.json');
@@ -160,6 +179,7 @@ function printHelp(): void {
     dev      Start development server
     build    Build for production
     preview  Preview production build
+    test     Run component tests
     create   Create a new project
 
   Options:
@@ -187,6 +207,9 @@ async function main(): Promise<void> {
       break;
     case 'preview':
       await preview(args);
+      break;
+    case 'test':
+      await test(args);
       break;
     case 'create':
       console.log('To create a new UtopiaJS project, run:');

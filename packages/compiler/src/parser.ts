@@ -24,13 +24,14 @@ export interface SFCDescriptor {
   template: SFCBlock | null;
   script: SFCBlock | null;
   style: SFCBlock | null;
+  test: SFCBlock | null;
   filename: string;
 }
 
 // ---- Regex Constants --------------------------------------------------------
 
-/** Matches opening tags for the three known SFC block types. */
-export const BLOCK_RE = /<(template|script|style)([\s][^>]*)?\s*>/g;
+/** Matches opening tags for the known SFC block types. */
+export const BLOCK_RE = /<(template|script|style|test)([\s][^>]*)?\s*>/g;
 
 /** Matches a single attribute in an opening tag (name, optional quoted/unquoted value). */
 export const ATTR_RE = /([a-zA-Z_][\w-]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g;
@@ -48,6 +49,7 @@ export function parse(source: string, filename: string = 'anonymous.utopia'): SF
     template: null,
     script: null,
     style: null,
+    test: null,
     filename,
   };
 
@@ -59,7 +61,7 @@ export function parse(source: string, filename: string = 'anonymous.utopia'): SF
   let match: RegExpExecArray | null;
 
   while ((match = BLOCK_RE.exec(source)) !== null) {
-    const tagName = match[1] as 'template' | 'script' | 'style';
+    const tagName = match[1] as 'template' | 'script' | 'style' | 'test';
     const attrString = match[2] || '';
     const openTagStart = match.index;
     const openTagEnd = openTagStart + match[0].length;

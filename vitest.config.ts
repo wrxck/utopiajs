@@ -13,6 +13,8 @@ export default defineConfig({
       '@matthesketh/utopia-ai': path.resolve(__dirname, 'packages/ai/src/index.ts'),
       '@matthesketh/utopia-ai/mcp': path.resolve(__dirname, 'packages/ai/src/mcp/index.ts'),
       '@matthesketh/utopia-vite-plugin': path.resolve(__dirname, 'packages/vite-plugin/src/index.ts'),
+      '@matthesketh/utopia-test/plugin': path.resolve(__dirname, 'packages/test/src/vitest-plugin.ts'),
+      '@matthesketh/utopia-test': path.resolve(__dirname, 'packages/test/src/index.ts'),
     },
   },
   test: {

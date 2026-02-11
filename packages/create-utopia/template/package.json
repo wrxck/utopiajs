@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "utopia dev",
     "build": "utopia build",
-    "preview": "utopia preview"
+    "preview": "utopia preview",
+    "test": "utopia test"
   },
   "dependencies": {
     "@matthesketh/utopia-core": "^0.3.0",
@@ -15,8 +16,10 @@
   },
   "devDependencies": {
     "@matthesketh/utopia-cli": "^0.3.0",
+    "@matthesketh/utopia-test": "^0.4.0",
     "@matthesketh/utopia-vite-plugin": "^0.3.0",
     "typescript": "^5.7.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
   }
 }
