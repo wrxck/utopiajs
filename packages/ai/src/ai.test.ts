@@ -294,7 +294,9 @@ interface MCPResourcesReadResult {
 
 /** Result shape from the MCP `prompts/list` method. */
 interface MCPPromptsListResult {
-  prompts: Array<Pick<MCPPromptDefinition, 'name' | 'description'> & { arguments?: MCPPromptArgument[] }>;
+  prompts: Array<
+    Pick<MCPPromptDefinition, 'name' | 'description'> & { arguments?: MCPPromptArgument[] }
+  >;
 }
 
 describe('MCP Server', () => {
