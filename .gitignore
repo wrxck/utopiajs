@@ -8,3 +8,5 @@ dist/
 !.env.example
 coverage/
 package-lock.json
+.claude/
+utopia-docs/
