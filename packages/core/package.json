@@ -1,6 +1,6 @@
 {
   "name": "@matthesketh/utopia-core",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Fine-grained signals reactivity system for UtopiaJS",
   "type": "module",
   "license": "MIT",
