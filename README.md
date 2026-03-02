@@ -37,6 +37,7 @@ pnpm dev
 - **Template-based email** with SMTP, Resend, and SendGrid adapters
 - **AI integration** with OpenAI, Anthropic, Google, and Ollama adapters
 - **MCP (Model Context Protocol)** server and client
+- **Content collections** — type-safe markdown/JSON/YAML content with schema validation, MCP content server for AI-managed blogs
 - **Vite plugin** with HMR and SSR alias resolution
 - **TypeScript by default**
 
@@ -53,6 +54,7 @@ pnpm dev
 | `@matthesketh/utopia-test` | Component testing: mount, render, fireEvent, vitest plugin for `<test>` blocks |
 | `@matthesketh/utopia-email` | Template-based email rendering with adapter pattern |
 | `@matthesketh/utopia-ai` | AI adapters (OpenAI, Anthropic, Google, Ollama) + MCP |
+| `@matthesketh/utopia-content` | Content collections, markdown pipeline, MCP content server |
 | `@matthesketh/utopia-cli` | CLI tool: `utopia dev`, `utopia build`, `utopia preview`, `utopia test` |
 | `create-utopia` | CLI scaffolding tool (`npx create-utopia`) |
 
@@ -88,6 +90,7 @@ The compiler transforms this into direct DOM operations with reactive `createEff
 - [Architecture](docs/architecture.md) — compilation pipeline, reactivity system, directives, routing
 - [Server-Side Rendering](docs/ssr.md) — runtime swap, hydration, VNode types, API reference
 - [AI & MCP](docs/ai.md) — AI adapters, tool calling, MCP server/client, streaming
+- [Content & Blog](docs/content.md) — content collections, markdown pipeline, MCP content server, blog template
 - [Email](docs/email.md) — email rendering, SMTP/Resend/SendGrid adapters, components
 
 ## Development
