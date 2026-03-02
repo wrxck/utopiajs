@@ -1,0 +1,68 @@
+{
+  "name": "@matthesketh/utopia-content",
+  "version": "0.6.0",
+  "description": "Content collections, markdown pipeline, and MCP content server for UtopiaJS",
+  "type": "module",
+  "license": "MIT",
+  "author": "Matt <matt@matthesketh.pro>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wrxck/utopiajs.git",
+    "directory": "packages/content"
+  },
+  "homepage": "https://github.com/wrxck/utopiajs/tree/main/packages/content",
+  "keywords": [
+    "content",
+    "blog",
+    "cms",
+    "markdown",
+    "mcp",
+    "collections",
+    "utopiajs"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "import": "./dist/mcp/index.js",
+      "require": "./dist/mcp/index.cjs"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.js",
+      "require": "./dist/vite.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts src/mcp/index.ts src/vite.ts --format esm,cjs --dts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3",
+    "rehype-highlight": "^7.0.2",
+    "rehype-stringify": "^10.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.1",
+    "unified": "^11.0.5"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5"
+  }
+}
