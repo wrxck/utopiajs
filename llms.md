@@ -53,7 +53,8 @@ No other UI framework combines all of these in a single cohesive package:
 
 1. **Inline `<test>` blocks** — tests live inside the component file, extracted at test time, never in production builds.
 2. **Runtime AI/MCP as a first-class package** — `@matthesketh/utopia-ai` provides adapters, tool-calling loops, SSE streaming, and MCP server/client for building AI-powered application features. This is distinct from Angular's CLI MCP which assists developers, not end users.
-3. **The integrated stack** — compiler-first rendering + signals + SFCs + file-based routing + SSR + form validation + a11y + AI/MCP + email + test blocks, all from one project with a unified API style.
+3. **AI-managed content** — `@matthesketh/utopia-content` provides type-safe content collections with an MCP server. AI agents can create, edit, search, and publish blog posts through tool calls. No other UI framework has native AI content management.
+4. **The integrated stack** — compiler-first rendering + signals + SFCs + file-based routing + SSR + form validation + a11y + AI/MCP + content/blog + email + test blocks, all from one project with a unified API style.
 
 ## Quick Start
 
@@ -573,6 +574,133 @@ async function onSubmit(data) {
 }
 </script>
 ```
+
+## Content Collections (`@matthesketh/utopia-content`)
+
+Type-safe content collections from the filesystem. Define schemas, query entries, render markdown to HTML, and manage content through an MCP server.
+
+### Define a collection
+
+```ts
+import { createContent, defineCollection } from '@matthesketh/utopia-content';
+
+createContent({ contentDir: 'content' });
+
+const blog = defineCollection({
+  name: 'blog',
+  directory: 'blog',
+  schema: {
+    title: { type: 'string', required: true },
+    date: { type: 'date', required: true },
+    tags: { type: 'array', items: 'string' },
+    draft: { type: 'boolean', default: false },
+  },
+  formats: ['md', 'utopia', 'json', 'yaml'],
+});
+```
+
+### Query content
+
+```ts
+import { getCollection, getEntry } from '@matthesketh/utopia-content';
+
+// All published posts, newest first
+const posts = await getCollection('blog', {
+  filter: (e) => !e.data.draft,
+  sort: 'date',
+  order: 'desc',
+});
+
+// Single entry by slug
+const post = await getEntry('blog', 'hello-world');
+// post.data.title, post.html, post.body, post.slug
+```
+
+### Content file format
+
+Markdown files use YAML frontmatter:
+
+```markdown
+---
+title: Hello World
+date: 2026-03-01
+tags: [tutorial, beginner]
+draft: false
+---
+
+# Hello World
+
+Content body here.
+```
+
+`.utopia` content files use `export const metadata`:
+
+```html
+<template>
+  <article>
+    <h1>{{ metadata.title }}</h1>
+    <button @click="increment">Count: {{ count() }}</button>
+  </article>
+</template>
+
+<script>
+import { signal } from '@matthesketh/utopia-core';
+
+export const metadata = {
+  title: 'Interactive Demo',
+  date: '2026-03-01',
+};
+
+const count = signal(0);
+const increment = () => count.set(count() + 1);
+</script>
+```
+
+### MCP content server
+
+```ts
+import { createContentMCPServer } from '@matthesketh/utopia-content/mcp';
+
+const server = createContentMCPServer({
+  contentDir: 'content',
+  collections: [blog],
+});
+
+// Tools: list_collections, list_entries, get_entry, create_entry,
+//        update_entry, delete_entry, search_entries, list_tags, publish_entry
+// Resources: content://blog, content://blog/hello-world
+```
+
+### Vite plugin
+
+```ts
+import utopia from '@matthesketh/utopia-vite-plugin';
+import content from '@matthesketh/utopia-content/vite';
+
+export default {
+  plugins: [utopia(), content({ contentDir: 'content' })],
+};
+```
+
+The plugin watches content files for changes and provides a `virtual:utopia-content` module with the content manifest for use in route components.
+
+### Blog template
+
+```bash
+npx create-utopia my-blog  # select "Content / Blog" in features
+```
+
+Scaffolds a complete blog with content directory, collection config, blog listing and post routes, and Vite plugin integration.
+
+### Schema field types
+
+| Type | Validates | Example |
+|------|-----------|---------|
+| `string` | `typeof value === 'string'` | `title: { type: 'string', required: true }` |
+| `number` | `typeof value === 'number'` | `count: { type: 'number', default: 0 }` |
+| `boolean` | `typeof value === 'boolean'` | `draft: { type: 'boolean', default: false }` |
+| `date` | Date object or valid date string | `date: { type: 'date', required: true }` |
+| `array` | `Array.isArray(value)` | `tags: { type: 'array', items: 'string' }` |
 
 ## Things to Know
 

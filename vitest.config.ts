@@ -15,6 +15,9 @@ export default defineConfig({
       '@matthesketh/utopia-vite-plugin': path.resolve(__dirname, 'packages/vite-plugin/src/index.ts'),
       '@matthesketh/utopia-test/plugin': path.resolve(__dirname, 'packages/test/src/vitest-plugin.ts'),
       '@matthesketh/utopia-test': path.resolve(__dirname, 'packages/test/src/index.ts'),
+      '@matthesketh/utopia-content/mcp': path.resolve(__dirname, 'packages/content/src/mcp/index.ts'),
+      '@matthesketh/utopia-content/vite': path.resolve(__dirname, 'packages/content/src/vite.ts'),
+      '@matthesketh/utopia-content': path.resolve(__dirname, 'packages/content/src/index.ts'),
     },
   },
   test: {
