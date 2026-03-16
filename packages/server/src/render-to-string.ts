@@ -3,8 +3,8 @@
 // ============================================================================
 
 import type { VNode, VElement } from './vnode.js';
-import type { ComponentDefinition } from './ssr-runtime.js';
-import { createComponent, flushStyles } from './ssr-runtime.js';
+import type { ComponentDefinition, HeadConfig } from './ssr-runtime.js';
+import { createComponent, flushStyles, flushHead } from './ssr-runtime.js';
 
 export const VALID_TAG = /^[a-zA-Z][a-zA-Z0-9-]*$/;
 function validateTag(tag: string): string {
@@ -121,14 +121,62 @@ function serializeElement(el: VElement): string {
 export function renderToString(
   component: ComponentDefinition,
   props?: Record<string, unknown>,
-): { html: string; css: string } {
-  // Flush any previously collected styles.
+): { html: string; css: string; head: HeadConfig[] } {
+  // Flush any previously collected styles and head entries.
   flushStyles();
+  flushHead();
 
   const vnode = createComponent(component, props);
   const html = serializeVNode(vnode);
   const styles = flushStyles();
   const css = styles.join('\n');
+  const head = flushHead();
 
-  return { html, css };
+  return { html, css, head };
+}
+
+/**
+ * Serialize collected head entries into HTML tags for injection into the
+ * document head.
+ */
+export function serializeHead(entries: HeadConfig[], nonce?: string): string {
+  const parts: string[] = [];
+
+  for (const entry of entries) {
+    if (entry.title) {
+      parts.push(`<title>${escapeHtml(entry.title)}</title>`);
+    }
+    if (entry.meta) {
+      for (const meta of entry.meta) {
+        let tag = '<meta';
+        if (meta.name) tag += ` name="${escapeAttr(meta.name)}"`;
+        if (meta.property) tag += ` property="${escapeAttr(meta.property)}"`;
+        tag += ` content="${escapeAttr(meta.content)}">`;
+        parts.push(tag);
+      }
+    }
+    if (entry.link) {
+      for (const link of entry.link) {
+        let tag = '<link';
+        for (const [key, value] of Object.entries(link)) {
+          tag += ` ${validateAttr(key)}="${escapeAttr(value)}"`;
+        }
+        tag += '>';
+        parts.push(tag);
+      }
+    }
+    if (entry.script) {
+      for (const script of entry.script) {
+        let tag = '<script';
+        for (const [key, value] of Object.entries(script)) {
+          tag += ` ${validateAttr(key)}="${escapeAttr(value)}"`;
+        }
+        if (nonce) tag += ` nonce="${escapeAttr(nonce)}"`;
+        tag += '></script>';
+        parts.push(tag);
+      }
+    }
+  }
+
+  return parts.join('\n');
 }

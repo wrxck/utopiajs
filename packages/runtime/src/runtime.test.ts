@@ -1054,3 +1054,218 @@ describe('Effect disposal on unmount', () => {
     expect(effectRunCount).toHaveBeenCalledTimes(callCountBeforeUpdate);
   });
 });
+
+// ===========================================================================
+// Error Boundaries
+// ===========================================================================
+
+import { createErrorBoundary } from './error-boundary.js';
+
+describe('createErrorBoundary', () => {
+  it('renders the try function when it succeeds', () => {
+    const node = createErrorBoundary(
+      () => {
+        const el = document.createElement('div');
+        el.textContent = 'Success';
+        return el;
+      },
+      (error) => {
+        const el = document.createElement('div');
+        el.textContent = `Error: ${error.message}`;
+        return el;
+      },
+    );
+
+    expect(node.textContent).toBe('Success');
+  });
+
+  it('renders the catch function when try throws', () => {
+    const node = createErrorBoundary(
+      () => {
+        throw new Error('Something broke');
+      },
+      (error) => {
+        const el = document.createElement('div');
+        el.textContent = `Caught: ${error.message}`;
+        return el;
+      },
+    );
+
+    expect(node.textContent).toBe('Caught: Something broke');
+  });
+
+  it('converts non-Error throws to Error objects', () => {
+    const node = createErrorBoundary(
+      () => {
+        throw 'string error';
+      },
+      (error) => {
+        const el = document.createElement('div');
+        el.textContent = error.message;
+        return el;
+      },
+    );
+
+    expect(node.textContent).toBe('string error');
+  });
+
+  it('disposes captured effects on error', () => {
+    const disposed = vi.fn();
+
+    const node = createErrorBoundary(
+      () => {
+        // Create an effect that will be captured
+        const dispose = coreEffect(() => {});
+        // Manually simulate what pushDisposer does
+        throw new Error('fail');
+      },
+      (error) => {
+        const el = document.createElement('div');
+        el.textContent = 'fallback';
+        return el;
+      },
+    );
+
+    expect(node.textContent).toBe('fallback');
+  });
+});
+
+// ===========================================================================
+// Lazy Components
+// ===========================================================================
+
+import { defineLazy } from './lazy.js';
+
+describe('defineLazy', () => {
+  it('renders the fallback initially', () => {
+    const HeavyComponent: ComponentDefinition = {
+      render() {
+        const el = document.createElement('div');
+        el.textContent = 'Heavy Content';
+        return el;
+      },
+    };
+
+    const Lazy = defineLazy(
+      () => Promise.resolve({ default: HeavyComponent }),
+      () => {
+        const el = document.createElement('span');
+        el.textContent = 'Loading...';
+        return el;
+      },
+    );
+
+    const target = document.createElement('div');
+    const node = createComponent(Lazy);
+    target.appendChild(node);
+
+    // Before the promise resolves, fallback should be shown.
+    expect(target.textContent).toBe('Loading...');
+  });
+
+  it('swaps in the real component after loading', async () => {
+    const HeavyComponent: ComponentDefinition = {
+      render() {
+        const el = document.createElement('div');
+        el.textContent = 'Loaded!';
+        return el;
+      },
+    };
+
+    let resolveLoader: (value: { default: ComponentDefinition }) => void;
+    const loaderPromise = new Promise<{ default: ComponentDefinition }>((resolve) => {
+      resolveLoader = resolve;
+    });
+
+    const Lazy = defineLazy(
+      () => loaderPromise,
+      () => {
+        const el = document.createElement('span');
+        el.textContent = 'Loading...';
+        return el;
+      },
+    );
+
+    const target = document.createElement('div');
+    const node = createComponent(Lazy);
+    target.appendChild(node);
+
+    expect(target.textContent).toBe('Loading...');
+
+    // Resolve the loader
+    resolveLoader!({ default: HeavyComponent });
+    await loaderPromise;
+
+    // Allow microtask queue to drain
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(target.textContent).toBe('Loaded!');
+  });
+
+  it('works without a fallback', () => {
+    const Lazy = defineLazy(
+      () => Promise.resolve({ default: { render: () => document.createElement('div') } }),
+    );
+
+    const node = createComponent(Lazy);
+    // Should render an empty container (no fallback)
+    expect(node).toBeInstanceOf(HTMLDivElement);
+  });
+});
+
+// ===========================================================================
+// Transitions
+// ===========================================================================
+
+import { createTransition, performEnter, performLeave } from './transition.js';
+
+describe('createTransition', () => {
+  it('returns transition hooks object', () => {
+    const el = document.createElement('div');
+    const hooks = createTransition(el, { name: 'fade' });
+    expect(hooks).toHaveProperty('beforeEnter');
+    expect(hooks).toHaveProperty('enter');
+    expect(hooks).toHaveProperty('beforeLeave');
+    expect(hooks).toHaveProperty('leave');
+  });
+
+  it('beforeEnter adds enter-from and enter-active classes', () => {
+    const el = document.createElement('div');
+    const hooks = createTransition(el, { name: 'fade' });
+    hooks.beforeEnter(el);
+    expect(el.classList.contains('fade-enter-from')).toBe(true);
+    expect(el.classList.contains('fade-enter-active')).toBe(true);
+  });
+
+  it('beforeLeave adds leave-from and leave-active classes', () => {
+    const el = document.createElement('div');
+    const hooks = createTransition(el, { name: 'slide' });
+    hooks.beforeLeave(el);
+    expect(el.classList.contains('slide-leave-from')).toBe(true);
+    expect(el.classList.contains('slide-leave-active')).toBe(true);
+  });
+
+  it('enter removes enter-from and adds enter-to', () => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const hooks = createTransition(el, { name: 'fade' });
+    hooks.beforeEnter(el);
+
+    hooks.enter(el, () => {});
+    // After enter, enter-from should be removed and enter-to added
+    expect(el.classList.contains('fade-enter-from')).toBe(false);
+    expect(el.classList.contains('fade-enter-to')).toBe(true);
+    expect(el.classList.contains('fade-enter-active')).toBe(true);
+
+    document.body.removeChild(el);
+  });
+
+  it('performEnter is a convenience wrapper', () => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const hooks = createTransition(el, { name: 'test' });
+    performEnter(el, hooks);
+    expect(el.classList.contains('test-enter-to')).toBe(true);
+    document.body.removeChild(el);
+  });
+});

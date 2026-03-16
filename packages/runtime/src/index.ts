@@ -83,3 +83,25 @@ export {
 } from './form.js';
 
 export type { ValidationRule, FieldConfig, FormField, Form } from './form.js';
+
+// ---------------------------------------------------------------------------
+// Head management
+// ---------------------------------------------------------------------------
+export { useHead } from './head.js';
+export type { HeadConfig } from './head.js';
+
+// ---------------------------------------------------------------------------
+// Error boundaries
+// ---------------------------------------------------------------------------
+export { createErrorBoundary } from './error-boundary.js';
+
+// ---------------------------------------------------------------------------
+// Lazy components
+// ---------------------------------------------------------------------------
+export { defineLazy } from './lazy.js';
+
+// ---------------------------------------------------------------------------
+// Transitions
+// ---------------------------------------------------------------------------
+export { createTransition, performEnter, performLeave } from './transition.js';
+export type { TransitionOptions, TransitionHooks } from './transition.js';
