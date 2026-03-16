@@ -1,7 +1,6 @@
 import type { CollectionConfig, ContentAdapter } from '../types.js';
 import { createFilesystemAdapter, validateSlug } from '../adapters/filesystem.js';
 import { createContentTools } from './tools.js';
-import type { ContentToolHandler, ContentToolResult } from './tools.js';
 
 /** JSON-RPC 2.0 types (self-contained — no dependency on @matthesketh/utopia-ai) */
 interface JsonRpcRequest {
