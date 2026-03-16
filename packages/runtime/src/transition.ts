@@ -56,9 +56,15 @@ export function createTransition(el: Element, opts: TransitionOptions): Transiti
       el.classList.remove(`${name}-enter-from`);
       el.classList.add(`${name}-enter-to`);
 
+      let called = false;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
       const onEnd = () => {
+        if (called) return;
+        called = true;
         el.classList.remove(`${name}-enter-active`, `${name}-enter-to`);
         el.removeEventListener('transitionend', onEnd);
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
         done();
       };
 
@@ -67,7 +73,7 @@ export function createTransition(el: Element, opts: TransitionOptions): Transiti
       // Safety timeout: if transitionend doesn't fire (e.g. no CSS transition
       // defined), clean up after the specified duration or a default.
       if (opts.duration) {
-        setTimeout(onEnd, opts.duration + 50);
+        timeoutId = setTimeout(onEnd, opts.duration + 50);
       }
     },
 
@@ -81,16 +87,22 @@ export function createTransition(el: Element, opts: TransitionOptions): Transiti
       el.classList.remove(`${name}-leave-from`);
       el.classList.add(`${name}-leave-to`);
 
+      let called = false;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
       const onEnd = () => {
+        if (called) return;
+        called = true;
         el.classList.remove(`${name}-leave-active`, `${name}-leave-to`);
         el.removeEventListener('transitionend', onEnd);
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
         done();
       };
 
       el.addEventListener('transitionend', onEnd);
 
       if (opts.duration) {
-        setTimeout(onEnd, opts.duration + 50);
+        timeoutId = setTimeout(onEnd, opts.duration + 50);
       }
     },
   };

@@ -9,6 +9,20 @@
 import { pushDisposer } from './component.js';
 
 // ---------------------------------------------------------------------------
+// Attribute allowlists
+// ---------------------------------------------------------------------------
+
+const ALLOWED_SCRIPT_ATTRS = new Set([
+  'src', 'type', 'async', 'defer', 'crossorigin', 'integrity',
+  'nomodule', 'referrerpolicy', 'nonce',
+]);
+
+const ALLOWED_LINK_ATTRS = new Set([
+  'rel', 'href', 'type', 'media', 'sizes', 'hreflang',
+  'crossorigin', 'integrity', 'as', 'disabled', 'referrerpolicy',
+]);
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -53,7 +67,9 @@ export function useHead(config: HeadConfig): void {
     for (const link of config.link) {
       const el = document.createElement('link');
       for (const [key, value] of Object.entries(link)) {
-        el.setAttribute(key, value);
+        if (ALLOWED_LINK_ATTRS.has(key.toLowerCase())) {
+          el.setAttribute(key, value);
+        }
       }
       document.head.appendChild(el);
       elements.push(el);
@@ -64,7 +80,9 @@ export function useHead(config: HeadConfig): void {
     for (const script of config.script) {
       const el = document.createElement('script');
       for (const [key, value] of Object.entries(script)) {
-        el.setAttribute(key, value);
+        if (ALLOWED_SCRIPT_ATTRS.has(key.toLowerCase())) {
+          el.setAttribute(key, value);
+        }
       }
       document.head.appendChild(el);
       elements.push(el);

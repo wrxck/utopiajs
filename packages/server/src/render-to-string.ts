@@ -68,13 +68,18 @@ function escapeComment(str: string): string {
   return str.replace(DOUBLE_DASH_RE, '-\u200B-');
 }
 
+const MAX_VNODE_DEPTH = 1000;
+
 /**
  * Serialize a VNode tree to an HTML string.
  */
-export function serializeVNode(node: VNode): string {
+export function serializeVNode(node: VNode, depth: number = 0): string {
+  if (depth > MAX_VNODE_DEPTH) {
+    throw new Error(`VNode tree exceeded maximum depth of ${MAX_VNODE_DEPTH}`);
+  }
   switch (node.type) {
     case 1: // VElement
-      return serializeElement(node);
+      return serializeElement(node, depth);
     case 2: // VText
       return escapeHtml(node.text);
     case 3: // VComment
@@ -82,7 +87,7 @@ export function serializeVNode(node: VNode): string {
   }
 }
 
-function serializeElement(el: VElement): string {
+function serializeElement(el: VElement, depth: number): string {
   const tag = el.tag;
   let html = `<${validateTag(tag)}`;
 
@@ -105,7 +110,7 @@ function serializeElement(el: VElement): string {
 
   // Children
   for (const child of el.children) {
-    html += serializeVNode(child);
+    html += serializeVNode(child, depth + 1);
   }
 
   html += `</${validateTag(tag)}>`;
@@ -135,6 +140,16 @@ export function renderToString(
   return { html, css, head };
 }
 
+const ALLOWED_SCRIPT_ATTRS = new Set([
+  'src', 'type', 'async', 'defer', 'crossorigin', 'integrity',
+  'nomodule', 'referrerpolicy', 'nonce',
+]);
+
+const ALLOWED_LINK_ATTRS = new Set([
+  'rel', 'href', 'type', 'media', 'sizes', 'hreflang',
+  'crossorigin', 'integrity', 'as', 'disabled', 'referrerpolicy',
+]);
+
 /**
  * Serialize collected head entries into HTML tags for injection into the
  * document head.
@@ -159,7 +174,9 @@ export function serializeHead(entries: HeadConfig[], nonce?: string): string {
       for (const link of entry.link) {
         let tag = '<link';
         for (const [key, value] of Object.entries(link)) {
-          tag += ` ${validateAttr(key)}="${escapeAttr(value)}"`;
+          if (ALLOWED_LINK_ATTRS.has(key.toLowerCase())) {
+            tag += ` ${validateAttr(key)}="${escapeAttr(value)}"`;
+          }
         }
         tag += '>';
         parts.push(tag);
@@ -169,7 +186,9 @@ export function serializeHead(entries: HeadConfig[], nonce?: string): string {
       for (const script of entry.script) {
         let tag = '<script';
         for (const [key, value] of Object.entries(script)) {
-          tag += ` ${validateAttr(key)}="${escapeAttr(value)}"`;
+          if (ALLOWED_SCRIPT_ATTRS.has(key.toLowerCase())) {
+            tag += ` ${validateAttr(key)}="${escapeAttr(value)}"`;
+          }
         }
         if (nonce) tag += ` nonce="${escapeAttr(nonce)}"`;
         tag += '></script>';
