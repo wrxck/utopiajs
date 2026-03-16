@@ -13,6 +13,12 @@ import { removeNode } from './dom.js';
 /** Cache for loaded modules, keyed by loader function. */
 const moduleCache = new Map<() => Promise<{ default: ComponentDefinition }>, ComponentDefinition>();
 
+/** In-flight loads, keyed by loader function (prevents duplicate requests). */
+const pendingLoads = new Map<
+  () => Promise<{ default: ComponentDefinition }>,
+  Promise<{ default: ComponentDefinition }>
+>();
+
 /**
  * Define a lazy-loaded component.
  *
@@ -42,18 +48,43 @@ export function defineLazy(
         container.appendChild(fallbackNode);
       }
 
-      // Load the component asynchronously.
-      loader().then((mod) => {
-        const Component = mod.default;
-        moduleCache.set(loader, Component);
+      // Reuse in-flight promise if one exists (dedup).
+      let loadPromise = pendingLoads.get(loader);
+      if (!loadPromise) {
+        loadPromise = loader();
+        pendingLoads.set(loader, loadPromise);
+      }
 
-        // Clear fallback and mount real component.
-        while (container.firstChild) {
-          container.removeChild(container.firstChild);
-        }
-        const node = createComponent(Component, ctx);
-        container.appendChild(node);
-      });
+      loadPromise
+        .then((mod) => {
+          const Component = mod.default;
+          moduleCache.set(loader, Component);
+          pendingLoads.delete(loader);
+
+          // Don't mutate if container has been detached from the DOM.
+          if (!container.parentNode) return;
+
+          // Clear fallback and mount real component.
+          while (container.firstChild) {
+            container.removeChild(container.firstChild);
+          }
+          const node = createComponent(Component, ctx);
+          container.appendChild(node);
+        })
+        .catch((err) => {
+          pendingLoads.delete(loader);
+          console.error('Failed to load lazy component:', err);
+
+          // Don't mutate if container has been detached from the DOM.
+          if (!container.parentNode) return;
+
+          while (container.firstChild) {
+            container.removeChild(container.firstChild);
+          }
+          const errorNode = document.createElement('span');
+          errorNode.textContent = 'Failed to load component';
+          container.appendChild(errorNode);
+        });
 
       return container;
     },

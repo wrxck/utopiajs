@@ -34,13 +34,15 @@ export function createMCPHandler(
   server: MCPServer,
   options?: MCPHandlerOptions,
 ): (req: IncomingMessage, res: ServerResponse) => void {
-  const corsOrigin = options?.corsOrigin ?? '*';
+  const corsOrigin = options?.corsOrigin;
 
   return async (req: IncomingMessage, res: ServerResponse) => {
-    // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', corsOrigin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    // CORS headers (only set if explicitly configured)
+    if (corsOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', corsOrigin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    }
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
@@ -81,6 +83,21 @@ async function handlePost(
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(response));
   } catch (err: unknown) {
+    const errObj = err as { statusCode?: number; message?: string };
+
+    // Handle oversized payloads
+    if (errObj.statusCode === 413) {
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32600, message: 'Payload too large' },
+        }),
+      );
+      return;
+    }
+
     // Only expose error details for JSON parse errors (SyntaxError).
     // All other errors get a generic message to prevent information leakage.
     const data = err instanceof SyntaxError ? err.message : 'Invalid request';
@@ -121,10 +138,21 @@ function handleSSE(server: MCPServer, _req: IncomingMessage, res: ServerResponse
   });
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
+const DEFAULT_MAX_BODY_SIZE = 1024 * 1024; // 1 MB
+
+function readBody(req: IncomingMessage, maxSize: number = DEFAULT_MAX_BODY_SIZE): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on('data', (chunk) => chunks.push(chunk));
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > maxSize) {
+        req.removeAllListeners('data');
+        reject(Object.assign(new Error('Payload too large'), { statusCode: 413 }));
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
     req.on('error', reject);
   });

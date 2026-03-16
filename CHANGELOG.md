@@ -6,6 +6,81 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-03-16
+
+### Added
+
+- `@matthesketh/utopia-runtime` — `createErrorBoundary()` for graceful error handling with fallback UI
+- `@matthesketh/utopia-runtime` — `useHead()` for reactive document head management (title, meta, link tags)
+- `@matthesketh/utopia-runtime` — `defineLazy()` for code-split components with async loading
+- `@matthesketh/utopia-runtime` — `createTransition()` with `performEnter`/`performLeave` for CSS transition animations
+- `@matthesketh/utopia-server` — `serializeHead()` for SSR head injection (title, meta, links into HTML)
+- `@matthesketh/utopia-server` — `buildApiRoutes()`/`handleApiRequest()` for file-based API route handlers
+- `@matthesketh/utopia-vite-plugin` — `client.d.ts` type declarations for .utopia file imports
+- `create-utopia` — Updated scaffolding template with smoke tests
+- 759 tests passing across 22 test files
+
+### Fixed
+
+- CI: override rollup to >=4.59.0 to resolve CVE-2025-46838
+- CI: add compiler alias to vitest config, audit prod deps only
+
+### Changed
+
+- `@matthesketh/utopia-server` — hardened SSR runtime with additional safety checks
+- `@matthesketh/utopia-compiler` — improved template compilation output
+
+## [0.6.0] - 2026-03-02
+
+### Added
+
+- **New package: `@matthesketh/utopia-content`** — type-safe content collections with markdown pipeline
+- `@matthesketh/utopia-content` — `defineCollection()`/`getCollection()`/`getEntry()` API with schema validation
+- `@matthesketh/utopia-content` — Markdown rendering via unified/remark/rehype with syntax highlighting
+- `@matthesketh/utopia-content` — Filesystem adapter supporting `.md`, `.utopia`, `.json`, `.yaml` formats
+- `@matthesketh/utopia-content` — MCP content server with 9 tools (list/get/create/update/delete/search/tags/publish)
+- `@matthesketh/utopia-content` — MCP resources for `content://{collection}` and `content://{collection}/{slug}`
+- `@matthesketh/utopia-content` — Vite plugin with HMR and `virtual:utopia-content` manifest module
+- `create-utopia` — Blog template option in scaffolding
+- Documentation: `docs/content.md` for content collections and blog setup
+- 700 tests passing across 20 test files
+
+### Fixed
+
+- `@matthesketh/utopia-router` — eliminated flash of empty content on initial page load via `preloadRoute()` module cache
+
+## [0.5.0] - 2026-02-11
+
+### Added
+
+- **New package: `@matthesketh/utopia-test`** — component testing utilities
+- `@matthesketh/utopia-test` — `mount()`, `render()`, `fireEvent`, `nextTick` test helpers
+- `@matthesketh/utopia-test` — Vitest plugin that extracts `<test>` blocks from `.utopia` files into `.utopia.test.ts`
+- `@matthesketh/utopia-compiler` — `<test>` block parsing in SFCs (parsed but excluded from compiled output)
+- `@matthesketh/utopia-cli` — `utopia test` command wrapping vitest with auto-injected plugin
+- `@matthesketh/utopia-vite-plugin` — skip HMR refresh when only `<test>` block changes
+- `llms.md` — comprehensive LLM reference with verified framework comparisons and every public API
+- 613 tests passing across 19 test files
+
+### Security
+
+- Extracted all inline regexes across 10 packages to named exported constants with JSDoc comments
+- `@matthesketh/utopia-ai` — MCP handler: configurable CORS origin via `MCPHandlerOptions`, sanitized error responses
+- `@matthesketh/utopia-router` — hash fragment validation against `VALID_DOM_ID_RE` before `getElementById`
+- `@matthesketh/utopia-runtime` — form validation: RFC 5321 max email length check (254 chars) to mitigate ReDoS
+- Global regex `lastIndex` resets to prevent stale state on shared patterns
+
+## [0.4.0] - 2026-02-11
+
+### Added
+
+- `@matthesketh/utopia-runtime` — `onMount()` and `onDestroy()` component lifecycle hooks
+- `@matthesketh/utopia-runtime` — `createForm()` reactive form validation with built-in validators, field-level errors, and dirty/touched tracking
+- `@matthesketh/utopia-compiler` — `u-else-if` directive for chained conditionals
+- `@matthesketh/utopia-compiler` — `checkA11y()` compile-time accessibility checking (missing alt text, ARIA roles, form labels)
+- `@matthesketh/utopia-core` — `sharedSignal()` for cross-tab state synchronization via BroadcastChannel
+- `@matthesketh/utopia-router` — `useQuery()` and `useParams()` reactive route parameter utilities
+
 ## [0.3.1] - 2026-02-11
 
 ### Fixed

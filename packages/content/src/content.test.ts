@@ -1005,7 +1005,7 @@ describe('createFilesystemAdapter — edge cases', () => {
     await writeFile(
       join(colDir, 'card.utopia'),
       `<script>
-export const metadata = { title: 'Card Component', version: 2 };
+export const metadata = {"title": "Card Component", "version": 2};
 </script>
 
 <template>
@@ -1195,5 +1195,216 @@ draft: true
     expect(result.data.title).toBe('No Body');
     expect(result.data.draft).toBe(true);
     expect(result.body.trim()).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Security — slug validation and safe metadata
+// ---------------------------------------------------------------------------
+
+import { validateSlug } from './adapters/filesystem.js';
+
+describe('Security — slug validation', () => {
+  it('rejects path traversal with ../', () => {
+    expect(() => validateSlug('../secret')).toThrow('Invalid slug');
+  });
+
+  it('rejects deep path traversal', () => {
+    expect(() => validateSlug('../../etc/passwd')).toThrow('Invalid slug');
+  });
+
+  it('rejects backslash traversal', () => {
+    expect(() => validateSlug('..\\..\\secret')).toThrow('Invalid slug');
+  });
+
+  it('rejects traversal in the middle of a slug', () => {
+    expect(() => validateSlug('foo/../bar')).toThrow('Invalid slug');
+  });
+
+  it('rejects double slashes', () => {
+    expect(() => validateSlug('//double-slash')).toThrow('Invalid slug');
+  });
+
+  it('rejects empty slug', () => {
+    expect(() => validateSlug('')).toThrow('Invalid slug');
+  });
+
+  it('accepts simple slugs', () => {
+    expect(() => validateSlug('hello')).not.toThrow();
+  });
+
+  it('accepts nested path slugs', () => {
+    expect(() => validateSlug('nested/path')).not.toThrow();
+  });
+
+  it('accepts slugs with numbers and hyphens', () => {
+    expect(() => validateSlug('my-post-123')).not.toThrow();
+  });
+});
+
+describe('Security — extractUtopiaMetadata', () => {
+  it('returns {} for JS expressions in metadata (not valid JSON)', async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), 'utopia-sec-'));
+    const colDir = join(tmpDir, 'comps');
+    await mkdir(colDir, { recursive: true });
+    await writeFile(
+      join(colDir, 'evil.utopia'),
+      `<script>
+export const metadata = { title: process.env.SECRET || "hacked" };
+</script>
+<template><div></div></template>`,
+    );
+
+    const adapter = createFilesystemAdapter(tmpDir);
+    const entry = await adapter.readEntry(
+      { name: 'comps', directory: 'comps', formats: ['utopia' as const] },
+      'evil',
+    );
+    expect(entry).not.toBeNull();
+    // Should return empty object since the metadata is not valid JSON
+    expect(entry!.data).toEqual({});
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('parses valid JSON metadata correctly', async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), 'utopia-sec-'));
+    const colDir = join(tmpDir, 'comps');
+    await mkdir(colDir, { recursive: true });
+    await writeFile(
+      join(colDir, 'good.utopia'),
+      `<script>
+export const metadata = {"title": "Good Component", "version": 2};
+</script>
+<template><div></div></template>`,
+    );
+
+    const adapter = createFilesystemAdapter(tmpDir);
+    const entry = await adapter.readEntry(
+      { name: 'comps', directory: 'comps', formats: ['utopia' as const] },
+      'good',
+    );
+    expect(entry).not.toBeNull();
+    expect(entry!.data.title).toBe('Good Component');
+    expect(entry!.data.version).toBe(2);
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+});
+
+describe('Security — filesystem adapter rejects traversal slugs', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'utopia-sec-fs-'));
+    const blogDir = join(tmpDir, 'blog');
+    await mkdir(blogDir, { recursive: true });
+    await writeFile(join(blogDir, 'hello.md'), '---\ntitle: Hello\n---\nHello');
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  const blogConfig = { name: 'blog', directory: 'blog' };
+
+  it('readEntry rejects traversal slug', async () => {
+    const adapter = createFilesystemAdapter(tmpDir);
+    await expect(adapter.readEntry(blogConfig, '../etc/passwd')).rejects.toThrow('Invalid slug');
+  });
+
+  it('writeEntry rejects traversal slug', async () => {
+    const adapter = createFilesystemAdapter(tmpDir);
+    await expect(
+      adapter.writeEntry(blogConfig, '../evil', { title: 'bad' }, 'body'),
+    ).rejects.toThrow('Invalid slug');
+  });
+
+  it('updateEntry rejects traversal slug', async () => {
+    const adapter = createFilesystemAdapter(tmpDir);
+    await expect(adapter.updateEntry(blogConfig, '../evil', { title: 'bad' })).rejects.toThrow(
+      'Invalid slug',
+    );
+  });
+
+  it('deleteEntry rejects traversal slug', async () => {
+    const adapter = createFilesystemAdapter(tmpDir);
+    await expect(adapter.deleteEntry(blogConfig, '../evil')).rejects.toThrow('Invalid slug');
+  });
+});
+
+describe('Security — MCP tool input validation', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'utopia-sec-mcp-'));
+    const blogDir = join(tmpDir, 'blog');
+    await mkdir(blogDir, { recursive: true });
+    await writeFile(join(blogDir, 'hello.md'), '---\ntitle: Hello\n---\nHello');
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  function createServer() {
+    return createContentMCPServer({
+      contentDir: tmpDir,
+      collections: [{ name: 'blog', directory: 'blog' }],
+    });
+  }
+
+  function rpc(method: string, params?: Record<string, unknown>) {
+    return { jsonrpc: '2.0' as const, id: 1, method, params };
+  }
+
+  it('get_entry rejects traversal slug via MCP', async () => {
+    const server = createServer();
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'get_entry',
+        arguments: { collection: 'blog', slug: '../etc/passwd' },
+      }),
+    );
+    expect(res.error).toBeDefined();
+  });
+
+  it('create_entry rejects traversal slug via MCP', async () => {
+    const server = createServer();
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'create_entry',
+        arguments: { collection: 'blog', slug: '../evil', body: 'x' },
+      }),
+    );
+    expect(res.error).toBeDefined();
+  });
+
+  it('get_entry rejects non-string slug', async () => {
+    const server = createServer();
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'get_entry',
+        arguments: { collection: 'blog', slug: 123 },
+      }),
+    );
+    expect(res.error).toBeDefined();
+  });
+
+  it('search_entries rejects non-string query', async () => {
+    const server = createServer();
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'search_entries',
+        arguments: { collection: 'blog', query: 42 },
+      }),
+    );
+    expect(res.error).toBeDefined();
+  });
+
+  it('resource URI with traversal slug is rejected', async () => {
+    const server = createServer();
+    const res = await server.handleRequest(
+      rpc('resources/read', { uri: 'content://blog/../etc/passwd' }),
+    );
+    expect(res.error).toBeDefined();
   });
 });
