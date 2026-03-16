@@ -27,6 +27,7 @@ The interactive CLI prompts for:
   - SSR (server-side rendering with Express)
   - Email (template-based emails)
   - AI (chat, streaming, adapters)
+  - Content / Blog (markdown collections, MCP content server)
   - CSS Preprocessor (Sass or Less)
 - **Git initialization** -- optional initial commit
 
@@ -51,6 +52,8 @@ my-app/
 ```
 
 When AI is selected, an example chat API route is scaffolded at `src/routes/api/chat/+server.ts` with a `.env.example` file.
+
+When Content / Blog is selected, a `content/blog/` directory is created with an example post, a `content.config.ts` with a typed blog collection schema, and blog listing + single post routes. The Vite config is updated to include the content plugin.
 
 ## Programmatic
 

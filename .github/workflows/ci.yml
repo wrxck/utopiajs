@@ -28,6 +28,9 @@ jobs:
 
       - run: pnpm format:check
 
+      - name: Security audit
+        run: pnpm audit --audit-level=high
+
   test:
     name: Test (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest

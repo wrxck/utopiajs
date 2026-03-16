@@ -18,6 +18,7 @@ interface ProjectOptions {
   useSSR: boolean;
   useEmail: boolean;
   useAI: boolean;
+  useContent: boolean;
   cssPreprocessor: 'none' | 'sass' | 'less';
   initGit: boolean;
 }
@@ -141,7 +142,8 @@ function renameFile(dir: string, from: string, to: string): void {
 // ---------------------------------------------------------------------------
 
 function scaffoldProject(root: string, options: ProjectOptions): void {
-  const { projectName, language, useRouter, useSSR, useEmail, useAI, cssPreprocessor } = options;
+  const { projectName, language, useRouter, useSSR, useEmail, useAI, useContent, cssPreprocessor } =
+    options;
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const templateDir = path.resolve(__dirname, '..', 'template');
@@ -196,12 +198,17 @@ function scaffoldProject(root: string, options: ProjectOptions): void {
 
   // Add email dependency
   if (useEmail && deps) {
-    deps['@matthesketh/utopia-email'] = '^0.3.0';
+    deps['@matthesketh/utopia-email'] = '^0.7.0';
   }
 
   // Add AI dependency
   if (useAI && deps) {
-    deps['@matthesketh/utopia-ai'] = '^0.3.0';
+    deps['@matthesketh/utopia-ai'] = '^0.7.0';
+  }
+
+  // Add content dependency
+  if (useContent && deps) {
+    deps['@matthesketh/utopia-content'] = '^0.7.0';
   }
 
   fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
@@ -225,7 +232,7 @@ function scaffoldProject(root: string, options: ProjectOptions): void {
     const ssrPkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8')) as Record<string, unknown>;
     const ssrDeps = ssrPkg['dependencies'] as Record<string, string>;
     const ssrDevDeps = ssrPkg['devDependencies'] as Record<string, string>;
-    ssrDeps['@matthesketh/utopia-server'] = '^0.3.0';
+    ssrDeps['@matthesketh/utopia-server'] = '^0.7.0';
     ssrDeps['express'] = '^4.21.0';
     // Move vite to dependencies for the SSR server
     if (ssrDevDeps['vite']) {
@@ -350,6 +357,240 @@ export async function POST(req${language === 'typescript' ? ': any' : ''}, res${
     // Write .env.example with the OpenAI API key placeholder
     const envExamplePath = path.join(root, '.env.example');
     fs.writeFileSync(envExamplePath, 'OPENAI_API_KEY=sk-your-key-here\n', 'utf-8');
+  }
+
+  // 8. If content is selected, scaffold blog content and routes
+  if (useContent) {
+    const ext = language === 'typescript' ? 'ts' : 'js';
+
+    // Create content directory with example blog post
+    const contentBlogDir = path.join(root, 'content', 'blog');
+    fs.mkdirSync(contentBlogDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(contentBlogDir, 'hello-world.md'),
+      `---
+title: Hello World
+date: ${new Date().toISOString().split('T')[0]}
+tags:
+  - getting-started
+draft: false
+excerpt: Welcome to your new blog built with UtopiaJS.
+---
+
+# Hello World
+
+Welcome to your new blog! This is your first post.
+
+## Getting Started
+
+Edit this file at \`content/blog/hello-world.md\` or create new \`.md\` files in the same directory. Each file becomes a blog post automatically.
+
+### Features
+
+- **Markdown** with YAML frontmatter for metadata
+- **Type-safe schemas** to validate your content
+- **MCP server** so AI agents can manage your content
+- **Hot reload** — changes appear instantly in dev mode
+
+## What's Next
+
+- Create a new post by adding a \`.md\` file to \`content/blog/\`
+- Edit the schema in \`content.config.${ext}\`
+- Run \`utopia content mcp\` to manage posts with AI
+`,
+      'utf-8',
+    );
+
+    // Create content config file
+    const contentConfigPath = path.join(root, `content.config.${ext}`);
+    fs.writeFileSync(
+      contentConfigPath,
+      `import { defineCollection, createContent } from '@matthesketh/utopia-content';
+
+createContent({ contentDir: 'content' });
+
+export const blog = defineCollection({
+  name: 'blog',
+  directory: 'blog',
+  schema: {
+    title: { type: 'string', required: true },
+    date: { type: 'date', required: true },
+    tags: { type: 'array', items: 'string' },
+    draft: { type: 'boolean', default: false },
+    excerpt: { type: 'string' },
+  },
+  formats: ['md'],
+});
+`,
+      'utf-8',
+    );
+
+    // Update vite.config to include the content plugin
+    const viteConfigPath = path.join(root, `vite.config.${ext}`);
+    if (fs.existsSync(viteConfigPath)) {
+      let viteConfig = fs.readFileSync(viteConfigPath, 'utf-8');
+      // Add content plugin import after utopia import
+      viteConfig = viteConfig.replace(
+        /import utopia from '@matthesketh\/utopia-vite-plugin'/,
+        "import utopia from '@matthesketh/utopia-vite-plugin'\nimport content from '@matthesketh/utopia-content/vite'",
+      );
+      // Add content plugin to the plugins array
+      viteConfig = viteConfig.replace(
+        /plugins:\s*\[\s*utopia\(\)/,
+        "plugins: [utopia(), content({ contentDir: 'content' })",
+      );
+      fs.writeFileSync(viteConfigPath, viteConfig, 'utf-8');
+    }
+
+    // If router is enabled, create blog routes
+    if (useRouter) {
+      const blogRouteDir = path.join(root, 'src', 'routes', 'blog');
+      const blogSlugDir = path.join(blogRouteDir, '[slug]');
+      fs.mkdirSync(blogSlugDir, { recursive: true });
+
+      // Blog listing page
+      fs.writeFileSync(
+        path.join(blogRouteDir, '+page.utopia'),
+        `<template>
+  <div class="blog">
+    <h1>Blog</h1>
+    <div class="posts">
+      <article u-for="post in posts()" class="post-card">
+        <h2>
+          <a :href="'/blog/' + post.slug">{{ post.data.title }}</a>
+        </h2>
+        <time>{{ post.data.date }}</time>
+        <p u-if="post.data.excerpt">{{ post.data.excerpt }}</p>
+        <div class="tags" u-if="post.data.tags">
+          <span u-for="tag in post.data.tags" class="tag">{{ tag }}</span>
+        </div>
+      </article>
+    </div>
+  </div>
+</template>
+
+<script${language === 'typescript' ? ' lang="ts"' : ''}>
+import { signal } from '@matthesketh/utopia-core';
+import { getCollection } from '@matthesketh/utopia-content';
+import '../../../content.config';
+
+const posts = signal([]);
+
+getCollection('blog', {
+  filter: (e) => !e.data.draft,
+  sort: 'date',
+  order: 'desc',
+}).then((entries) => posts.set(entries));
+</script>
+
+<style>
+.blog {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.post-card {
+  border-bottom: 1px solid #eee;
+  padding: 1.5rem 0;
+}
+
+.post-card h2 { margin: 0 0 0.5rem; }
+.post-card h2 a { color: #333; text-decoration: none; }
+.post-card h2 a:hover { color: #0066cc; }
+.post-card time { color: #666; font-size: 0.9rem; }
+.post-card p { color: #555; margin: 0.5rem 0; }
+
+.tags { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+.tag {
+  background: #f0f0f0;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: #555;
+}
+</style>
+`,
+        'utf-8',
+      );
+
+      // Single blog post page
+      fs.writeFileSync(
+        path.join(blogSlugDir, '+page.utopia'),
+        `<template>
+  <article class="post" u-if="post()">
+    <header>
+      <h1>{{ post().data.title }}</h1>
+      <time>{{ post().data.date }}</time>
+      <div class="tags" u-if="post().data.tags">
+        <span u-for="tag in post().data.tags" class="tag">{{ tag }}</span>
+      </div>
+    </header>
+    <div class="content" u-bind:innerHTML="post().html"></div>
+    <a href="/blog" class="back">Back to blog</a>
+  </article>
+</template>
+
+<script${language === 'typescript' ? ' lang="ts"' : ''}>
+import { signal } from '@matthesketh/utopia-core';
+import { getEntry } from '@matthesketh/utopia-content';
+import '../../../../content.config';
+
+const post = signal(null);
+
+// Extract slug from URL
+const slug = window.location.pathname.split('/').pop();
+if (slug) {
+  getEntry('blog', slug).then((entry) => post.set(entry));
+}
+</script>
+
+<style>
+.post {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.post header { margin-bottom: 2rem; }
+.post h1 { margin: 0 0 0.5rem; }
+.post time { color: #666; font-size: 0.9rem; }
+
+.tags { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+.tag {
+  background: #f0f0f0;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: #555;
+}
+
+.content { line-height: 1.7; }
+.content h2 { margin-top: 2rem; }
+.content pre {
+  background: #f5f5f5;
+  padding: 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.content code {
+  font-family: 'Fira Code', monospace;
+  font-size: 0.9rem;
+}
+
+.back {
+  display: inline-block;
+  margin-top: 2rem;
+  color: #0066cc;
+  text-decoration: none;
+}
+.back:hover { text-decoration: underline; }
+</style>
+`,
+        'utf-8',
+      );
+    }
   }
 }
 
@@ -518,6 +759,11 @@ async function main(): Promise<void> {
             { title: 'SSR (server-side rendering)', value: 'ssr', selected: false },
             { title: 'Email (template-based emails)', value: 'email', selected: false },
             { title: 'AI (chat, streaming, adapters)', value: 'ai', selected: false },
+            {
+              title: 'Content / Blog (markdown, collections, MCP)',
+              value: 'content',
+              selected: false,
+            },
             { title: 'CSS Preprocessor', value: 'css-preprocessor', selected: false },
           ],
           instructions: dim('  (use space to toggle, enter to confirm)'),
@@ -572,6 +818,7 @@ async function main(): Promise<void> {
   const useSSR = features.includes('ssr');
   const useEmail = features.includes('email');
   const useAI = features.includes('ai');
+  const useContent = features.includes('content');
 
   const root = path.resolve(process.cwd(), projectName);
 
@@ -596,6 +843,7 @@ async function main(): Promise<void> {
     useSSR,
     useEmail,
     useAI,
+    useContent,
     cssPreprocessor,
     initGit: shouldInitGit,
   };
