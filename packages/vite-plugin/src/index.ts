@@ -22,6 +22,12 @@ export interface UtopiaPluginOptions {
    * @default undefined
    */
   exclude?: FilterPattern;
+
+  /**
+   * Directory containing route files, relative to the project root.
+   * @default 'src/routes'
+   */
+  routesDir?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -42,6 +48,15 @@ const CSS_SUFFIX = '.css';
  * @see https://vitejs.dev/guide/api-plugin#virtual-modules-convention
  */
 const VIRTUAL_PREFIX = '\0';
+
+/** Virtual module ID for the route table. */
+const VIRTUAL_ROUTES_ID = 'virtual:utopia-routes';
+
+/** Resolved virtual module ID (with \0 prefix). */
+const RESOLVED_VIRTUAL_ROUTES_ID = VIRTUAL_PREFIX + VIRTUAL_ROUTES_ID;
+
+/** Pattern matching route special files for HMR invalidation. */
+const ROUTE_FILE_RE = /\+(?:page|layout|error|server)\.\w+$/;
 
 // ---------------------------------------------------------------------------
 // CSS cache
@@ -118,7 +133,7 @@ function cssIdToUtopiaId(cssId: string): string {
  * @returns A Vite plugin object.
  */
 export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin {
-  const { include = `**/*${UTOPIA_EXT}`, exclude } = options;
+  const { include = `**/*${UTOPIA_EXT}`, exclude, routesDir = 'src/routes' } = options;
 
   let filter: (id: string) => boolean;
   let server: ViteDevServer | undefined;
@@ -171,6 +186,11 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
     // -------------------------------------------------------------------
 
     resolveId(id, importer, options) {
+      // Virtual routes module.
+      if (id === VIRTUAL_ROUTES_ID) {
+        return RESOLVED_VIRTUAL_ROUTES_ID;
+      }
+
       // During dev SSR (`ssrLoadModule`), env.isSsrBuild is false so the
       // config hook alias does not apply. Intercept `@matthesketh/utopia-runtime`
       // imports when resolved for SSR and redirect to the SSR runtime.
@@ -205,6 +225,19 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
 
     load(id) {
       if (!id.startsWith(VIRTUAL_PREFIX)) return undefined;
+
+      // Virtual routes module.
+      if (id === RESOLVED_VIRTUAL_ROUTES_ID) {
+        const globPattern = `/${routesDir}/**/+{page,layout,error,server}.{utopia,ts,js}`;
+        return [
+          `import { buildRouteTable } from '@matthesketh/utopia-router';`,
+          `const manifest = import.meta.glob(${JSON.stringify(globPattern)});`,
+          `const apiManifest = import.meta.glob('/${routesDir}/**/+server.{ts,js}');`,
+          `const routes = buildRouteTable(manifest);`,
+          `export default routes;`,
+          `export { routes, apiManifest };`,
+        ].join('\n');
+      }
 
       const raw = stripVirtualPrefix(id);
 
@@ -266,6 +299,17 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
 
     handleHotUpdate(ctx: HmrContext) {
       const { file, read, server: hmrServer, modules } = ctx;
+
+      // When a route special file (+page, +layout, +error, +server) is
+      // added/removed/renamed, invalidate the virtual routes module and
+      // trigger a full reload so the route table is rebuilt.
+      if (ROUTE_FILE_RE.test(file)) {
+        const routesMod = hmrServer.moduleGraph.getModuleById(RESOLVED_VIRTUAL_ROUTES_ID);
+        if (routesMod) {
+          hmrServer.moduleGraph.invalidateModule(routesMod);
+          hmrServer.ws.send({ type: 'full-reload' });
+        }
+      }
 
       if (!file.endsWith(UTOPIA_EXT)) return undefined;
 
