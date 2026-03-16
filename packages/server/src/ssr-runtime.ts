@@ -10,7 +10,7 @@
 import { signal, computed, batch, untrack } from '@matthesketh/utopia-core';
 import type { VElement, VText, VComment, VNode } from './vnode.js';
 
-export const UPPER_CASE_RE = /([A-Z])/g;
+const UPPER_CASE_RE = /([A-Z])/g;
 
 // Re-export reactivity primitives (these work identically on the server).
 export { signal, computed, batch, untrack };
@@ -26,6 +26,30 @@ export function flushStyles(): string[] {
   const styles = Array.from(collectedStyles);
   collectedStyles = new Set();
   return styles;
+}
+
+// ---------------------------------------------------------------------------
+// Head management — SSR collects entries during render
+// ---------------------------------------------------------------------------
+
+export interface HeadConfig {
+  title?: string;
+  meta?: { name?: string; property?: string; content: string }[];
+  link?: { rel: string; href: string; [key: string]: string }[];
+  script?: { src: string; [key: string]: string }[];
+}
+
+let collectedHead: HeadConfig[] = [];
+
+export function useHead(config: HeadConfig): void {
+  collectedHead.push(config);
+}
+
+/** Reset and return all collected head entries. */
+export function flushHead(): HeadConfig[] {
+  const entries = collectedHead;
+  collectedHead = [];
+  return entries;
 }
 
 // ---------------------------------------------------------------------------
@@ -302,6 +326,57 @@ export function onMount(_fn: () => void): void {}
 export function onDestroy(_fn: () => void): void {}
 
 // ---------------------------------------------------------------------------
+// Lifecycle capture — no-op on server
+// ---------------------------------------------------------------------------
+
+export function pushDisposer(_fn: () => void): void {}
+export function startCapturingDisposers(): null {
+  return null;
+}
+export function stopCapturingDisposers(_prev: unknown): (() => void)[] {
+  return [];
+}
+
+// ---------------------------------------------------------------------------
+// Error boundaries — SSR runs try, falls back on catch
+// ---------------------------------------------------------------------------
+
+export function createErrorBoundary(
+  tryFn: () => VNode,
+  catchFn: (error: Error) => VNode,
+): VNode {
+  try {
+    return untrack(tryFn);
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    return untrack(() => catchFn(error));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Lazy components — SSR cannot be async, returns fallback
+// ---------------------------------------------------------------------------
+
+export function defineLazy(
+  _loader: () => Promise<{ default: ComponentDefinition }>,
+  fallback?: () => VNode,
+): ComponentDefinition {
+  // On SSR we can't do async, so return the fallback or an empty node.
+  return {
+    render() {
+      if (fallback) return untrack(fallback);
+      return createComment('lazy');
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Transitions — no-op on server
+// ---------------------------------------------------------------------------
+
+export function createTransition(_el: VNode, _opts: unknown): void {}
+
+// ---------------------------------------------------------------------------
 // Scheduler — no-op on server
 // ---------------------------------------------------------------------------
 
@@ -309,3 +384,76 @@ export function queueJob(_fn: () => void): void {}
 export function nextTick(): Promise<void> {
   return Promise.resolve();
 }
+
+// ---------------------------------------------------------------------------
+// Form validation — static stubs for SSR
+// ---------------------------------------------------------------------------
+
+export type ValidationRule<T = any> = (value: T) => string | null;
+
+export interface FieldConfig<T> {
+  initial: T;
+  rules?: ValidationRule<T>[];
+}
+
+export interface FormField<T> {
+  value: () => T;
+  set(newValue: T): void;
+  error: () => string | null;
+  errors: () => string[];
+  touched: () => boolean;
+  touch(): void;
+  dirty: () => boolean;
+  valid: () => boolean;
+  reset(): void;
+}
+
+export interface Form<T extends Record<string, FieldConfig<any>>> {
+  fields: { [K in keyof T]: FormField<T[K]['initial']> };
+  valid: () => boolean;
+  dirty: () => boolean;
+  data(): { [K in keyof T]: T[K]['initial'] };
+  handleSubmit(onSubmit: (data: { [K in keyof T]: T[K]['initial'] }) => void | Promise<void>): void;
+  reset(): void;
+}
+
+export function createForm<T extends Record<string, FieldConfig<any>>>(config: T): Form<T> {
+  const fields: Record<string, FormField<any>> = {};
+  for (const [key, fieldConfig] of Object.entries(config)) {
+    const initial = (fieldConfig as FieldConfig<any>).initial;
+    fields[key] = {
+      value: () => initial,
+      set() {},
+      error: () => null,
+      errors: () => [],
+      touched: () => false,
+      touch() {},
+      dirty: () => false,
+      valid: () => true,
+      reset() {},
+    };
+  }
+  return {
+    fields: fields as Form<T>['fields'],
+    valid: () => true,
+    dirty: () => false,
+    data() {
+      const result: Record<string, unknown> = {};
+      for (const [key, fieldConfig] of Object.entries(config)) {
+        result[key] = (fieldConfig as FieldConfig<any>).initial;
+      }
+      return result as { [K in keyof T]: T[K]['initial'] };
+    },
+    handleSubmit() {},
+    reset() {},
+  };
+}
+
+export function required(): ValidationRule { return () => null; }
+export function minLength(_n: number): ValidationRule<string> { return () => null; }
+export function maxLength(_n: number): ValidationRule<string> { return () => null; }
+export function min(_n: number): ValidationRule<number> { return () => null; }
+export function max(_n: number): ValidationRule<number> { return () => null; }
+export function email(): ValidationRule<string> { return () => null; }
+export function pattern(_regex: RegExp): ValidationRule<string> { return () => null; }
+export function validate<T>(_predicate: (value: T) => boolean): ValidationRule<T> { return () => null; }

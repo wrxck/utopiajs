@@ -123,7 +123,7 @@ export interface Directive {
   modifiers: string[];
 }
 
-export type DirectiveKind = 'on' | 'bind' | 'if' | 'else' | 'else-if' | 'for' | 'model';
+export type DirectiveKind = 'on' | 'bind' | 'if' | 'else' | 'else-if' | 'for' | 'model' | 'transition';
 
 // ===========================================================================
 // Phase 1 — Recursive-descent HTML parser
@@ -513,7 +513,8 @@ function isDirectiveKind(s: string): s is DirectiveKind {
     s === 'else' ||
     s === 'else-if' ||
     s === 'for' ||
-    s === 'model'
+    s === 'model' ||
+    s === 'transition'
   );
 }
 
@@ -692,6 +693,9 @@ class CodeGenerator {
       case 'model':
         this.genModel(elVar, dir, scope);
         break;
+      case 'transition':
+        this.genTransition(elVar, dir);
+        break;
     }
   }
 
@@ -752,6 +756,27 @@ class CodeGenerator {
     const signalRef = this.resolveExpression(dir.expression, scope);
     this.emit(`createEffect(() => setAttr(${elVar}, 'value', ${signalRef}()))`);
     this.emit(`addEventListener(${elVar}, 'input', (e) => ${signalRef}.set(e.target.value))`);
+  }
+
+  // ---- u-transition ---------------------------------------------------------
+
+  private genTransition(elVar: string, dir: Directive): void {
+    this.helpers.add('createTransition');
+
+    // u-transition="fade" — name from expression
+    // u-transition:slide — name from arg
+    // u-transition:slide.duration-300 — name from arg, duration from modifier
+    const name = dir.arg || dir.expression || 'fade';
+
+    let durationOpt = '';
+    for (const mod of dir.modifiers) {
+      if (mod.startsWith('duration-')) {
+        const ms = mod.slice('duration-'.length);
+        durationOpt = `, duration: ${ms}`;
+      }
+    }
+
+    this.emit(`createTransition(${elVar}, { name: '${escapeStr(name)}'${durationOpt} })`);
   }
 
   // ---- Structural: u-if ---------------------------------------------------
