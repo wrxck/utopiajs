@@ -939,3 +939,48 @@ describe('CSP nonce support', () => {
     // The nonce is injected by the handler layer, not renderToString itself
   });
 });
+
+// =========================================================================
+// Security — Regression tests
+// =========================================================================
+
+describe('Security — serializeHead attribute filtering', () => {
+  it('strips onload attribute from script tags', () => {
+    const html = serializeHead([
+      {
+        script: [{ src: '/app.js', onload: 'alert(1)' } as any],
+      },
+    ]);
+    expect(html).toContain('src="/app.js"');
+    expect(html).not.toContain('onload');
+  });
+
+  it('strips onerror attribute from link tags', () => {
+    const html = serializeHead([
+      {
+        link: [{ rel: 'stylesheet', href: '/style.css', onerror: 'alert(1)' } as any],
+      },
+    ]);
+    expect(html).toContain('href="/style.css"');
+    expect(html).not.toContain('onerror');
+  });
+});
+
+describe('Security — VNode depth limit', () => {
+  it('throws when VNode tree exceeds max depth', () => {
+    // Build a deeply nested VNode tree (1002 levels)
+    let node: VNode = { type: 2, text: 'leaf' } as VNode;
+    for (let i = 0; i < 1002; i++) {
+      node = { type: 1, tag: 'div', attrs: {}, children: [node] } as VNode;
+    }
+    expect(() => serializeVNode(node)).toThrow('maximum depth');
+  });
+
+  it('does not throw for trees within the limit', () => {
+    let node: VNode = { type: 2, text: 'leaf' } as VNode;
+    for (let i = 0; i < 100; i++) {
+      node = { type: 1, tag: 'div', attrs: {}, children: [node] } as VNode;
+    }
+    expect(() => serializeVNode(node)).not.toThrow();
+  });
+});

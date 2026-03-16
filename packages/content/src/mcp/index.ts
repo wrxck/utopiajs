@@ -1,7 +1,6 @@
 import type { CollectionConfig, ContentAdapter } from '../types.js';
-import { createFilesystemAdapter } from '../adapters/filesystem.js';
+import { createFilesystemAdapter, validateSlug } from '../adapters/filesystem.js';
 import { createContentTools } from './tools.js';
-import type { ContentToolHandler, ContentToolResult } from './tools.js';
 
 /** JSON-RPC 2.0 types (self-contained — no dependency on @matthesketh/utopia-ai) */
 interface JsonRpcRequest {
@@ -119,6 +118,7 @@ export function createContentMCPServer(config: ContentMCPServerConfig): ContentM
         if (!col) throw { code: -32602, message: `Unknown collection: ${collectionName}` };
 
         if (slug) {
+          validateSlug(slug);
           const entry = await col.adapter.readEntry(col.config, slug);
           if (!entry) throw { code: -32602, message: `Entry not found: ${slug}` };
           return {
