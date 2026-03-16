@@ -724,10 +724,7 @@ describe('SSR useHead', () => {
   });
 
   it('serializeHead includes nonce on script tags when provided', () => {
-    const html = serializeHead(
-      [{ script: [{ src: '/app.js' }] }],
-      'abc123',
-    );
+    const html = serializeHead([{ script: [{ src: '/app.js' }] }], 'abc123');
     expect(html).toContain('nonce="abc123"');
   });
 
@@ -903,8 +900,8 @@ describe('SSR defineLazy', () => {
   });
 
   it('returns a comment node when no fallback is provided', () => {
-    const Lazy = defineLazy(
-      () => Promise.resolve({ default: { render: () => createElement('div') } }),
+    const Lazy = defineLazy(() =>
+      Promise.resolve({ default: { render: () => createElement('div') } }),
     );
 
     const node = createComponent(Lazy);

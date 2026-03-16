@@ -83,7 +83,9 @@ describe('template integrity', () => {
   it('route files exist', () => {
     expect(fs.existsSync(path.join(TEMPLATE_DIR, 'src', 'routes', '+page.utopia'))).toBe(true);
     expect(fs.existsSync(path.join(TEMPLATE_DIR, 'src', 'routes', '+layout.utopia'))).toBe(true);
-    expect(fs.existsSync(path.join(TEMPLATE_DIR, 'src', 'routes', 'about', '+page.utopia'))).toBe(true);
+    expect(fs.existsSync(path.join(TEMPLATE_DIR, 'src', 'routes', 'about', '+page.utopia'))).toBe(
+      true,
+    );
   });
 
   it('vite.config.ts exists', () => {

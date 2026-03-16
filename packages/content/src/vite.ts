@@ -118,7 +118,11 @@ async function generateManifestModule(contentDir: string): Promise<string> {
         const parsed = parseFrontmatter(raw);
         data = parsed.data;
       } else if (ext === '.json') {
-        try { data = JSON.parse(raw); } catch { /* skip invalid JSON */ }
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          /* skip invalid JSON */
+        }
       } else if (ext === '.yaml' || ext === '.yml') {
         const parsed = parseFrontmatter(`---\n${raw}\n---\n`);
         data = parsed.data;

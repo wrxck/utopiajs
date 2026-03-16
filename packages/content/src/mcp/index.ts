@@ -48,12 +48,10 @@ export interface ContentMCPServerConfig {
  */
 export function createContentMCPServer(config: ContentMCPServerConfig): ContentMCPServer {
   const adapter = config.adapter ?? createFilesystemAdapter(config.contentDir);
-  const collectionMap = new Map(
-    config.collections.map(c => [c.name, { config: c, adapter }]),
-  );
+  const collectionMap = new Map(config.collections.map((c) => [c.name, { config: c, adapter }]));
 
   const tools = createContentTools(() => collectionMap);
-  const toolMap = new Map(tools.map(t => [t.definition.name, t]));
+  const toolMap = new Map(tools.map((t) => [t.definition.name, t]));
 
   const serverInfo = { name: 'utopia-content', version: '0.6.0' };
 
@@ -85,7 +83,7 @@ export function createContentMCPServer(config: ContentMCPServerConfig): ContentM
 
       case 'tools/list':
         return {
-          tools: tools.map(t => ({
+          tools: tools.map((t) => ({
             name: t.definition.name,
             description: t.definition.description,
             inputSchema: t.definition.inputSchema,
@@ -101,7 +99,7 @@ export function createContentMCPServer(config: ContentMCPServerConfig): ContentM
 
       case 'resources/list':
         return {
-          resources: Array.from(collectionMap.keys()).flatMap(name => [
+          resources: Array.from(collectionMap.keys()).flatMap((name) => [
             {
               uri: `content://${name}`,
               name: `${name} collection`,
@@ -124,20 +122,32 @@ export function createContentMCPServer(config: ContentMCPServerConfig): ContentM
           const entry = await col.adapter.readEntry(col.config, slug);
           if (!entry) throw { code: -32602, message: `Entry not found: ${slug}` };
           return {
-            contents: [{
-              uri: params.uri,
-              text: JSON.stringify({ slug: entry.slug, data: entry.data, body: entry.body, html: entry.html }, null, 2),
-              mimeType: 'application/json',
-            }],
+            contents: [
+              {
+                uri: params.uri,
+                text: JSON.stringify(
+                  { slug: entry.slug, data: entry.data, body: entry.body, html: entry.html },
+                  null,
+                  2,
+                ),
+                mimeType: 'application/json',
+              },
+            ],
           };
         } else {
           const entries = await col.adapter.readEntries(col.config);
           return {
-            contents: [{
-              uri: params.uri,
-              text: JSON.stringify(entries.map(e => ({ slug: e.slug, ...e.data })), null, 2),
-              mimeType: 'application/json',
-            }],
+            contents: [
+              {
+                uri: params.uri,
+                text: JSON.stringify(
+                  entries.map((e) => ({ slug: e.slug, ...e.data })),
+                  null,
+                  2,
+                ),
+                mimeType: 'application/json',
+              },
+            ],
           };
         }
       }

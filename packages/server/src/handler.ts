@@ -52,7 +52,12 @@ export function createHandler(
         const parsedUrl = new URL(url, `http://${req.headers.host ?? 'localhost'}`);
         const method = (req.method ?? 'GET').toUpperCase();
         const apiRequest = new Request(parsedUrl.href, { method });
-        const apiResponse = await handleApiRequest(parsedUrl, method, apiRequest, compiledApiRoutes);
+        const apiResponse = await handleApiRequest(
+          parsedUrl,
+          method,
+          apiRequest,
+          compiledApiRoutes,
+        );
 
         if (apiResponse) {
           res.writeHead(apiResponse.status, Object.fromEntries(apiResponse.headers.entries()));

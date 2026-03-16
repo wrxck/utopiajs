@@ -123,7 +123,15 @@ export interface Directive {
   modifiers: string[];
 }
 
-export type DirectiveKind = 'on' | 'bind' | 'if' | 'else' | 'else-if' | 'for' | 'model' | 'transition';
+export type DirectiveKind =
+  | 'on'
+  | 'bind'
+  | 'if'
+  | 'else'
+  | 'else-if'
+  | 'for'
+  | 'model'
+  | 'transition';
 
 // ===========================================================================
 // Phase 1 — Recursive-descent HTML parser
