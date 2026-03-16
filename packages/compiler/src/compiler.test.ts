@@ -1004,3 +1004,63 @@ describe('u-else-if directive', () => {
     expect(result.code).not.toContain('createIf');
   });
 });
+
+// ===========================================================================
+// Template Security
+// ===========================================================================
+
+describe('Template security — interpolation escaping', () => {
+  it('interpolations use setText (textContent) and never innerHTML', () => {
+    const result = compileTemplate('<p>{{ message() }}</p>');
+    // Must use setText which sets textContent, inherently safe against XSS
+    expect(result.code).toContain('setText');
+    expect(result.code).toContain('createTextNode');
+    // Must never use innerHTML or insertAdjacentHTML
+    expect(result.code).not.toContain('innerHTML');
+    expect(result.code).not.toContain('insertAdjacentHTML');
+    expect(result.code).not.toContain('outerHTML');
+  });
+
+  it('static text uses createTextNode (safe textContent)', () => {
+    const result = compileTemplate('<p>Hello <strong>world</strong></p>');
+    expect(result.code).toContain('createTextNode');
+    expect(result.code).not.toContain('innerHTML');
+  });
+
+  it('u-bind uses setAttr (not direct property assignment)', () => {
+    const result = compileTemplate('<a u-bind:href="url()">link</a>');
+    expect(result.code).toContain('setAttr');
+    expect(result.code).not.toContain('innerHTML');
+  });
+});
+
+// ===========================================================================
+// u-transition directive
+// ===========================================================================
+
+describe('u-transition directive', () => {
+  it('compiles u-transition with expression name', () => {
+    const result = compileTemplate('<div u-transition="fade">content</div>');
+    expect(result.code).toContain('createTransition');
+    expect(result.code).toContain("name: 'fade'");
+    expect(result.helpers.has('createTransition')).toBe(true);
+  });
+
+  it('compiles u-transition with arg name', () => {
+    const result = compileTemplate('<div u-transition:slide>content</div>');
+    expect(result.code).toContain('createTransition');
+    expect(result.code).toContain("name: 'slide'");
+  });
+
+  it('compiles u-transition with duration modifier', () => {
+    const result = compileTemplate('<div u-transition:fade.duration-300>content</div>');
+    expect(result.code).toContain("name: 'fade'");
+    expect(result.code).toContain('duration: 300');
+  });
+
+  it('defaults transition name to fade when no name given', () => {
+    const result = compileTemplate('<div u-transition>content</div>');
+    expect(result.code).toContain('createTransition');
+    expect(result.code).toContain("name: 'fade'");
+  });
+});
