@@ -99,10 +99,15 @@ export function renderToStream(
   });
 }
 
-function pushVNode(stream: Readable, node: VNode): void {
+const MAX_VNODE_DEPTH = 1000;
+
+function pushVNode(stream: Readable, node: VNode, depth: number = 0): void {
+  if (depth > MAX_VNODE_DEPTH) {
+    throw new Error(`VNode tree exceeded maximum depth of ${MAX_VNODE_DEPTH}`);
+  }
   switch (node.type) {
     case 1:
-      pushElement(stream, node);
+      pushElement(stream, node, depth);
       break;
     case 2:
       stream.push(escapeHtml(node.text));
@@ -113,7 +118,7 @@ function pushVNode(stream: Readable, node: VNode): void {
   }
 }
 
-function pushElement(stream: Readable, el: VElement): void {
+function pushElement(stream: Readable, el: VElement, depth: number): void {
   let open = `<${validateTag(el.tag)}`;
 
   for (const [name, value] of Object.entries(el.attrs)) {
@@ -132,7 +137,7 @@ function pushElement(stream: Readable, el: VElement): void {
   }
 
   for (const child of el.children) {
-    pushVNode(stream, child);
+    pushVNode(stream, child, depth + 1);
   }
 
   stream.push(`</${validateTag(el.tag)}>`);

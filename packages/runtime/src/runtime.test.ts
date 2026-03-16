@@ -1269,3 +1269,126 @@ describe('createTransition', () => {
     document.body.removeChild(el);
   });
 });
+
+// ===========================================================================
+// Security — Regression tests
+// ===========================================================================
+
+import { useHead } from './head.js';
+
+describe('Security — defineLazy error handling', () => {
+  it('shows error message when loader rejects', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const Lazy = defineLazy(() => Promise.reject(new Error('network error')));
+
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const node = createComponent(Lazy);
+    target.appendChild(node);
+
+    // Allow microtask queue to drain
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(target.textContent).toBe('Failed to load component');
+    errorSpy.mockRestore();
+    document.body.removeChild(target);
+  });
+
+  it('does not duplicate requests for the same loader', async () => {
+    let callCount = 0;
+    const Component: ComponentDefinition = {
+      render() {
+        const el = document.createElement('div');
+        el.textContent = 'loaded';
+        return el;
+      },
+    };
+
+    const loader = () => {
+      callCount++;
+      return Promise.resolve({ default: Component });
+    };
+
+    const Lazy = defineLazy(loader);
+
+    // Render twice before the promise resolves
+    createComponent(Lazy);
+    createComponent(Lazy);
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    // The loader should have been called only once
+    expect(callCount).toBe(1);
+  });
+});
+
+describe('Security — useHead attribute filtering', () => {
+  it('filters onload attribute from script tags', () => {
+    useHead({
+      script: [{ src: '/app.js', onload: 'alert(1)' } as any],
+    });
+
+    const scripts = document.head.querySelectorAll('script');
+    const last = scripts[scripts.length - 1];
+    expect(last.getAttribute('src')).toBe('/app.js');
+    expect(last.getAttribute('onload')).toBeNull();
+    last.parentNode?.removeChild(last);
+  });
+
+  it('filters onerror attribute from link tags', () => {
+    useHead({
+      link: [{ rel: 'stylesheet', href: '/style.css', onerror: 'alert(1)' } as any],
+    });
+
+    const links = document.head.querySelectorAll('link');
+    const last = links[links.length - 1];
+    expect(last.getAttribute('href')).toBe('/style.css');
+    expect(last.getAttribute('onerror')).toBeNull();
+    last.parentNode?.removeChild(last);
+  });
+});
+
+describe('Security — transition double-fire prevention', () => {
+  it('calls done() only once even if both transitionend and timeout fire', () => {
+    vi.useFakeTimers();
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const hooks = createTransition(el, { name: 'test', duration: 100 });
+
+    const doneSpy = vi.fn();
+    hooks.beforeEnter(el);
+    hooks.enter(el, doneSpy);
+
+    // Simulate transitionend event
+    el.dispatchEvent(new Event('transitionend'));
+    expect(doneSpy).toHaveBeenCalledTimes(1);
+
+    // Advance past the timeout
+    vi.advanceTimersByTime(200);
+    // done should not have been called again
+    expect(doneSpy).toHaveBeenCalledTimes(1);
+
+    document.body.removeChild(el);
+    vi.useRealTimers();
+  });
+
+  it('calls done() via timeout if transitionend never fires', () => {
+    vi.useFakeTimers();
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const hooks = createTransition(el, { name: 'test', duration: 100 });
+
+    const doneSpy = vi.fn();
+    hooks.beforeLeave(el);
+    hooks.leave(el, doneSpy);
+
+    expect(doneSpy).not.toHaveBeenCalled();
+
+    // Advance past the timeout
+    vi.advanceTimersByTime(200);
+    expect(doneSpy).toHaveBeenCalledTimes(1);
+
+    document.body.removeChild(el);
+    vi.useRealTimers();
+  });
+});

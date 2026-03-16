@@ -5,6 +5,15 @@ import type { ContentAdapter, CollectionConfig, ContentEntry, ContentFormat } fr
 import { parseFrontmatter, serializeFrontmatter } from '../frontmatter.js';
 import { renderMarkdown } from '../markdown.js';
 
+/** Slug must start with alphanumeric, then allow alphanumeric, hyphens, underscores, and slashes. */
+export const VALID_SLUG_RE = /^[a-zA-Z0-9][a-zA-Z0-9_/-]*$/;
+
+export function validateSlug(slug: string): void {
+  if (!slug || !VALID_SLUG_RE.test(slug) || slug.includes('..') || slug.includes('//')) {
+    throw new Error(`Invalid slug: ${JSON.stringify(slug)}`);
+  }
+}
+
 const FORMAT_EXTENSIONS: Record<string, ContentFormat> = {
   '.md': 'md',
   '.utopia': 'utopia',
@@ -84,11 +93,14 @@ export function createFilesystemAdapter(baseDir?: string): ContentAdapter {
     },
 
     async readEntry(config: CollectionConfig, slug: string): Promise<ContentEntry | null> {
+      validateSlug(slug);
       const dir = resolveDir(config);
       const formats = config.formats ?? (['md', 'utopia', 'json', 'yaml'] as ContentFormat[]);
 
       for (const format of formats) {
         const filePath = join(dir, `${slug}${FORMAT_EXT_MAP[format]}`);
+        const resolved = resolve(filePath);
+        if (!resolved.startsWith(resolve(dir))) throw new Error('Path traversal detected');
         if (existsSync(filePath)) {
           return parseFile(filePath, config.name);
         }
@@ -104,12 +116,15 @@ export function createFilesystemAdapter(baseDir?: string): ContentAdapter {
       body: string,
       format: ContentFormat = 'md',
     ): Promise<void> {
+      validateSlug(slug);
       const dir = resolveDir(config);
       if (!existsSync(dir)) {
         await mkdir(dir, { recursive: true });
       }
 
       const filePath = join(dir, `${slug}${FORMAT_EXT_MAP[format]}`);
+      const resolved = resolve(filePath);
+      if (!resolved.startsWith(resolve(dir))) throw new Error('Path traversal detected');
 
       switch (format) {
         case 'md': {
@@ -183,9 +198,7 @@ function extractUtopiaMetadata(source: string): Record<string, unknown> {
   if (!metadataMatch) return {};
 
   try {
-    // Use Function constructor to evaluate the object literal safely
-    const fn = new Function(`return ${metadataMatch[1]}`);
-    return fn() as Record<string, unknown>;
+    return JSON.parse(metadataMatch[1]) as Record<string, unknown>;
   } catch {
     return {};
   }

@@ -111,7 +111,7 @@ describe('MCP Handler', () => {
 
   beforeEach(() => {
     server = createTestServer();
-    handler = createMCPHandler(server);
+    handler = createMCPHandler(server, { corsOrigin: '*' });
   });
 
   it('should return valid JSON-RPC response for POST request', async () => {
@@ -698,5 +698,111 @@ describe('MCP Server — template URI matching with regex special characters', (
 
     expect(badResponse.error).toBeDefined();
     expect(badResponse.error!.message).toContain('Unknown resource');
+  });
+});
+
+// ===========================================================================
+// Security — MCP handler hardening
+// ===========================================================================
+
+describe('Security — readBody size limit', () => {
+  it('rejects payloads exceeding 1 MB', async () => {
+    const server = createTestServer();
+    const handler = createMCPHandler(server);
+
+    // Create a mock request that emits data in chunks exceeding 1 MB
+    const req = new EventEmitter() as MockRequest;
+    req.method = 'POST';
+    req.url = '/';
+    req.headers = { host: 'localhost' };
+
+    const res = mockRes();
+
+    const done = new Promise<void>((resolve) => {
+      res.end.mockImplementation((data?: string) => {
+        if (data) res._body = data;
+        resolve();
+      });
+    });
+
+    handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
+
+    // Emit data exceeding the limit
+    const chunk = Buffer.alloc(1024 * 1024 + 1, 'x');
+    process.nextTick(() => {
+      req.emit('data', chunk);
+      req.emit('end');
+    });
+
+    await done;
+
+    expect(res._status).toBe(413);
+    const body = JSON.parse(res._body);
+    expect(body.error.message).toBe('Payload too large');
+  });
+
+  it('accepts payloads within the 1 MB limit', async () => {
+    const server = createTestServer();
+    const handler = createMCPHandler(server);
+
+    const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' });
+    const req = mockReq('POST', '/', body);
+    const res = mockRes();
+
+    await new Promise<void>((resolve) => {
+      res.end.mockImplementation((data?: string) => {
+        if (data) res._body = data;
+        resolve();
+      });
+      handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
+    });
+
+    expect(res._status).toBe(200);
+  });
+});
+
+describe('Security — CORS default', () => {
+  it('does not set CORS header when no corsOrigin configured', async () => {
+    const server = createTestServer();
+    const handler = createMCPHandler(server);
+
+    const req = mockReq('POST', '/', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }));
+    const res = mockRes();
+
+    await new Promise<void>((resolve) => {
+      res.end.mockImplementation((data?: string) => {
+        if (data) res._body = data;
+        resolve();
+      });
+      handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
+    });
+
+    // setHeader should NOT have been called with Access-Control-Allow-Origin
+    const corsCall = res.setHeader.mock.calls.find(
+      (call: [string, string]) => call[0] === 'Access-Control-Allow-Origin',
+    );
+    expect(corsCall).toBeUndefined();
+  });
+
+  it('sets CORS header when corsOrigin is explicitly configured', async () => {
+    const server = createTestServer();
+    const handler = createMCPHandler(server, { corsOrigin: 'https://example.com' });
+
+    const req = mockReq('POST', '/', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }));
+    const res = mockRes();
+
+    await new Promise<void>((resolve) => {
+      res.end.mockImplementation((data?: string) => {
+        if (data) res._body = data;
+        resolve();
+      });
+      handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
+    });
+
+    const corsCall = res.setHeader.mock.calls.find(
+      (call: [string, string]) => call[0] === 'Access-Control-Allow-Origin',
+    );
+    expect(corsCall).toBeDefined();
+    expect(corsCall![1]).toBe('https://example.com');
   });
 });

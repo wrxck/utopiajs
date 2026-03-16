@@ -1,4 +1,5 @@
 import type { CollectionConfig, ContentAdapter, ContentFormat } from '../types.js';
+import { validateSlug } from '../adapters/filesystem.js';
 
 /** JSON Schema type (compatible with MCP tool definitions) */
 interface JsonSchema {
@@ -26,6 +27,13 @@ export interface ContentToolResult {
 export interface ContentToolHandler {
   definition: ContentToolDefinition;
   handler: (params: Record<string, unknown>) => Promise<ContentToolResult>;
+}
+
+function validateString(val: unknown, name: string): string {
+  if (typeof val !== 'string' || val.length === 0) {
+    throw new Error(`Parameter "${name}" must be a non-empty string`);
+  }
+  return val;
 }
 
 function textResult(data: unknown): ContentToolResult {
@@ -115,8 +123,11 @@ export function createContentTools(
         },
       },
       handler: async (params) => {
+        validateString(params.collection, 'collection');
+        const slug = validateString(params.slug, 'slug');
+        validateSlug(slug);
         const { config, adapter } = getCollection(params.collection as string);
-        const entry = await adapter.readEntry(config, params.slug as string);
+        const entry = await adapter.readEntry(config, slug);
         if (!entry)
           return errorResult(`Entry "${params.slug}" not found in "${params.collection}"`);
         return textResult({
@@ -149,17 +160,20 @@ export function createContentTools(
         },
       },
       handler: async (params) => {
+        validateString(params.collection, 'collection');
+        const slug = validateString(params.slug, 'slug');
+        validateSlug(slug);
         const { config, adapter } = getCollection(params.collection as string);
         const data = (params.data as Record<string, unknown>) ?? {};
         const format = (params.format as ContentFormat) ?? 'md';
         await adapter.writeEntry(
           config,
-          params.slug as string,
+          slug,
           data,
-          params.body as string,
+          validateString(params.body, 'body'),
           format,
         );
-        return textResult({ created: true, slug: params.slug, collection: params.collection });
+        return textResult({ created: true, slug, collection: params.collection });
       },
     },
     {
@@ -178,14 +192,17 @@ export function createContentTools(
         },
       },
       handler: async (params) => {
+        validateString(params.collection, 'collection');
+        const slug = validateString(params.slug, 'slug');
+        validateSlug(slug);
         const { config, adapter } = getCollection(params.collection as string);
         await adapter.updateEntry(
           config,
-          params.slug as string,
+          slug,
           params.data as Record<string, unknown> | undefined,
           params.body as string | undefined,
         );
-        return textResult({ updated: true, slug: params.slug, collection: params.collection });
+        return textResult({ updated: true, slug, collection: params.collection });
       },
     },
     {
@@ -202,9 +219,12 @@ export function createContentTools(
         },
       },
       handler: async (params) => {
+        validateString(params.collection, 'collection');
+        const slug = validateString(params.slug, 'slug');
+        validateSlug(slug);
         const { config, adapter } = getCollection(params.collection as string);
-        await adapter.deleteEntry(config, params.slug as string);
-        return textResult({ deleted: true, slug: params.slug, collection: params.collection });
+        await adapter.deleteEntry(config, slug);
+        return textResult({ deleted: true, slug, collection: params.collection });
       },
     },
     {
@@ -221,6 +241,8 @@ export function createContentTools(
         },
       },
       handler: async (params) => {
+        validateString(params.collection, 'collection');
+        validateString(params.query, 'query');
         const { config, adapter } = getCollection(params.collection as string);
         const entries = await adapter.readEntries(config);
         const query = (params.query as string).toLowerCase();
@@ -275,9 +297,12 @@ export function createContentTools(
         },
       },
       handler: async (params) => {
+        validateString(params.collection, 'collection');
+        const slug = validateString(params.slug, 'slug');
+        validateSlug(slug);
         const { config, adapter } = getCollection(params.collection as string);
-        await adapter.updateEntry(config, params.slug as string, { draft: false });
-        return textResult({ published: true, slug: params.slug, collection: params.collection });
+        await adapter.updateEntry(config, slug, { draft: false });
+        return textResult({ published: true, slug, collection: params.collection });
       },
     },
   ];
