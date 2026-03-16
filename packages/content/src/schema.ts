@@ -4,7 +4,10 @@ import type { CollectionSchema, SchemaField, ValidationError } from './types.js'
  * Validate data against a collection schema.
  * Returns an array of validation errors (empty if valid).
  */
-export function validateSchema(data: Record<string, unknown>, schema: CollectionSchema): ValidationError[] {
+export function validateSchema(
+  data: Record<string, unknown>,
+  schema: CollectionSchema,
+): ValidationError[] {
   const errors: ValidationError[] = [];
 
   for (const [field, def] of Object.entries(schema)) {
@@ -30,7 +33,10 @@ export function validateSchema(data: Record<string, unknown>, schema: Collection
  * Apply schema defaults to data.
  * Returns a new object with defaults merged in for missing fields.
  */
-export function applyDefaults(data: Record<string, unknown>, schema: CollectionSchema): Record<string, unknown> {
+export function applyDefaults(
+  data: Record<string, unknown>,
+  schema: CollectionSchema,
+): Record<string, unknown> {
   const result = { ...data };
 
   for (const [field, def] of Object.entries(schema)) {
@@ -58,7 +64,11 @@ function validateField(field: string, value: unknown, def: SchemaField): Validat
 
     case 'boolean':
       if (typeof value !== 'boolean') {
-        return { field, message: `Expected "${field}" to be a boolean, got ${typeof value}`, value };
+        return {
+          field,
+          message: `Expected "${field}" to be a boolean, got ${typeof value}`,
+          value,
+        };
       }
       break;
 
@@ -73,7 +83,11 @@ function validateField(field: string, value: unknown, def: SchemaField): Validat
           return { field, message: `"${field}" is not a valid date string`, value };
         }
       } else {
-        return { field, message: `Expected "${field}" to be a date or date string, got ${typeof value}`, value };
+        return {
+          field,
+          message: `Expected "${field}" to be a date or date string, got ${typeof value}`,
+          value,
+        };
       }
       break;
     }

@@ -1203,8 +1203,8 @@ describe('defineLazy', () => {
   });
 
   it('works without a fallback', () => {
-    const Lazy = defineLazy(
-      () => Promise.resolve({ default: { render: () => document.createElement('div') } }),
+    const Lazy = defineLazy(() =>
+      Promise.resolve({ default: { render: () => document.createElement('div') } }),
     );
 
     const node = createComponent(Lazy);

@@ -17,10 +17,7 @@ import { removeNode } from './dom.js';
  * @param catchFn - Function that renders a fallback given the caught error.
  * @returns The rendered DOM node (either from tryFn or catchFn).
  */
-export function createErrorBoundary(
-  tryFn: () => Node,
-  catchFn: (error: Error) => Node,
-): Node {
+export function createErrorBoundary(tryFn: () => Node, catchFn: (error: Error) => Node): Node {
   const prev = startCapturingDisposers();
 
   try {

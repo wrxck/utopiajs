@@ -63,9 +63,20 @@ export interface ContentAdapter {
   /** Read a single entry by slug */
   readEntry(config: CollectionConfig, slug: string): Promise<ContentEntry | null>;
   /** Write a new entry */
-  writeEntry(config: CollectionConfig, slug: string, data: Record<string, unknown>, body: string, format?: ContentFormat): Promise<void>;
+  writeEntry(
+    config: CollectionConfig,
+    slug: string,
+    data: Record<string, unknown>,
+    body: string,
+    format?: ContentFormat,
+  ): Promise<void>;
   /** Update an existing entry */
-  updateEntry(config: CollectionConfig, slug: string, data?: Record<string, unknown>, body?: string): Promise<void>;
+  updateEntry(
+    config: CollectionConfig,
+    slug: string,
+    data?: Record<string, unknown>,
+    body?: string,
+  ): Promise<void>;
   /** Delete an entry */
   deleteEntry(config: CollectionConfig, slug: string): Promise<void>;
   /** List all slugs in a collection */

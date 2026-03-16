@@ -37,10 +37,7 @@ describe('validateSchema', () => {
   };
 
   it('passes valid data', () => {
-    const errors = validateSchema(
-      { title: 'Hello', date: '2026-01-01', tags: ['a', 'b'] },
-      schema,
-    );
+    const errors = validateSchema({ title: 'Hello', date: '2026-01-01', tags: ['a', 'b'] }, schema);
     expect(errors).toEqual([]);
   });
 
@@ -52,10 +49,7 @@ describe('validateSchema', () => {
   });
 
   it('reports type mismatches', () => {
-    const errors = validateSchema(
-      { title: 123, date: '2026-01-01' },
-      schema,
-    );
+    const errors = validateSchema({ title: 123, date: '2026-01-01' }, schema);
     expect(errors).toHaveLength(1);
     expect(errors[0].field).toBe('title');
     expect(errors[0].message).toContain('string');
@@ -71,36 +65,24 @@ describe('validateSchema', () => {
   });
 
   it('validates boolean fields', () => {
-    const errors = validateSchema(
-      { title: 'Hi', date: '2026-01-01', draft: 'yes' },
-      schema,
-    );
+    const errors = validateSchema({ title: 'Hi', date: '2026-01-01', draft: 'yes' }, schema);
     expect(errors).toHaveLength(1);
     expect(errors[0].field).toBe('draft');
   });
 
   it('validates date strings', () => {
-    const errors = validateSchema(
-      { title: 'Hi', date: 'not-a-date' },
-      schema,
-    );
+    const errors = validateSchema({ title: 'Hi', date: 'not-a-date' }, schema);
     expect(errors).toHaveLength(1);
     expect(errors[0].field).toBe('date');
   });
 
   it('accepts Date objects', () => {
-    const errors = validateSchema(
-      { title: 'Hi', date: new Date('2026-01-01') },
-      schema,
-    );
+    const errors = validateSchema({ title: 'Hi', date: new Date('2026-01-01') }, schema);
     expect(errors).toEqual([]);
   });
 
   it('rejects invalid Date objects', () => {
-    const errors = validateSchema(
-      { title: 'Hi', date: new Date('invalid') },
-      schema,
-    );
+    const errors = validateSchema({ title: 'Hi', date: new Date('invalid') }, schema);
     expect(errors).toHaveLength(1);
     expect(errors[0].field).toBe('date');
   });
@@ -115,27 +97,18 @@ describe('validateSchema', () => {
   });
 
   it('validates array item types', () => {
-    const errors = validateSchema(
-      { title: 'Hi', date: '2026-01-01', tags: ['a', 123] },
-      schema,
-    );
+    const errors = validateSchema({ title: 'Hi', date: '2026-01-01', tags: ['a', 123] }, schema);
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toContain('tags[1]');
   });
 
   it('skips optional fields when null', () => {
-    const errors = validateSchema(
-      { title: 'Hi', date: '2026-01-01', count: null },
-      schema,
-    );
+    const errors = validateSchema({ title: 'Hi', date: '2026-01-01', count: null }, schema);
     expect(errors).toEqual([]);
   });
 
   it('rejects NaN as a number', () => {
-    const errors = validateSchema(
-      { title: 'Hi', date: '2026-01-01', count: NaN },
-      schema,
-    );
+    const errors = validateSchema({ title: 'Hi', date: '2026-01-01', count: NaN }, schema);
     expect(errors).toHaveLength(1);
     expect(errors[0].field).toBe('count');
   });
@@ -299,7 +272,9 @@ describe('createFilesystemAdapter', () => {
     await mkdir(blogDir, { recursive: true });
 
     // Create test content files
-    await writeFile(join(blogDir, 'hello.md'), `---
+    await writeFile(
+      join(blogDir, 'hello.md'),
+      `---
 title: Hello World
 date: 2026-01-01
 tags:
@@ -309,9 +284,12 @@ draft: false
 
 # Hello World
 
-Welcome to the blog.`);
+Welcome to the blog.`,
+    );
 
-    await writeFile(join(blogDir, 'second-post.md'), `---
+    await writeFile(
+      join(blogDir, 'second-post.md'),
+      `---
 title: Second Post
 date: 2026-02-01
 tags:
@@ -321,12 +299,16 @@ draft: true
 
 # Second Post
 
-Another post.`);
+Another post.`,
+    );
 
-    await writeFile(join(blogDir, 'data.json'), JSON.stringify({
-      title: 'JSON Entry',
-      count: 42,
-    }));
+    await writeFile(
+      join(blogDir, 'data.json'),
+      JSON.stringify({
+        title: 'JSON Entry',
+        count: 42,
+      }),
+    );
   });
 
   afterEach(async () => {
@@ -379,7 +361,12 @@ Another post.`);
 
   it('writes a new markdown entry', async () => {
     const adapter = createFilesystemAdapter(tmpDir);
-    await adapter.writeEntry(blogConfig, 'new-post', { title: 'New Post', date: '2026-03-01' }, 'New content');
+    await adapter.writeEntry(
+      blogConfig,
+      'new-post',
+      { title: 'New Post', date: '2026-03-01' },
+      'New content',
+    );
     const entry = await adapter.readEntry(blogConfig, 'new-post');
     expect(entry).not.toBeNull();
     expect(entry!.data.title).toBe('New Post');
@@ -425,14 +412,23 @@ Another post.`);
 
   it('filters by format', async () => {
     const adapter = createFilesystemAdapter(tmpDir);
-    const entries = await adapter.readEntries({ name: 'blog', directory: 'blog', formats: ['json'] });
+    const entries = await adapter.readEntries({
+      name: 'blog',
+      directory: 'blog',
+      formats: ['json'],
+    });
     expect(entries).toHaveLength(1);
     expect(entries[0].format).toBe('json');
   });
 
   it('creates directory if it does not exist on write', async () => {
     const adapter = createFilesystemAdapter(tmpDir);
-    await adapter.writeEntry({ name: 'newcol', directory: 'newcol' }, 'first', { title: 'First' }, 'Content');
+    await adapter.writeEntry(
+      { name: 'newcol', directory: 'newcol' },
+      'first',
+      { title: 'First' },
+      'Content',
+    );
     expect(existsSync(join(tmpDir, 'newcol', 'first.md'))).toBe(true);
   });
 });
@@ -450,26 +446,35 @@ describe('collection engine', () => {
     const blogDir = join(tmpDir, 'blog');
     await mkdir(blogDir, { recursive: true });
 
-    await writeFile(join(blogDir, 'alpha.md'), `---
+    await writeFile(
+      join(blogDir, 'alpha.md'),
+      `---
 title: Alpha
 date: 2026-01-01
 draft: false
 ---
-Alpha content`);
+Alpha content`,
+    );
 
-    await writeFile(join(blogDir, 'beta.md'), `---
+    await writeFile(
+      join(blogDir, 'beta.md'),
+      `---
 title: Beta
 date: 2026-02-01
 draft: true
 ---
-Beta content`);
+Beta content`,
+    );
 
-    await writeFile(join(blogDir, 'gamma.md'), `---
+    await writeFile(
+      join(blogDir, 'gamma.md'),
+      `---
 title: Gamma
 date: 2026-03-01
 draft: false
 ---
-Gamma content`);
+Gamma content`,
+    );
   });
 
   afterEach(async () => {
@@ -507,7 +512,7 @@ Gamma content`);
     createContent({ contentDir: tmpDir });
     defineCollection({ name: 'blog', directory: 'blog' });
     const entries = await getCollection('blog', {
-      filter: e => e.data.draft !== true,
+      filter: (e) => e.data.draft !== true,
     });
     expect(entries).toHaveLength(2);
   });
@@ -548,15 +553,18 @@ Gamma content`);
     const entries = await getCollection('blog');
     expect(entries).toHaveLength(3);
     // Defaults should be applied
-    expect(entries.every(e => typeof e.data.draft === 'boolean')).toBe(true);
+    expect(entries.every((e) => typeof e.data.draft === 'boolean')).toBe(true);
   });
 
   it('throws on schema validation failure', async () => {
     // Write a file that violates the schema
-    await writeFile(join(tmpDir, 'blog', 'bad.md'), `---
+    await writeFile(
+      join(tmpDir, 'blog', 'bad.md'),
+      `---
 title: 123
 ---
-Bad content`);
+Bad content`,
+    );
 
     createContent({ contentDir: tmpDir });
     defineCollection({
@@ -589,7 +597,9 @@ describe('createContentMCPServer', () => {
     const blogDir = join(tmpDir, 'blog');
     await mkdir(blogDir, { recursive: true });
 
-    await writeFile(join(blogDir, 'hello.md'), `---
+    await writeFile(
+      join(blogDir, 'hello.md'),
+      `---
 title: Hello MCP
 date: 2026-01-01
 tags:
@@ -598,9 +608,12 @@ tags:
 draft: false
 ---
 
-Hello from MCP.`);
+Hello from MCP.`,
+    );
 
-    await writeFile(join(blogDir, 'draft-post.md'), `---
+    await writeFile(
+      join(blogDir, 'draft-post.md'),
+      `---
 title: Draft Post
 date: 2026-02-01
 tags:
@@ -608,7 +621,8 @@ tags:
 draft: true
 ---
 
-This is a draft.`);
+This is a draft.`,
+    );
   });
 
   afterEach(async () => {
@@ -638,7 +652,7 @@ This is a draft.`);
     const res = await server.handleRequest(rpc('tools/list'));
     const tools = (res.result as { tools: Array<{ name: string }> }).tools;
     expect(tools.length).toBeGreaterThanOrEqual(9);
-    const names = tools.map(t => t.name);
+    const names = tools.map((t) => t.name);
     expect(names).toContain('list_collections');
     expect(names).toContain('list_entries');
     expect(names).toContain('get_entry');
@@ -652,30 +666,36 @@ This is a draft.`);
 
   it('lists collections', async () => {
     const server = createServer();
-    const res = await server.handleRequest(rpc('tools/call', {
-      name: 'list_collections',
-      arguments: {},
-    }));
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'list_collections',
+        arguments: {},
+      }),
+    );
     const result = JSON.parse((res.result as { content: Array<{ text: string }> }).content[0].text);
     expect(result.collections).toEqual(['blog']);
   });
 
   it('lists entries', async () => {
     const server = createServer();
-    const res = await server.handleRequest(rpc('tools/call', {
-      name: 'list_entries',
-      arguments: { collection: 'blog' },
-    }));
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'list_entries',
+        arguments: { collection: 'blog' },
+      }),
+    );
     const result = JSON.parse((res.result as { content: Array<{ text: string }> }).content[0].text);
     expect(result.count).toBe(2);
   });
 
   it('filters entries by tag', async () => {
     const server = createServer();
-    const res = await server.handleRequest(rpc('tools/call', {
-      name: 'list_entries',
-      arguments: { collection: 'blog', tag: 'mcp' },
-    }));
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'list_entries',
+        arguments: { collection: 'blog', tag: 'mcp' },
+      }),
+    );
     const result = JSON.parse((res.result as { content: Array<{ text: string }> }).content[0].text);
     expect(result.count).toBe(1);
     expect(result.entries[0].title).toBe('Hello MCP');
@@ -683,10 +703,12 @@ This is a draft.`);
 
   it('filters entries by draft status', async () => {
     const server = createServer();
-    const res = await server.handleRequest(rpc('tools/call', {
-      name: 'list_entries',
-      arguments: { collection: 'blog', draft: 'true' },
-    }));
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'list_entries',
+        arguments: { collection: 'blog', draft: 'true' },
+      }),
+    );
     const result = JSON.parse((res.result as { content: Array<{ text: string }> }).content[0].text);
     expect(result.count).toBe(1);
     expect(result.entries[0].title).toBe('Draft Post');
@@ -694,10 +716,12 @@ This is a draft.`);
 
   it('gets a single entry', async () => {
     const server = createServer();
-    const res = await server.handleRequest(rpc('tools/call', {
-      name: 'get_entry',
-      arguments: { collection: 'blog', slug: 'hello' },
-    }));
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'get_entry',
+        arguments: { collection: 'blog', slug: 'hello' },
+      }),
+    );
     const result = JSON.parse((res.result as { content: Array<{ text: string }> }).content[0].text);
     expect(result.data.title).toBe('Hello MCP');
     expect(result.html).toContain('Hello from MCP');
@@ -705,85 +729,103 @@ This is a draft.`);
 
   it('returns error for missing entry', async () => {
     const server = createServer();
-    const res = await server.handleRequest(rpc('tools/call', {
-      name: 'get_entry',
-      arguments: { collection: 'blog', slug: 'missing' },
-    }));
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'get_entry',
+        arguments: { collection: 'blog', slug: 'missing' },
+      }),
+    );
     const result = res.result as { isError: boolean };
     expect(result.isError).toBe(true);
   });
 
   it('creates a new entry', async () => {
     const server = createServer();
-    await server.handleRequest(rpc('tools/call', {
-      name: 'create_entry',
-      arguments: {
-        collection: 'blog',
-        slug: 'new-post',
-        data: { title: 'New Post', date: '2026-03-01' },
-        body: 'New content here.',
-      },
-    }));
+    await server.handleRequest(
+      rpc('tools/call', {
+        name: 'create_entry',
+        arguments: {
+          collection: 'blog',
+          slug: 'new-post',
+          data: { title: 'New Post', date: '2026-03-01' },
+          body: 'New content here.',
+        },
+      }),
+    );
 
     // Verify it was created
-    const res = await server.handleRequest(rpc('tools/call', {
-      name: 'get_entry',
-      arguments: { collection: 'blog', slug: 'new-post' },
-    }));
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'get_entry',
+        arguments: { collection: 'blog', slug: 'new-post' },
+      }),
+    );
     const result = JSON.parse((res.result as { content: Array<{ text: string }> }).content[0].text);
     expect(result.data.title).toBe('New Post');
   });
 
   it('updates an entry', async () => {
     const server = createServer();
-    await server.handleRequest(rpc('tools/call', {
-      name: 'update_entry',
-      arguments: {
-        collection: 'blog',
-        slug: 'hello',
-        data: { title: 'Updated Title' },
-      },
-    }));
+    await server.handleRequest(
+      rpc('tools/call', {
+        name: 'update_entry',
+        arguments: {
+          collection: 'blog',
+          slug: 'hello',
+          data: { title: 'Updated Title' },
+        },
+      }),
+    );
 
-    const res = await server.handleRequest(rpc('tools/call', {
-      name: 'get_entry',
-      arguments: { collection: 'blog', slug: 'hello' },
-    }));
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'get_entry',
+        arguments: { collection: 'blog', slug: 'hello' },
+      }),
+    );
     const result = JSON.parse((res.result as { content: Array<{ text: string }> }).content[0].text);
     expect(result.data.title).toBe('Updated Title');
   });
 
   it('deletes an entry', async () => {
     const server = createServer();
-    await server.handleRequest(rpc('tools/call', {
-      name: 'delete_entry',
-      arguments: { collection: 'blog', slug: 'hello' },
-    }));
+    await server.handleRequest(
+      rpc('tools/call', {
+        name: 'delete_entry',
+        arguments: { collection: 'blog', slug: 'hello' },
+      }),
+    );
 
-    const res = await server.handleRequest(rpc('tools/call', {
-      name: 'get_entry',
-      arguments: { collection: 'blog', slug: 'hello' },
-    }));
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'get_entry',
+        arguments: { collection: 'blog', slug: 'hello' },
+      }),
+    );
     const result = res.result as { isError: boolean };
     expect(result.isError).toBe(true);
   });
 
   it('searches entries by text', async () => {
     const server = createServer();
-    const res = await server.handleRequest(rpc('tools/call', {
-      name: 'search_entries',
-      arguments: { collection: 'blog', query: 'MCP' },
-    }));
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'search_entries',
+        arguments: { collection: 'blog', query: 'MCP' },
+      }),
+    );
     const result = JSON.parse((res.result as { content: Array<{ text: string }> }).content[0].text);
     expect(result.count).toBeGreaterThanOrEqual(1);
   });
 
   it('lists tags', async () => {
     const server = createServer();
-    const res = await server.handleRequest(rpc('tools/call', {
-      name: 'list_tags',
-      arguments: { collection: 'blog' },
-    }));
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'list_tags',
+        arguments: { collection: 'blog' },
+      }),
+    );
     const result = JSON.parse((res.result as { content: Array<{ text: string }> }).content[0].text);
     expect(result.tags).toContain('test');
     expect(result.tags).toContain('mcp');
@@ -792,35 +834,43 @@ This is a draft.`);
 
   it('publishes a draft entry', async () => {
     const server = createServer();
-    await server.handleRequest(rpc('tools/call', {
-      name: 'publish_entry',
-      arguments: { collection: 'blog', slug: 'draft-post' },
-    }));
+    await server.handleRequest(
+      rpc('tools/call', {
+        name: 'publish_entry',
+        arguments: { collection: 'blog', slug: 'draft-post' },
+      }),
+    );
 
-    const res = await server.handleRequest(rpc('tools/call', {
-      name: 'get_entry',
-      arguments: { collection: 'blog', slug: 'draft-post' },
-    }));
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'get_entry',
+        arguments: { collection: 'blog', slug: 'draft-post' },
+      }),
+    );
     const result = JSON.parse((res.result as { content: Array<{ text: string }> }).content[0].text);
     expect(result.data.draft).toBe(false);
   });
 
   it('returns error for unknown tool', async () => {
     const server = createServer();
-    const res = await server.handleRequest(rpc('tools/call', {
-      name: 'nonexistent_tool',
-      arguments: {},
-    }));
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'nonexistent_tool',
+        arguments: {},
+      }),
+    );
     expect(res.error).toBeDefined();
     expect(res.error!.code).toBe(-32602);
   });
 
   it('returns error for unknown collection', async () => {
     const server = createServer();
-    const res = await server.handleRequest(rpc('tools/call', {
-      name: 'list_entries',
-      arguments: { collection: 'nonexistent' },
-    }));
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'list_entries',
+        arguments: { collection: 'nonexistent' },
+      }),
+    );
     expect(res.error).toBeDefined();
   });
 
@@ -828,7 +878,7 @@ This is a draft.`);
     const server = createServer();
     const res = await server.handleRequest(rpc('resources/list'));
     const resources = (res.result as { resources: Array<{ uri: string }> }).resources;
-    expect(resources.some(r => r.uri === 'content://blog')).toBe(true);
+    expect(resources.some((r) => r.uri === 'content://blog')).toBe(true);
   });
 
   it('reads a collection resource', async () => {
@@ -869,20 +919,24 @@ This is a draft.`);
 
   it('creates an entry then finds it via search', async () => {
     const server = createServer();
-    await server.handleRequest(rpc('tools/call', {
-      name: 'create_entry',
-      arguments: {
-        collection: 'blog',
-        slug: 'searchable',
-        data: { title: 'UniqueSearchToken42', date: '2026-04-01' },
-        body: 'This post contains UniqueSearchToken42 in the body.',
-      },
-    }));
+    await server.handleRequest(
+      rpc('tools/call', {
+        name: 'create_entry',
+        arguments: {
+          collection: 'blog',
+          slug: 'searchable',
+          data: { title: 'UniqueSearchToken42', date: '2026-04-01' },
+          body: 'This post contains UniqueSearchToken42 in the body.',
+        },
+      }),
+    );
 
-    const res = await server.handleRequest(rpc('tools/call', {
-      name: 'search_entries',
-      arguments: { collection: 'blog', query: 'UniqueSearchToken42' },
-    }));
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'search_entries',
+        arguments: { collection: 'blog', query: 'UniqueSearchToken42' },
+      }),
+    );
     const result = JSON.parse((res.result as { content: Array<{ text: string }> }).content[0].text);
     expect(result.count).toBeGreaterThanOrEqual(1);
     expect(result.entries.some((e: { slug: string }) => e.slug === 'searchable')).toBe(true);
@@ -892,29 +946,39 @@ This is a draft.`);
     const server = createServer();
 
     // Read original body
-    const before = await server.handleRequest(rpc('tools/call', {
-      name: 'get_entry',
-      arguments: { collection: 'blog', slug: 'hello' },
-    }));
-    const beforeResult = JSON.parse((before.result as { content: Array<{ text: string }> }).content[0].text);
+    const before = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'get_entry',
+        arguments: { collection: 'blog', slug: 'hello' },
+      }),
+    );
+    const beforeResult = JSON.parse(
+      (before.result as { content: Array<{ text: string }> }).content[0].text,
+    );
     const originalBody = beforeResult.body;
 
     // Update only data (no body param)
-    await server.handleRequest(rpc('tools/call', {
-      name: 'update_entry',
-      arguments: {
-        collection: 'blog',
-        slug: 'hello',
-        data: { title: 'Title Changed' },
-      },
-    }));
+    await server.handleRequest(
+      rpc('tools/call', {
+        name: 'update_entry',
+        arguments: {
+          collection: 'blog',
+          slug: 'hello',
+          data: { title: 'Title Changed' },
+        },
+      }),
+    );
 
     // Read back and verify body is preserved
-    const after = await server.handleRequest(rpc('tools/call', {
-      name: 'get_entry',
-      arguments: { collection: 'blog', slug: 'hello' },
-    }));
-    const afterResult = JSON.parse((after.result as { content: Array<{ text: string }> }).content[0].text);
+    const after = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'get_entry',
+        arguments: { collection: 'blog', slug: 'hello' },
+      }),
+    );
+    const afterResult = JSON.parse(
+      (after.result as { content: Array<{ text: string }> }).content[0].text,
+    );
     expect(afterResult.data.title).toBe('Title Changed');
     expect(afterResult.body).toContain('Hello from MCP');
   });
@@ -938,7 +1002,9 @@ describe('createFilesystemAdapter — edge cases', () => {
   it('parses .utopia files with metadata export', async () => {
     const colDir = join(tmpDir, 'components');
     await mkdir(colDir, { recursive: true });
-    await writeFile(join(colDir, 'card.utopia'), `<script>
+    await writeFile(
+      join(colDir, 'card.utopia'),
+      `<script>
 export const metadata = { title: 'Card Component', version: 2 };
 </script>
 
@@ -948,7 +1014,8 @@ export const metadata = { title: 'Card Component', version: 2 };
 
 <style>
 .card { padding: 1rem; }
-</style>`);
+</style>`,
+    );
 
     const adapter = createFilesystemAdapter(tmpDir);
     const config = { name: 'components', directory: 'components', formats: ['utopia' as const] };
@@ -963,11 +1030,14 @@ export const metadata = { title: 'Card Component', version: 2 };
   it('parses .yaml files', async () => {
     const colDir = join(tmpDir, 'data');
     await mkdir(colDir, { recursive: true });
-    await writeFile(join(colDir, 'config.yaml'), `title: Site Config
+    await writeFile(
+      join(colDir, 'config.yaml'),
+      `title: Site Config
 debug: true
 ports:
   - 3000
-  - 8080`);
+  - 8080`,
+    );
 
     const adapter = createFilesystemAdapter(tmpDir);
     const config = { name: 'data', directory: 'data', formats: ['yaml' as const] };
@@ -1015,7 +1085,13 @@ ports:
     const adapter = createFilesystemAdapter(tmpDir);
     const config = { name: 'yamlcol', directory: 'yamlcol', formats: ['yaml' as const] };
 
-    await adapter.writeEntry(config, 'settings', { title: 'My Settings', debug: true, port: 3000 }, '', 'yaml');
+    await adapter.writeEntry(
+      config,
+      'settings',
+      { title: 'My Settings', debug: true, port: 3000 },
+      '',
+      'yaml',
+    );
     const entry = await adapter.readEntry(config, 'settings');
 
     expect(entry).not.toBeNull();
@@ -1032,7 +1108,13 @@ ports:
     const adapter = createFilesystemAdapter(tmpDir);
     const config = { name: 'jsoncol', directory: 'jsoncol', formats: ['json' as const] };
 
-    await adapter.writeEntry(config, 'item', { name: 'Widget', price: 9.99, active: true }, '', 'json');
+    await adapter.writeEntry(
+      config,
+      'item',
+      { name: 'Widget', price: 9.99, active: true },
+      '',
+      'json',
+    );
     const entry = await adapter.readEntry(config, 'item');
 
     expect(entry).not.toBeNull();

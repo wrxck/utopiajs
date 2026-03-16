@@ -66,7 +66,11 @@ export function createContentTools(
           properties: {
             collection: { type: 'string', description: 'Collection name' },
             tag: { type: 'string', description: 'Filter by tag (optional)' },
-            draft: { type: 'string', description: 'Filter by draft status: "true", "false", or "all" (default: "all")', enum: ['true', 'false', 'all'] },
+            draft: {
+              type: 'string',
+              description: 'Filter by draft status: "true", "false", or "all" (default: "all")',
+              enum: ['true', 'false', 'all'],
+            },
           },
           required: ['collection'],
         },
@@ -77,7 +81,7 @@ export function createContentTools(
 
         const tag = params.tag as string | undefined;
         if (tag) {
-          entries = entries.filter(e => {
+          entries = entries.filter((e) => {
             const tags = e.data.tags;
             return Array.isArray(tags) && tags.includes(tag);
           });
@@ -85,15 +89,15 @@ export function createContentTools(
 
         const draftFilter = params.draft as string | undefined;
         if (draftFilter === 'true') {
-          entries = entries.filter(e => e.data.draft === true);
+          entries = entries.filter((e) => e.data.draft === true);
         } else if (draftFilter === 'false') {
-          entries = entries.filter(e => e.data.draft !== true);
+          entries = entries.filter((e) => e.data.draft !== true);
         }
 
         return textResult({
           collection: params.collection,
           count: entries.length,
-          entries: entries.map(e => ({ slug: e.slug, ...e.data })),
+          entries: entries.map((e) => ({ slug: e.slug, ...e.data })),
         });
       },
     },
@@ -113,8 +117,15 @@ export function createContentTools(
       handler: async (params) => {
         const { config, adapter } = getCollection(params.collection as string);
         const entry = await adapter.readEntry(config, params.slug as string);
-        if (!entry) return errorResult(`Entry "${params.slug}" not found in "${params.collection}"`);
-        return textResult({ slug: entry.slug, data: entry.data, body: entry.body, html: entry.html, format: entry.format });
+        if (!entry)
+          return errorResult(`Entry "${params.slug}" not found in "${params.collection}"`);
+        return textResult({
+          slug: entry.slug,
+          data: entry.data,
+          body: entry.body,
+          html: entry.html,
+          format: entry.format,
+        });
       },
     },
     {
@@ -128,7 +139,11 @@ export function createContentTools(
             slug: { type: 'string', description: 'Entry slug (becomes the filename)' },
             data: { type: 'object', description: 'Frontmatter / metadata fields' },
             body: { type: 'string', description: 'Content body (markdown, etc.)' },
-            format: { type: 'string', description: 'File format (default: md)', enum: ['md', 'json', 'yaml'] },
+            format: {
+              type: 'string',
+              description: 'File format (default: md)',
+              enum: ['md', 'json', 'yaml'],
+            },
           },
           required: ['collection', 'slug', 'body'],
         },
@@ -137,7 +152,13 @@ export function createContentTools(
         const { config, adapter } = getCollection(params.collection as string);
         const data = (params.data as Record<string, unknown>) ?? {};
         const format = (params.format as ContentFormat) ?? 'md';
-        await adapter.writeEntry(config, params.slug as string, data, params.body as string, format);
+        await adapter.writeEntry(
+          config,
+          params.slug as string,
+          data,
+          params.body as string,
+          format,
+        );
         return textResult({ created: true, slug: params.slug, collection: params.collection });
       },
     },
@@ -203,7 +224,7 @@ export function createContentTools(
         const { config, adapter } = getCollection(params.collection as string);
         const entries = await adapter.readEntries(config);
         const query = (params.query as string).toLowerCase();
-        const matches = entries.filter(e => {
+        const matches = entries.filter((e) => {
           const title = String(e.data.title ?? '').toLowerCase();
           const body = e.body.toLowerCase();
           return title.includes(query) || body.includes(query);
@@ -211,7 +232,7 @@ export function createContentTools(
         return textResult({
           query: params.query,
           count: matches.length,
-          entries: matches.map(e => ({ slug: e.slug, ...e.data })),
+          entries: matches.map((e) => ({ slug: e.slug, ...e.data })),
         });
       },
     },

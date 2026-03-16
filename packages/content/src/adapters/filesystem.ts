@@ -97,7 +97,13 @@ export function createFilesystemAdapter(baseDir?: string): ContentAdapter {
       return null;
     },
 
-    async writeEntry(config: CollectionConfig, slug: string, data: Record<string, unknown>, body: string, format: ContentFormat = 'md'): Promise<void> {
+    async writeEntry(
+      config: CollectionConfig,
+      slug: string,
+      data: Record<string, unknown>,
+      body: string,
+      format: ContentFormat = 'md',
+    ): Promise<void> {
       const dir = resolveDir(config);
       if (!existsSync(dir)) {
         await mkdir(dir, { recursive: true });
@@ -118,9 +124,7 @@ export function createFilesystemAdapter(baseDir?: string): ContentAdapter {
         case 'yaml': {
           // Serialize as frontmatter then strip the --- delimiters and trailing body
           const frontmattered = serializeFrontmatter(data, '');
-          const yamlContent = frontmattered
-            .replace(/^---\n/, '')
-            .replace(/\n---\n[\s\S]*$/, '');
+          const yamlContent = frontmattered.replace(/^---\n/, '').replace(/\n---\n[\s\S]*$/, '');
           await writeFile(filePath, yamlContent + '\n', 'utf-8');
           break;
         }
@@ -130,7 +134,12 @@ export function createFilesystemAdapter(baseDir?: string): ContentAdapter {
       }
     },
 
-    async updateEntry(config: CollectionConfig, slug: string, data?: Record<string, unknown>, body?: string): Promise<void> {
+    async updateEntry(
+      config: CollectionConfig,
+      slug: string,
+      data?: Record<string, unknown>,
+      body?: string,
+    ): Promise<void> {
       const existing = await this.readEntry(config, slug);
       if (!existing) {
         throw new Error(`Entry "${slug}" not found in collection "${config.name}"`);
@@ -155,8 +164,8 @@ export function createFilesystemAdapter(baseDir?: string): ContentAdapter {
 
       const files = await readdir(dir);
       return files
-        .filter(f => isAllowedFormat(extname(f), config.formats))
-        .map(f => slugFromFilename(f));
+        .filter((f) => isAllowedFormat(extname(f), config.formats))
+        .map((f) => slugFromFilename(f));
     },
   };
 }

@@ -341,10 +341,7 @@ export function stopCapturingDisposers(_prev: unknown): (() => void)[] {
 // Error boundaries — SSR runs try, falls back on catch
 // ---------------------------------------------------------------------------
 
-export function createErrorBoundary(
-  tryFn: () => VNode,
-  catchFn: (error: Error) => VNode,
-): VNode {
+export function createErrorBoundary(tryFn: () => VNode, catchFn: (error: Error) => VNode): VNode {
   try {
     return untrack(tryFn);
   } catch (err) {
@@ -449,11 +446,27 @@ export function createForm<T extends Record<string, FieldConfig<any>>>(config: T
   };
 }
 
-export function required(): ValidationRule { return () => null; }
-export function minLength(_n: number): ValidationRule<string> { return () => null; }
-export function maxLength(_n: number): ValidationRule<string> { return () => null; }
-export function min(_n: number): ValidationRule<number> { return () => null; }
-export function max(_n: number): ValidationRule<number> { return () => null; }
-export function email(): ValidationRule<string> { return () => null; }
-export function pattern(_regex: RegExp): ValidationRule<string> { return () => null; }
-export function validate<T>(_predicate: (value: T) => boolean): ValidationRule<T> { return () => null; }
+export function required(): ValidationRule {
+  return () => null;
+}
+export function minLength(_n: number): ValidationRule<string> {
+  return () => null;
+}
+export function maxLength(_n: number): ValidationRule<string> {
+  return () => null;
+}
+export function min(_n: number): ValidationRule<number> {
+  return () => null;
+}
+export function max(_n: number): ValidationRule<number> {
+  return () => null;
+}
+export function email(): ValidationRule<string> {
+  return () => null;
+}
+export function pattern(_regex: RegExp): ValidationRule<string> {
+  return () => null;
+}
+export function validate<T>(_predicate: (value: T) => boolean): ValidationRule<T> {
+  return () => null;
+}

@@ -16,7 +16,10 @@ export interface MarkdownOptions {
 /**
  * Render markdown to HTML using the unified pipeline.
  */
-export async function renderMarkdown(source: string, options: MarkdownOptions = {}): Promise<string> {
+export async function renderMarkdown(
+  source: string,
+  options: MarkdownOptions = {},
+): Promise<string> {
   const { remarkPlugins = [], rehypePlugins = [], highlight = true } = options;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic pipeline assembly

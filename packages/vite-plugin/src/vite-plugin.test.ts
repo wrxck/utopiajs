@@ -34,7 +34,7 @@ describe('virtual:utopia-routes', () => {
     const load = plugin.load as Function;
     const code = load('\0virtual:utopia-routes');
     expect(code).toContain('import { buildRouteTable }');
-    expect(code).toContain("import.meta.glob");
+    expect(code).toContain('import.meta.glob');
     expect(code).toContain('+{page,layout,error,server}');
     expect(code).toContain('src/routes');
     expect(code).toContain('export default routes');
