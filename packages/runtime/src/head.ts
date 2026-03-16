@@ -13,13 +13,29 @@ import { pushDisposer } from './component.js';
 // ---------------------------------------------------------------------------
 
 const ALLOWED_SCRIPT_ATTRS = new Set([
-  'src', 'type', 'async', 'defer', 'crossorigin', 'integrity',
-  'nomodule', 'referrerpolicy', 'nonce',
+  'src',
+  'type',
+  'async',
+  'defer',
+  'crossorigin',
+  'integrity',
+  'nomodule',
+  'referrerpolicy',
+  'nonce',
 ]);
 
 const ALLOWED_LINK_ATTRS = new Set([
-  'rel', 'href', 'type', 'media', 'sizes', 'hreflang',
-  'crossorigin', 'integrity', 'as', 'disabled', 'referrerpolicy',
+  'rel',
+  'href',
+  'type',
+  'media',
+  'sizes',
+  'hreflang',
+  'crossorigin',
+  'integrity',
+  'as',
+  'disabled',
+  'referrerpolicy',
 ]);
 
 // ---------------------------------------------------------------------------

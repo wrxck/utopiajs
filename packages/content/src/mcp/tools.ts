@@ -166,13 +166,7 @@ export function createContentTools(
         const { config, adapter } = getCollection(params.collection as string);
         const data = (params.data as Record<string, unknown>) ?? {};
         const format = (params.format as ContentFormat) ?? 'md';
-        await adapter.writeEntry(
-          config,
-          slug,
-          data,
-          validateString(params.body, 'body'),
-          format,
-        );
+        await adapter.writeEntry(config, slug, data, validateString(params.body, 'body'), format);
         return textResult({ created: true, slug, collection: params.collection });
       },
     },
