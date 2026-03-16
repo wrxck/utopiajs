@@ -4,6 +4,7 @@ import path from 'path'
 export default defineConfig({
   resolve: {
     alias: {
+      '@matthesketh/utopia-compiler': path.resolve(__dirname, 'packages/compiler/src/index.ts'),
       '@matthesketh/utopia-core': path.resolve(__dirname, 'packages/core/src/index.ts'),
       '@matthesketh/utopia-runtime': path.resolve(__dirname, 'packages/runtime/src/index.ts'),
       '@matthesketh/utopia-router': path.resolve(__dirname, 'packages/router/src/index.ts'),
