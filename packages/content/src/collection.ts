@@ -1,4 +1,11 @@
-import type { CollectionConfig, CollectionSchema, Collection, ContentEntry, ContentAdapter, QueryOptions } from './types.js';
+import type {
+  CollectionConfig,
+  CollectionSchema,
+  Collection,
+  ContentEntry,
+  ContentAdapter,
+  QueryOptions,
+} from './types.js';
 import { validateSchema, applyDefaults } from './schema.js';
 import { createFilesystemAdapter } from './adapters/filesystem.js';
 
@@ -21,7 +28,7 @@ export function createContent(options: { contentDir: string; adapter?: ContentAd
  * Define a content collection with an optional typed schema.
  */
 export function defineCollection<S extends CollectionSchema = CollectionSchema>(
-  config: CollectionConfig<S>
+  config: CollectionConfig<S>,
 ): CollectionConfig<S> {
   const adapter = globalAdapter ?? createFilesystemAdapter(globalBaseDir);
   collections.set(config.name, { config, adapter });
@@ -41,11 +48,11 @@ export async function getCollection(name: string, options?: QueryOptions): Promi
 
   // Validate and apply defaults
   if (collection.config.schema) {
-    entries = entries.map(entry => {
+    entries = entries.map((entry) => {
       entry.data = applyDefaults(entry.data, collection.config.schema!);
       const errors = validateSchema(entry.data, collection.config.schema!);
       if (errors.length > 0) {
-        const messages = errors.map(e => e.message).join(', ');
+        const messages = errors.map((e) => e.message).join(', ');
         throw new Error(`Validation error in "${entry.filePath}": ${messages}`);
       }
       return entry;
@@ -96,7 +103,7 @@ export async function getEntry(name: string, slug: string): Promise<ContentEntry
     entry.data = applyDefaults(entry.data, collection.config.schema);
     const errors = validateSchema(entry.data, collection.config.schema);
     if (errors.length > 0) {
-      const messages = errors.map(e => e.message).join(', ');
+      const messages = errors.map((e) => e.message).join(', ');
       throw new Error(`Validation error in "${entry.filePath}": ${messages}`);
     }
   }
@@ -107,7 +114,9 @@ export async function getEntry(name: string, slug: string): Promise<ContentEntry
 /**
  * Get the adapter for a collection (used by MCP server).
  */
-export function getCollectionAdapter(name: string): { config: CollectionConfig; adapter: ContentAdapter } | null {
+export function getCollectionAdapter(
+  name: string,
+): { config: CollectionConfig; adapter: ContentAdapter } | null {
   return collections.get(name) ?? null;
 }
 

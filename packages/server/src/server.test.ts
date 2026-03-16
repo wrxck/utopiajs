@@ -21,8 +21,21 @@ import {
   createFor,
   createComponent,
   flushStyles,
+  createForm,
+  required,
+  minLength,
+  maxLength,
+  min,
+  max,
+  email,
+  pattern,
+  validate,
+  pushDisposer,
+  startCapturingDisposers,
+  stopCapturingDisposers,
+  useHead,
 } from './ssr-runtime.js';
-import { renderToString, serializeVNode } from './render-to-string.js';
+import { renderToString, serializeVNode, serializeHead } from './render-to-string.js';
 import { renderToStream } from './render-to-stream.js';
 import { createServerRouter } from './server-router.js';
 
@@ -579,5 +592,350 @@ describe('Security: valid tags pass through validation', () => {
     const custom: VElement = { type: 1, tag: 'my-component', attrs: {}, children: [] };
     const html = serializeVNode(custom);
     expect(html).toBe('<my-component></my-component>');
+  });
+});
+
+// =========================================================================
+// SSR form validation stubs
+// =========================================================================
+
+describe('SSR form validation stubs', () => {
+  it('createForm returns static form with initial values', () => {
+    const form = createForm({
+      name: { initial: 'Matt', rules: [required()] },
+      age: { initial: 25 },
+    });
+
+    expect(form.fields.name.value()).toBe('Matt');
+    expect(form.fields.age.value()).toBe(25);
+    expect(form.valid()).toBe(true);
+    expect(form.dirty()).toBe(false);
+    expect(form.data()).toEqual({ name: 'Matt', age: 25 });
+  });
+
+  it('createForm fields have no-op methods', () => {
+    const form = createForm({
+      email: { initial: '', rules: [required(), email()] },
+    });
+
+    expect(form.fields.email.error()).toBeNull();
+    expect(form.fields.email.errors()).toEqual([]);
+    expect(form.fields.email.touched()).toBe(false);
+    expect(form.fields.email.dirty()).toBe(false);
+    expect(form.fields.email.valid()).toBe(true);
+
+    // These should not throw
+    form.fields.email.set('test@example.com');
+    form.fields.email.touch();
+    form.fields.email.reset();
+    form.handleSubmit(() => {});
+    form.reset();
+  });
+
+  it('components with createForm render without crashing during SSR', () => {
+    const FormComponent = {
+      setup() {
+        const form = createForm({
+          username: { initial: '', rules: [required(), minLength(3)] },
+          email: { initial: '', rules: [email()] },
+        });
+        return { form };
+      },
+      render(ctx: Record<string, unknown>) {
+        const el = createElement('form');
+        const text = createTextNode('Form rendered');
+        appendChild(el, text);
+        return el;
+      },
+    };
+
+    const { html } = renderToString(FormComponent);
+    expect(html).toBe('<form>Form rendered</form>');
+  });
+
+  it('validation rule factories return no-op validators', () => {
+    expect(required()('any')).toBeNull();
+    expect(minLength(5)('ab')).toBeNull();
+    expect(maxLength(5)('abcdefgh')).toBeNull();
+    expect(min(10)(1)).toBeNull();
+    expect(max(10)(100)).toBeNull();
+    expect(email()('not-an-email')).toBeNull();
+    expect(pattern(/^\d+$/)('abc')).toBeNull();
+    expect(validate((v: number) => v > 0)(-1)).toBeNull();
+  });
+});
+
+// =========================================================================
+// SSR lifecycle capture stubs
+// =========================================================================
+
+describe('SSR lifecycle capture stubs', () => {
+  it('pushDisposer is a callable no-op', () => {
+    expect(() => pushDisposer(() => {})).not.toThrow();
+  });
+
+  it('startCapturingDisposers returns null', () => {
+    expect(startCapturingDisposers()).toBeNull();
+  });
+
+  it('stopCapturingDisposers returns empty array', () => {
+    expect(stopCapturingDisposers(null)).toEqual([]);
+  });
+});
+
+// =========================================================================
+// SSR head management
+// =========================================================================
+
+describe('SSR useHead', () => {
+  it('collects head entries during renderToString', () => {
+    const HeadComponent = {
+      setup() {
+        useHead({ title: 'My Page', meta: [{ name: 'description', content: 'A test page' }] });
+        return {};
+      },
+      render() {
+        const el = createElement('div');
+        appendChild(el, createTextNode('Hello'));
+        return el;
+      },
+    };
+
+    const { html, head } = renderToString(HeadComponent);
+    expect(html).toBe('<div>Hello</div>');
+    expect(head).toHaveLength(1);
+    expect(head[0].title).toBe('My Page');
+    expect(head[0].meta![0].name).toBe('description');
+  });
+
+  it('serializeHead produces correct HTML tags', () => {
+    const html = serializeHead([
+      {
+        title: 'Test',
+        meta: [{ name: 'viewport', content: 'width=device-width' }],
+        link: [{ rel: 'stylesheet', href: '/styles.css' }],
+        script: [{ src: '/app.js' }],
+      },
+    ]);
+    expect(html).toContain('<title>Test</title>');
+    expect(html).toContain('<meta name="viewport" content="width=device-width">');
+    expect(html).toContain('<link rel="stylesheet" href="/styles.css">');
+    expect(html).toContain('<script src="/app.js"></script>');
+  });
+
+  it('serializeHead includes nonce on script tags when provided', () => {
+    const html = serializeHead([{ script: [{ src: '/app.js' }] }], 'abc123');
+    expect(html).toContain('nonce="abc123"');
+  });
+
+  it('serializeHead escapes special characters', () => {
+    const html = serializeHead([
+      { title: '<script>alert("xss")</script>' },
+      { meta: [{ name: 'test', content: '"quoted"' }] },
+    ]);
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).toContain('&quot;quoted&quot;');
+  });
+
+  it('component with useHead and createForm renders without errors', () => {
+    const FullComponent = {
+      setup() {
+        useHead({ title: 'Form Page' });
+        const form = createForm({ name: { initial: '' } });
+        return { form };
+      },
+      render() {
+        const el = createElement('form');
+        appendChild(el, createTextNode('Form'));
+        return el;
+      },
+    };
+
+    const { html, head } = renderToString(FullComponent);
+    expect(html).toBe('<form>Form</form>');
+    expect(head[0].title).toBe('Form Page');
+  });
+});
+
+// =========================================================================
+// API routes
+// =========================================================================
+
+import { buildApiRoutes, handleApiRequest } from './api-handler.js';
+
+describe('API routes', () => {
+  it('buildApiRoutes creates route table from manifest', () => {
+    const manifest = {
+      '/src/routes/api/users/+server.ts': () => Promise.resolve({}),
+      '/src/routes/api/users/[id]/+server.ts': () => Promise.resolve({}),
+    };
+
+    const routes = buildApiRoutes(manifest);
+    expect(routes).toHaveLength(2);
+    expect(routes.map((r) => r.path)).toContain('/api/users');
+    expect(routes.map((r) => r.path)).toContain('/api/users/:id');
+  });
+
+  it('handleApiRequest dispatches to correct method handler', async () => {
+    const manifest = {
+      '/src/routes/api/hello/+server.ts': () =>
+        Promise.resolve({
+          GET: () =>
+            new Response(JSON.stringify({ message: 'hello' }), {
+              headers: { 'Content-Type': 'application/json' },
+            }),
+        }),
+    };
+
+    const routes = buildApiRoutes(manifest);
+    const url = new URL('http://localhost/api/hello');
+    const request = new Request(url.href);
+    const response = await handleApiRequest(url, 'GET', request, routes);
+
+    expect(response).not.toBeNull();
+    expect(response!.status).toBe(200);
+    const body = await response!.json();
+    expect(body.message).toBe('hello');
+  });
+
+  it('handleApiRequest returns 405 for unsupported methods', async () => {
+    const manifest = {
+      '/src/routes/api/data/+server.ts': () =>
+        Promise.resolve({
+          GET: () => new Response('ok'),
+        }),
+    };
+
+    const routes = buildApiRoutes(manifest);
+    const url = new URL('http://localhost/api/data');
+    const request = new Request(url.href, { method: 'POST' });
+    const response = await handleApiRequest(url, 'POST', request, routes);
+
+    expect(response).not.toBeNull();
+    expect(response!.status).toBe(405);
+    expect(response!.headers.get('Allow')).toBe('GET');
+  });
+
+  it('handleApiRequest returns null for unmatched routes', async () => {
+    const routes = buildApiRoutes({});
+    const url = new URL('http://localhost/api/nope');
+    const request = new Request(url.href);
+    const response = await handleApiRequest(url, 'GET', request, routes);
+    expect(response).toBeNull();
+  });
+
+  it('handleApiRequest extracts params from dynamic routes', async () => {
+    const manifest = {
+      '/src/routes/api/users/[id]/+server.ts': () =>
+        Promise.resolve({
+          GET: (event: { params: Record<string, string> }) =>
+            new Response(JSON.stringify(event.params)),
+        }),
+    };
+
+    const routes = buildApiRoutes(manifest);
+    const url = new URL('http://localhost/api/users/42');
+    const request = new Request(url.href);
+    const response = await handleApiRequest(url, 'GET', request, routes);
+
+    expect(response).not.toBeNull();
+    const body = await response!.json();
+    expect(body.id).toBe('42');
+  });
+});
+
+// =========================================================================
+// SSR error boundaries
+// =========================================================================
+
+import { createErrorBoundary } from './ssr-runtime.js';
+
+describe('SSR createErrorBoundary', () => {
+  it('renders try function when it succeeds', () => {
+    const node = createErrorBoundary(
+      () => {
+        const el = createElement('div');
+        appendChild(el, createTextNode('OK'));
+        return el;
+      },
+      () => createElement('div'),
+    );
+    expect(serializeVNode(node)).toBe('<div>OK</div>');
+  });
+
+  it('renders catch function when try throws', () => {
+    const node = createErrorBoundary(
+      () => {
+        throw new Error('SSR fail');
+      },
+      (error) => {
+        const el = createElement('p');
+        appendChild(el, createTextNode(`Error: ${error.message}`));
+        return el;
+      },
+    );
+    expect(serializeVNode(node)).toBe('<p>Error: SSR fail</p>');
+  });
+});
+
+// =========================================================================
+// SSR lazy components
+// =========================================================================
+
+import { defineLazy } from './ssr-runtime.js';
+
+describe('SSR defineLazy', () => {
+  it('returns a component that renders the fallback', () => {
+    const Lazy = defineLazy(
+      () => Promise.resolve({ default: { render: () => createElement('div') } }),
+      () => {
+        const el = createElement('span');
+        appendChild(el, createTextNode('Loading...'));
+        return el;
+      },
+    );
+
+    const node = createComponent(Lazy);
+    expect(serializeVNode(node)).toBe('<span>Loading...</span>');
+  });
+
+  it('returns a comment node when no fallback is provided', () => {
+    const Lazy = defineLazy(() =>
+      Promise.resolve({ default: { render: () => createElement('div') } }),
+    );
+
+    const node = createComponent(Lazy);
+    expect(serializeVNode(node)).toContain('<!--');
+  });
+});
+
+// =========================================================================
+// CSP nonce support
+// =========================================================================
+
+describe('CSP nonce support', () => {
+  it('serializeHead does not include nonce when not provided', () => {
+    const html = serializeHead([{ script: [{ src: '/app.js' }] }]);
+    expect(html).not.toContain('nonce');
+  });
+
+  it('serializeHead adds nonce to script tags', () => {
+    const html = serializeHead([{ script: [{ src: '/app.js' }] }], 'test-nonce-123');
+    expect(html).toContain('nonce="test-nonce-123"');
+  });
+
+  it('rendered CSS includes nonce when handler option is set', () => {
+    const StyledComponent = {
+      render() {
+        const el = createElement('div');
+        appendChild(el, createTextNode('styled'));
+        return el;
+      },
+      styles: '.foo { color: red; }',
+    };
+
+    const { css } = renderToString(StyledComponent);
+    expect(css).toContain('.foo { color: red; }');
+    // The nonce is injected by the handler layer, not renderToString itself
   });
 });

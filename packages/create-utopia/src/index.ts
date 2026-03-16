@@ -142,7 +142,8 @@ function renameFile(dir: string, from: string, to: string): void {
 // ---------------------------------------------------------------------------
 
 function scaffoldProject(root: string, options: ProjectOptions): void {
-  const { projectName, language, useRouter, useSSR, useEmail, useAI, useContent, cssPreprocessor } = options;
+  const { projectName, language, useRouter, useSSR, useEmail, useAI, useContent, cssPreprocessor } =
+    options;
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const templateDir = path.resolve(__dirname, '..', 'template');
@@ -197,17 +198,17 @@ function scaffoldProject(root: string, options: ProjectOptions): void {
 
   // Add email dependency
   if (useEmail && deps) {
-    deps['@matthesketh/utopia-email'] = '^0.3.0';
+    deps['@matthesketh/utopia-email'] = '^0.7.0';
   }
 
   // Add AI dependency
   if (useAI && deps) {
-    deps['@matthesketh/utopia-ai'] = '^0.3.0';
+    deps['@matthesketh/utopia-ai'] = '^0.7.0';
   }
 
   // Add content dependency
   if (useContent && deps) {
-    deps['@matthesketh/utopia-content'] = '^0.6.0';
+    deps['@matthesketh/utopia-content'] = '^0.7.0';
   }
 
   fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
@@ -231,7 +232,7 @@ function scaffoldProject(root: string, options: ProjectOptions): void {
     const ssrPkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8')) as Record<string, unknown>;
     const ssrDeps = ssrPkg['dependencies'] as Record<string, string>;
     const ssrDevDeps = ssrPkg['devDependencies'] as Record<string, string>;
-    ssrDeps['@matthesketh/utopia-server'] = '^0.3.0';
+    ssrDeps['@matthesketh/utopia-server'] = '^0.7.0';
     ssrDeps['express'] = '^4.21.0';
     // Move vite to dependencies for the SSR server
     if (ssrDevDeps['vite']) {
@@ -366,7 +367,9 @@ export async function POST(req${language === 'typescript' ? ': any' : ''}, res${
     const contentBlogDir = path.join(root, 'content', 'blog');
     fs.mkdirSync(contentBlogDir, { recursive: true });
 
-    fs.writeFileSync(path.join(contentBlogDir, 'hello-world.md'), `---
+    fs.writeFileSync(
+      path.join(contentBlogDir, 'hello-world.md'),
+      `---
 title: Hello World
 date: ${new Date().toISOString().split('T')[0]}
 tags:
@@ -395,11 +398,15 @@ Edit this file at \`content/blog/hello-world.md\` or create new \`.md\` files in
 - Create a new post by adding a \`.md\` file to \`content/blog/\`
 - Edit the schema in \`content.config.${ext}\`
 - Run \`utopia content mcp\` to manage posts with AI
-`, 'utf-8');
+`,
+      'utf-8',
+    );
 
     // Create content config file
     const contentConfigPath = path.join(root, `content.config.${ext}`);
-    fs.writeFileSync(contentConfigPath, `import { defineCollection, createContent } from '@matthesketh/utopia-content';
+    fs.writeFileSync(
+      contentConfigPath,
+      `import { defineCollection, createContent } from '@matthesketh/utopia-content';
 
 createContent({ contentDir: 'content' });
 
@@ -415,7 +422,9 @@ export const blog = defineCollection({
   },
   formats: ['md'],
 });
-`, 'utf-8');
+`,
+      'utf-8',
+    );
 
     // Update vite.config to include the content plugin
     const viteConfigPath = path.join(root, `vite.config.${ext}`);
@@ -441,7 +450,9 @@ export const blog = defineCollection({
       fs.mkdirSync(blogSlugDir, { recursive: true });
 
       // Blog listing page
-      fs.writeFileSync(path.join(blogRouteDir, '+page.utopia'), `<template>
+      fs.writeFileSync(
+        path.join(blogRouteDir, '+page.utopia'),
+        `<template>
   <div class="blog">
     <h1>Blog</h1>
     <div class="posts">
@@ -500,10 +511,14 @@ getCollection('blog', {
   color: #555;
 }
 </style>
-`, 'utf-8');
+`,
+        'utf-8',
+      );
 
       // Single blog post page
-      fs.writeFileSync(path.join(blogSlugDir, '+page.utopia'), `<template>
+      fs.writeFileSync(
+        path.join(blogSlugDir, '+page.utopia'),
+        `<template>
   <article class="post" u-if="post()">
     <header>
       <h1>{{ post().data.title }}</h1>
@@ -572,7 +587,9 @@ if (slug) {
 }
 .back:hover { text-decoration: underline; }
 </style>
-`, 'utf-8');
+`,
+        'utf-8',
+      );
     }
   }
 }
@@ -742,7 +759,11 @@ async function main(): Promise<void> {
             { title: 'SSR (server-side rendering)', value: 'ssr', selected: false },
             { title: 'Email (template-based emails)', value: 'email', selected: false },
             { title: 'AI (chat, streaming, adapters)', value: 'ai', selected: false },
-            { title: 'Content / Blog (markdown, collections, MCP)', value: 'content', selected: false },
+            {
+              title: 'Content / Blog (markdown, collections, MCP)',
+              value: 'content',
+              selected: false,
+            },
             { title: 'CSS Preprocessor', value: 'css-preprocessor', selected: false },
           ],
           instructions: dim('  (use space to toggle, enter to confirm)'),
