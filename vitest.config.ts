@@ -19,6 +19,7 @@ export default defineConfig({
       '@matthesketh/utopia-content/mcp': path.resolve(__dirname, 'packages/content/src/mcp/index.ts'),
       '@matthesketh/utopia-content/vite': path.resolve(__dirname, 'packages/content/src/vite.ts'),
       '@matthesketh/utopia-content': path.resolve(__dirname, 'packages/content/src/index.ts'),
+      '@matthesketh/utopia-helmet': path.resolve(__dirname, 'packages/helmet/src/index.ts'),
     },
   },
   test: {
