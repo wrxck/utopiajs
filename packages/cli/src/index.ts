@@ -2,13 +2,16 @@
 // ---------------------------------------------------------------------------
 // @matthesketh/utopia-cli — CLI for the UtopiaJS framework
 // ---------------------------------------------------------------------------
-// Provides `utopia dev`, `utopia build`, and `utopia preview` commands.
+// Provides `utopia dev`, `utopia build`, `utopia preview`, `utopia test`,
+// and `utopia mcp` commands.
 // Wraps Vite and auto-injects the UtopiaJS plugin when no vite.config exists.
 // ---------------------------------------------------------------------------
 
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createInterface } from 'node:readline';
 import { createRequire } from 'node:module';
+import { execSync } from 'node:child_process';
 import {
   createServer,
   build as viteBuild,
@@ -162,6 +165,192 @@ async function test(args: ParsedArgs): Promise<void> {
   await vitest?.close();
 }
 
+// ---- MCP commands -----------------------------------------------------------
+
+const CONTENT_CONFIG_FILES = [
+  'content.config.ts',
+  'content.config.js',
+  'content.config.mjs',
+  'content.config.mts',
+];
+
+function findContentConfig(): string | undefined {
+  return CONTENT_CONFIG_FILES.find((f) => existsSync(resolve(process.cwd(), f)));
+}
+
+async function mcpServe(): Promise<void> {
+  const configFile = findContentConfig();
+  if (!configFile) {
+    process.stderr.write(
+      'No content.config found. utopia mcp serve requires @matthesketh/utopia-content.\n',
+    );
+    process.exit(1);
+  }
+
+  // Use Vite in middleware mode to load the TypeScript content config.
+  const server = await createServer({
+    mode: 'production',
+    logLevel: 'silent',
+    server: { middlewareMode: true },
+    plugins: [utopia()],
+  });
+
+  let handleRequest: (req: { jsonrpc: string; id: string | number; method: string; params?: Record<string, unknown> }) => Promise<{ jsonrpc: string; id: string | number; result?: unknown; error?: { code: number; message: string } }>;
+
+  try {
+    // Loading the config triggers createContent() + defineCollection() side effects.
+    await server.ssrLoadModule(resolve(process.cwd(), configFile));
+
+    const content = (await server.ssrLoadModule('@matthesketh/utopia-content')) as {
+      listCollections: () => string[];
+      getCollectionAdapter: (name: string) => { config: unknown; adapter: unknown } | null;
+    };
+
+    const names = content.listCollections();
+    if (names.length === 0) {
+      process.stderr.write('No collections defined. Add defineCollection() calls to your config.\n');
+      process.exit(1);
+    }
+
+    const contentMcp = (await server.ssrLoadModule('@matthesketh/utopia-content/mcp')) as {
+      createContentTools: (
+        getCollections: () => Map<string, unknown>,
+      ) => Array<{
+        definition: { name: string; description: string; inputSchema: unknown };
+        handler: (params: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    };
+
+    const collectionMap = new Map<string, unknown>();
+    for (const name of names) {
+      const col = content.getCollectionAdapter(name);
+      if (col) collectionMap.set(name, col);
+    }
+
+    const tools = contentMcp.createContentTools(() => collectionMap);
+    const toolMap = new Map(tools.map((t) => [t.definition.name, t]));
+
+    const serverInfo = { name: 'utopia-content', version: '1.0.0' };
+
+    handleRequest = async (request) => {
+      try {
+        let result: unknown;
+        switch (request.method) {
+          case 'initialize':
+            result = {
+              protocolVersion: '2024-11-05',
+              capabilities: { tools: {} },
+              serverInfo,
+            };
+            break;
+          case 'tools/list':
+            result = {
+              tools: tools.map((t) => ({
+                name: t.definition.name,
+                description: t.definition.description,
+                inputSchema: t.definition.inputSchema,
+              })),
+            };
+            break;
+          case 'tools/call': {
+            const params = request.params as { name: string; arguments?: Record<string, unknown> };
+            const tool = toolMap.get(params.name);
+            if (!tool) {
+              return {
+                jsonrpc: '2.0' as const,
+                id: request.id,
+                error: { code: -32602, message: `Unknown tool: ${params.name}` },
+              };
+            }
+            result = await tool.handler(params.arguments ?? {});
+            break;
+          }
+          case 'ping':
+            result = {};
+            break;
+          default:
+            return {
+              jsonrpc: '2.0' as const,
+              id: request.id,
+              error: { code: -32601, message: `Method not found: ${request.method}` },
+            };
+        }
+        return { jsonrpc: '2.0', id: request.id, result };
+      } catch (err: unknown) {
+        const e = err as { code?: number; message?: string };
+        return {
+          jsonrpc: '2.0',
+          id: request.id,
+          error: { code: e.code ?? -32603, message: e.message ?? 'Internal error' },
+        };
+      }
+    };
+  } catch (err) {
+    await server.close();
+    throw err;
+  }
+
+  // Close Vite — the content adapters use plain fs, not Vite internals.
+  await server.close();
+
+  // Stdio JSON-RPC loop (newline-delimited JSON).
+  const rl = createInterface({ input: process.stdin });
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+    try {
+      const request = JSON.parse(line);
+      // Notifications (no id) don't get a response.
+      if (request.id == null) continue;
+      const response = await handleRequest(request);
+      process.stdout.write(JSON.stringify(response) + '\n');
+    } catch {
+      // Malformed JSON — ignore.
+    }
+  }
+}
+
+function mcpInstall(): void {
+  try {
+    execSync('claude --version', { stdio: 'ignore' });
+  } catch {
+    console.error('Claude Code CLI not found. Install it first: npm i -g @anthropic-ai/claude-code');
+    process.exit(1);
+  }
+
+  try {
+    execSync('claude mcp add utopia-content -s project -- npx utopia mcp serve', {
+      stdio: 'inherit',
+      cwd: process.cwd(),
+    });
+    console.log('\nUtopiaJS MCP server registered with Claude Code.');
+    console.log('Claude Code can now manage your content collections.');
+  } catch (err: unknown) {
+    const e = err as { message?: string };
+    console.error('Failed to register MCP server:', e.message);
+    process.exit(1);
+  }
+}
+
+function printMcpHelp(): void {
+  console.log(`
+  utopia mcp — MCP server for Claude Code integration
+
+  Usage:
+    utopia mcp <subcommand>
+
+  Subcommands:
+    install  Register the UtopiaJS content MCP server with Claude Code
+    serve    Start the MCP server over stdio (used by Claude Code)
+
+  The MCP server exposes your content collections as tools:
+    list_collections, list_entries, get_entry, create_entry,
+    update_entry, delete_entry, search_entries, list_tags, publish_entry
+
+  Quick start:
+    utopia mcp install
+`);
+}
+
 function printVersion(): void {
   const require = createRequire(import.meta.url);
   const pkg = require('../package.json');
@@ -180,6 +369,7 @@ function printHelp(): void {
     build    Build for production
     preview  Preview production build
     test     Run component tests
+    mcp      Claude Code MCP server integration
     create   Create a new project
 
   Options:
@@ -211,6 +401,13 @@ async function main(): Promise<void> {
     case 'test':
       await test(args);
       break;
+    case 'mcp': {
+      const sub = args.rest[0];
+      if (sub === 'serve') await mcpServe();
+      else if (sub === 'install') mcpInstall();
+      else printMcpHelp();
+      break;
+    }
     case 'create':
       console.log('To create a new UtopiaJS project, run:');
       console.log('  npx create-utopia [project-name]');

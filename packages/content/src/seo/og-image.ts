@@ -1,56 +1,28 @@
-import type { OgImageConfig, SeoEntry } from './types.js';
+import type { OgImageConfig } from './types.js';
 
-/** Generate an SVG template for an OG image (1200x630) */
-export function generateOgSvg(entry: SeoEntry, config?: OgImageConfig): string {
-  const bg = config?.background ?? '#000000';
-  const fg = config?.textColor ?? '#ffffff';
-  const title = entry.title;
+/**
+ * DM Mono "M" glyph as an SVG path (no font rendering needed).
+ * Geometric approximation: two outer vertical legs, two diagonal inner strokes
+ * meeting at a centre point, sized to ~220x300 at origin.
+ */
+const M_PATH =
+  'M0 300 L0 0 L30 0 L110 180 L190 0 L220 0 L220 300 L190 300 L190 50 L115 220 L105 220 L30 50 L30 300 Z';
 
-  // Word-wrap title to fit within 1200px with ~60px padding each side
-  // At font-size 48, roughly 25-30 chars per line
-  const maxCharsPerLine = 28;
-  const words = title.split(' ');
-  const lines: string[] = [];
-  let current = '';
+/** Generate an SVG template for an OG image (1200x630) with a centred "M" glyph */
+export function generateOgSvg(_entry?: unknown, config?: OgImageConfig): string {
+  const dark = (config?.variant ?? 'dark') === 'dark';
+  const bg = dark ? '#000000' : '#ffffff';
+  const fg = dark ? '#ffffff' : '#000000';
 
-  for (const word of words) {
-    if (current.length + word.length + 1 > maxCharsPerLine && current.length > 0) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = current ? `${current} ${word}` : word;
-    }
-  }
-  if (current) lines.push(current);
-
-  // Limit to 4 lines max
-  if (lines.length > 4) {
-    lines.length = 4;
-    lines[3] = lines[3].slice(0, -3) + '...';
-  }
-
-  // Centre the text block vertically
-  const lineHeight = 60;
-  const totalHeight = lines.length * lineHeight;
-  const startY = (630 - totalHeight) / 2 + 48; // +48 for font baseline
-
-  const titleLines = lines
-    .map(
-      (line, i) =>
-        `<text x="600" y="${startY + i * lineHeight}" text-anchor="middle" font-family="monospace" font-size="48" font-weight="700" fill="${fg}">${escapeXmlAttr(line)}</text>`,
-    )
-    .join('\n    ');
-
-  // M logo top-left
-  const logo =
-    config?.logo ??
-    `<text x="60" y="80" font-family="monospace" font-size="48" font-weight="700" fill="${fg}">M</text>`;
+  // Centre the 220x300 path in the 1200x630 viewport
+  const pathW = 220;
+  const pathH = 300;
+  const tx = (1200 - pathW) / 2; // 490
+  const ty = (630 - pathH) / 2; // 165
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
   <rect width="1200" height="630" fill="${bg}"/>
-  ${logo}
-  ${titleLines}
-  <text x="600" y="580" text-anchor="middle" font-family="monospace" font-size="20" fill="${fg}" opacity="0.6">matthesketh.pro</text>
+  <path d="${M_PATH}" transform="translate(${tx},${ty})" fill="${fg}"/>
 </svg>`;
 }
 
@@ -67,13 +39,4 @@ export async function svgToPng(
   } catch {
     return null;
   }
-}
-
-function escapeXmlAttr(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
 }
