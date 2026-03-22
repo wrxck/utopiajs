@@ -120,11 +120,7 @@ export function generateMaskSvg(
     fontSize?: number;
   } = {},
 ): string {
-  const {
-    fontFamily = "'DM Mono', monospace",
-    size = 100,
-    fontSize = 62,
-  } = options;
+  const { fontFamily = "'DM Mono', monospace", size = 100, fontSize = 62 } = options;
 
   const half = size / 2;
 

@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '@matthesketh/utopia-core';
-import { setTitle, setMeta, setLink, setHead, useHead, resetHead, setHtmlLang, setHtmlDir } from './head';
+import {
+  setTitle,
+  setMeta,
+  setLink,
+  setHead,
+  useHead,
+  resetHead,
+  setHtmlLang,
+  setHtmlDir,
+} from './head';
 
 beforeEach(() => {
   resetHead();
@@ -179,16 +188,16 @@ describe('setHead', () => {
     expect(document.head.querySelector('meta[name="description"]')!.getAttribute('content')).toBe(
       'Hello',
     );
-    expect(
-      document.head.querySelector('meta[property="og:title"]')!.getAttribute('content'),
-    ).toBe('My Page');
+    expect(document.head.querySelector('meta[property="og:title"]')!.getAttribute('content')).toBe(
+      'My Page',
+    );
     expect(document.head.querySelector('link[rel="icon"]')!.getAttribute('href')).toBe(
       '/favicon.svg',
     );
     expect(document.documentElement.getAttribute('lang')).toBe('en');
-    expect(
-      document.head.querySelector('meta[name="theme-color"]')!.getAttribute('content'),
-    ).toBe('#ffffff');
+    expect(document.head.querySelector('meta[name="theme-color"]')!.getAttribute('content')).toBe(
+      '#ffffff',
+    );
   });
 
   it('clears managed elements before re-applying', () => {
