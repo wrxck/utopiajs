@@ -195,7 +195,17 @@ async function mcpServe(): Promise<void> {
     plugins: [utopia()],
   });
 
-  let handleRequest: (req: { jsonrpc: string; id: string | number; method: string; params?: Record<string, unknown> }) => Promise<{ jsonrpc: string; id: string | number; result?: unknown; error?: { code: number; message: string } }>;
+  let handleRequest: (req: {
+    jsonrpc: string;
+    id: string | number;
+    method: string;
+    params?: Record<string, unknown>;
+  }) => Promise<{
+    jsonrpc: string;
+    id: string | number;
+    result?: unknown;
+    error?: { code: number; message: string };
+  }>;
 
   try {
     // Loading the config triggers createContent() + defineCollection() side effects.
@@ -208,14 +218,14 @@ async function mcpServe(): Promise<void> {
 
     const names = content.listCollections();
     if (names.length === 0) {
-      process.stderr.write('No collections defined. Add defineCollection() calls to your config.\n');
+      process.stderr.write(
+        'No collections defined. Add defineCollection() calls to your config.\n',
+      );
       process.exit(1);
     }
 
     const contentMcp = (await server.ssrLoadModule('@matthesketh/utopia-content/mcp')) as {
-      createContentTools: (
-        getCollections: () => Map<string, unknown>,
-      ) => Array<{
+      createContentTools: (getCollections: () => Map<string, unknown>) => Array<{
         definition: { name: string; description: string; inputSchema: unknown };
         handler: (params: Record<string, unknown>) => Promise<unknown>;
       }>;
@@ -313,7 +323,9 @@ function mcpInstall(): void {
   try {
     execSync('claude --version', { stdio: 'ignore' });
   } catch {
-    console.error('Claude Code CLI not found. Install it first: npm i -g @anthropic-ai/claude-code');
+    console.error(
+      'Claude Code CLI not found. Install it first: npm i -g @anthropic-ai/claude-code',
+    );
     process.exit(1);
   }
 
