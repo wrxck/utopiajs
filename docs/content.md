@@ -166,6 +166,26 @@ Every entry has the same structure:
 
 The MCP server exposes content operations as JSON-RPC 2.0 tools. Any MCP client -- Claude Code, VS Code extensions, custom agents -- can manage your blog through tool calls.
 
+### Claude Code Integration
+
+Register the MCP server with Claude Code in one command:
+
+```bash
+utopia mcp install
+```
+
+This runs `claude mcp add utopia-content -s project -- npx utopia mcp serve` under the hood, registering a project-scoped MCP server. Claude Code can then list, create, edit, search, and publish content entries directly.
+
+If you prefer to register manually:
+
+```bash
+claude mcp add utopia-content -s project -- npx utopia mcp serve
+```
+
+The `utopia mcp serve` command starts a stdio JSON-RPC server that auto-discovers your content collections from `content.config.ts`.
+
+### Programmatic usage
+
 ```ts
 import { createContentMCPServer } from '@matthesketh/utopia-content/mcp';
 
