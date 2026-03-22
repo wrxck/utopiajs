@@ -21,7 +21,8 @@
       "@matthesketh/utopia-ai/mcp": ["packages/ai/src/mcp/index.ts"],
       "@matthesketh/utopia-vite-plugin": ["packages/vite-plugin/src/index.ts"],
       "@matthesketh/utopia-test": ["packages/test/src/index.ts"],
-      "@matthesketh/utopia-test/plugin": ["packages/test/src/vitest-plugin.ts"]
+      "@matthesketh/utopia-test/plugin": ["packages/test/src/vitest-plugin.ts"],
+      "@matthesketh/utopia-helmet": ["packages/helmet/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "**/dist/**", "examples/**", "packages/create-utopia/template/**"]
