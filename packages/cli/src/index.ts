@@ -319,10 +319,27 @@ async function mcpServe(): Promise<void> {
   }
 }
 
+function findClaude(): string | null {
+  const candidates = [
+    'claude',
+    resolve(process.env.HOME ?? '~', '.local/bin/claude'),
+    resolve(process.env.HOME ?? '~', '.npm-global/bin/claude'),
+    '/usr/local/bin/claude',
+  ];
+  for (const bin of candidates) {
+    try {
+      execSync(`${bin} --version`, { stdio: 'ignore' });
+      return bin;
+    } catch {
+      // not found, try next
+    }
+  }
+  return null;
+}
+
 function mcpInstall(): void {
-  try {
-    execSync('claude --version', { stdio: 'ignore' });
-  } catch {
+  const claude = findClaude();
+  if (!claude) {
     console.error(
       'Claude Code CLI not found. Install it first: npm i -g @anthropic-ai/claude-code',
     );
@@ -330,7 +347,7 @@ function mcpInstall(): void {
   }
 
   try {
-    execSync('claude mcp add utopia-content -s project -- npx utopia mcp serve', {
+    execSync(`${claude} mcp add utopia-content -s project -- npx utopia mcp serve`, {
       stdio: 'inherit',
       cwd: process.cwd(),
     });
