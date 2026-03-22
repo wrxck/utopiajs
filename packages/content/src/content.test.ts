@@ -227,7 +227,7 @@ Content body`;
 describe('renderMarkdown', () => {
   it('renders basic markdown to HTML', async () => {
     const html = await renderMarkdown('# Hello\n\nA paragraph.');
-    expect(html).toContain('<h1>Hello</h1>');
+    expect(html).toContain('<h1 id="hello">Hello</h1>');
     expect(html).toContain('<p>A paragraph.</p>');
   });
 
@@ -335,7 +335,7 @@ Another post.`,
     const entry = await adapter.readEntry(blogConfig, 'hello');
     expect(entry).not.toBeNull();
     expect(entry!.data.title).toBe('Hello World');
-    expect(entry!.html).toContain('<h1>Hello World</h1>');
+    expect(entry!.html).toContain('<h1 id="hello-world">Hello World</h1>');
     expect(entry!.format).toBe('md');
   });
 
@@ -1078,7 +1078,7 @@ ports:
     expect(entry!.data.tags).toEqual(['alpha', 'beta']);
     expect(entry!.body).toContain('# Roundtrip');
     expect(entry!.body).toContain('All data should survive.');
-    expect(entry!.html).toContain('<h1>Roundtrip</h1>');
+    expect(entry!.html).toContain('<h1 id="roundtrip">Roundtrip</h1>');
   });
 
   it('writes and reads YAML files correctly', async () => {
