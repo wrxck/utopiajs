@@ -32,6 +32,29 @@ export interface Route {
 }
 
 /**
+ * A simple route config for manual route definitions.
+ *
+ * Unlike `Route`, this does not require pre-compiled `pattern` and `params`.
+ * Pass these to `createRouter()` and they will be compiled automatically.
+ */
+export interface RouteConfig {
+  /** URL pattern like '/users/:id' or '/blog/:slug'. */
+  path: string;
+
+  /** Lazy component import — called only when the route is matched. */
+  component: () => Promise<Record<string, unknown>>;
+
+  /** Optional layout component that wraps the page. */
+  layout?: () => Promise<Record<string, unknown>>;
+
+  /** Optional error boundary component shown when loading fails. */
+  error?: () => Promise<Record<string, unknown>>;
+
+  /** Optional metadata (e.g. page title, auth requirements). */
+  meta?: Record<string, unknown>;
+}
+
+/**
  * The result of successfully matching a URL against a route.
  */
 export interface RouteMatch {
