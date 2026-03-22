@@ -171,9 +171,7 @@ export function createComponent(
 ): Node {
   // Support function components: call them to get the definition.
   const resolved =
-    typeof Component === 'function' && !('render' in Component)
-      ? Component()
-      : Component;
+    typeof Component === 'function' && !('render' in Component) ? Component() : Component;
 
   // If the resolved value is a plain Node, return it directly.
   if (resolved instanceof Node) {

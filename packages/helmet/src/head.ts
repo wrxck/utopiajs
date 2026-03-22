@@ -45,8 +45,7 @@ function metaKey(desc: MetaDescriptor): string {
 
 function findExistingMeta(desc: MetaDescriptor): Element | null {
   if (desc.charset) return document.head.querySelector('meta[charset]');
-  if (desc.httpEquiv)
-    return document.head.querySelector(`meta[http-equiv="${desc.httpEquiv}"]`);
+  if (desc.httpEquiv) return document.head.querySelector(`meta[http-equiv="${desc.httpEquiv}"]`);
   if (desc.property) return document.head.querySelector(`meta[property="${desc.property}"]`);
   if (desc.name) return document.head.querySelector(`meta[name="${desc.name}"]`);
   return null;
