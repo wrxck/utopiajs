@@ -6,7 +6,7 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export type { Route, RouteMatch, RouterState, BeforeNavigateHook } from './types.js';
+export type { Route, RouteConfig, RouteMatch, RouterState, BeforeNavigateHook } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Route matching (build-time + runtime)

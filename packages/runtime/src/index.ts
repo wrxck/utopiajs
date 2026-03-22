@@ -12,6 +12,7 @@ export {
   createElement,
   createTextNode,
   setText,
+  setHtml,
   setAttr,
   addEventListener,
   insertBefore,
