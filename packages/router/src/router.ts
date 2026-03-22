@@ -17,7 +17,8 @@
 
 import { signal } from '@matthesketh/utopia-core';
 import { matchRoute } from './matcher.js';
-import type { Route, RouteMatch, BeforeNavigateHook } from './types.js';
+import { compilePattern } from './matcher.js';
+import type { Route, RouteConfig, RouteMatch, BeforeNavigateHook } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Regex constants
@@ -69,7 +70,11 @@ let cleanup: (() => void) | null = null;
 // ---------------------------------------------------------------------------
 
 /**
- * Initialize the router with a compiled route table.
+ * Initialize the router with a route table.
+ *
+ * Accepts either compiled routes (with `pattern` and `params`) or simple
+ * route configs (with just `path` and `component`). Simple configs are
+ * compiled automatically.
  *
  * This must be called once at application startup. It:
  * 1. Stores the route table
@@ -77,15 +82,22 @@ let cleanup: (() => void) | null = null;
  * 3. Sets up popstate listener for browser back/forward
  * 4. Sets up click listener for <a> interception
  *
- * @param routeTable - Array of compiled routes from `buildRouteTable()`
+ * @param routeTable - Array of routes or route configs
  */
-export function createRouter(routeTable: Route[]): void {
+export function createRouter(routeTable: (Route | RouteConfig)[]): void {
   // Tear down any previous router instance (useful for HMR / tests).
   if (cleanup) {
     cleanup();
   }
 
-  routes = routeTable;
+  // Compile routes that don't have a pattern yet.
+  routes = routeTable.map((r) => {
+    if ('pattern' in r && r.pattern instanceof RegExp) {
+      return r as Route;
+    }
+    const { regex, params } = compilePattern(r.path);
+    return { ...r, pattern: regex, params };
+  });
   beforeNavigateHooks = [];
   scrollPositions.clear();
   navIndex = 0;

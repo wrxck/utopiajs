@@ -55,7 +55,8 @@ export async function preloadRoute(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a DOM node that renders the current route's component.
+ * Creates a UtopiaJS-compatible component that renders the current route's
+ * component. Can be used as `<RouterView />` in .utopia templates.
  *
  * When the route changes:
  * 1. The new component is lazily loaded (old content stays visible)
@@ -63,15 +64,20 @@ export async function preloadRoute(): Promise<void> {
  * 3. If the route has a layout, the page is wrapped in the layout
  * 4. If loading fails and an error component exists, it is shown instead
  *
- * @returns A container DOM node that manages route component lifecycle
+ * @returns A component definition compatible with UtopiaJS's component system
  *
  * @example
  * ```ts
- * const view = createRouterView();
- * document.getElementById('app')!.appendChild(view);
+ * import { createRouterView as RouterView } from '@matthesketh/utopia-router';
+ * // In template: <RouterView />
  * ```
  */
-export function createRouterView(): Node {
+export function createRouterView(): { render: () => Node } {
+  return { render: () => createRouterViewNode() };
+}
+
+/** Internal: creates the actual DOM node for the router view. */
+function createRouterViewNode(): Node {
   const container = document.createElement('div');
   container.setAttribute('data-utopia-router-view', '');
 

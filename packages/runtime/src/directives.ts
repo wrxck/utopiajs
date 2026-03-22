@@ -165,11 +165,22 @@ export function createFor<T>(
  * @returns The root DOM node of the mounted component.
  */
 export function createComponent(
-  Component: ComponentDefinition,
+  Component: ComponentDefinition | (() => ComponentDefinition),
   props?: Record<string, unknown>,
   children?: Record<string, () => Node>,
 ): Node {
-  const instance = createComponentInstance(Component, props);
+  // Support function components: call them to get the definition.
+  const resolved =
+    typeof Component === 'function' && !('render' in Component)
+      ? Component()
+      : Component;
+
+  // If the resolved value is a plain Node, return it directly.
+  if (resolved instanceof Node) {
+    return resolved;
+  }
+
+  const instance = createComponentInstance(resolved as ComponentDefinition, props);
 
   // Attach slot factories if provided.
   if (children) {
@@ -178,9 +189,11 @@ export function createComponent(
     }
   }
 
+  const def = resolved as ComponentDefinition;
+
   // Run the render pipeline, capturing lifecycle hooks during setup.
   startCapturingLifecycle();
-  const ctx = Component.setup ? Component.setup(instance.props) : {};
+  const ctx = def.setup ? def.setup(instance.props) : {};
   const lifecycle = stopCapturingLifecycle();
 
   // Merge slots into the render context so templates can reference them.
@@ -191,14 +204,14 @@ export function createComponent(
 
   // Capture effect disposers created during render.
   const prev = startCapturingDisposers();
-  instance.el = Component.render(renderCtx);
+  instance.el = def.render(renderCtx);
   const disposers = stopCapturingDisposers(prev);
 
   // Inject scoped styles if the definition carries them (deduplicated).
-  if (Component.styles && !injectedStyles.has(Component.styles)) {
-    injectedStyles.add(Component.styles);
+  if (def.styles && !injectedStyles.has(def.styles)) {
+    injectedStyles.add(def.styles);
     const style = document.createElement('style');
-    style.textContent = Component.styles;
+    style.textContent = def.styles;
     document.head.appendChild(style);
   }
 

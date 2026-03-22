@@ -131,6 +131,7 @@ export type DirectiveKind =
   | 'else-if'
   | 'for'
   | 'model'
+  | 'html'
   | 'transition';
 
 // ===========================================================================
@@ -522,6 +523,7 @@ function isDirectiveKind(s: string): s is DirectiveKind {
     s === 'else-if' ||
     s === 'for' ||
     s === 'model' ||
+    s === 'html' ||
     s === 'transition'
   );
 }
@@ -701,6 +703,9 @@ class CodeGenerator {
       case 'model':
         this.genModel(elVar, dir, scope);
         break;
+      case 'html':
+        this.genHtml(elVar, dir, scope);
+        break;
       case 'transition':
         this.genTransition(elVar, dir);
         break;
@@ -764,6 +769,14 @@ class CodeGenerator {
     const signalRef = this.resolveExpression(dir.expression, scope);
     this.emit(`createEffect(() => setAttr(${elVar}, 'value', ${signalRef}()))`);
     this.emit(`addEventListener(${elVar}, 'input', (e) => ${signalRef}.set(e.target.value))`);
+  }
+
+  // ---- u-html ---------------------------------------------------------------
+
+  private genHtml(elVar: string, dir: Directive, scope: LocalScope): void {
+    this.helpers.add('setHtml');
+    const expr = this.resolveExpression(dir.expression, scope);
+    this.emit(`setHtml(${elVar}, () => ${expr})`);
   }
 
   // ---- u-transition ---------------------------------------------------------
