@@ -723,6 +723,15 @@ class CodeGenerator {
     const handlerMods = modifiers.filter((m) => !OPTION_MODS.has(m));
     const optionMods = modifiers.filter((m) => OPTION_MODS.has(m));
 
+    // Detect if handler is a simple reference (identifier/member) that can be
+    // passed directly vs an inline expression that must be wrapped in an arrow
+    // function to avoid immediate evaluation.
+    const IS_HANDLER_REF = /^[\w$.]+$/;
+    const IS_ARROW_FN = /^\s*(?:\(.*?\)|[\w$]+)\s*=>/;
+    const hasExpression = handler !== "''";
+    const isInlineExpr =
+      hasExpression && !IS_HANDLER_REF.test(handler) && !IS_ARROW_FN.test(handler);
+
     let handlerExpr = handler;
 
     if (handlerMods.length > 0) {
@@ -743,8 +752,21 @@ class CodeGenerator {
         }
       }
 
-      const body = [...guards, ...calls, `(${handler})(_e)`].join('; ');
-      handlerExpr = `(_e) => { ${body} }`;
+      if (!hasExpression) {
+        // Modifier-only handler (e.g. u-on:click.stop with no expression).
+        const body = [...guards, ...calls].join('; ');
+        handlerExpr = `(_e) => { ${body} }`;
+      } else if (isInlineExpr) {
+        const body = [...guards, ...calls, handler.replace(/\$event/g, '_e')].join('; ');
+        handlerExpr = `(_e) => { ${body} }`;
+      } else {
+        const body = [...guards, ...calls, `(${handler})(_e)`].join('; ');
+        handlerExpr = `(_e) => { ${body} }`;
+      }
+    } else if (isInlineExpr) {
+      // Inline expression without modifiers — wrap to defer evaluation and
+      // support $event references.
+      handlerExpr = `(_e) => { ${handler.replace(/\$event/g, '_e')} }`;
     }
 
     const optionsStr =

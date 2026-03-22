@@ -112,6 +112,13 @@ export function createRouter(routeTable: (Route | RouteConfig)[]): void {
     const url = new URL(window.location.href);
     const match = matchRoute(url, routes);
     currentRoute.set(match);
+
+    // If the initial URL has a hash fragment, scroll to the target element.
+    // Use a higher attempt count for initial load since the route component
+    // must be fetched over the network before rendering.
+    if (url.hash) {
+      scrollToHash(url.hash.slice(1), 60);
+    }
   }
 
   // Set up event listeners.
@@ -176,13 +183,29 @@ export function createRouter(routeTable: (Route | RouteConfig)[]): void {
       // Skip links with target or download attributes.
       if (anchor.hasAttribute('target') || anchor.hasAttribute('download')) return;
 
-      // Skip external links and non-HTTP protocols.
       const href = anchor.getAttribute('href');
       if (!href) return;
-      if (!href.startsWith('/') && !href.startsWith(window.location.origin)) return;
 
-      // Skip hash-only links on the same page.
-      if (href.startsWith('#')) return;
+      // Hash-only links on the same page: scroll to the target element
+      // without triggering a route change. We handle this ourselves rather
+      // than relying on native browser behavior because the target element
+      // may have been dynamically injected (e.g. via u-html).
+      if (href.startsWith('#')) {
+        event.preventDefault();
+        const hashId = href.slice(1);
+        if (hashId) {
+          history.pushState(
+            { _utopiaNavIndex: ++navIndex },
+            '',
+            window.location.pathname + window.location.search + href,
+          );
+          scrollToHash(hashId);
+        }
+        return;
+      }
+
+      // Skip external links and non-HTTP protocols.
+      if (!href.startsWith('/') && !href.startsWith(window.location.origin)) return;
 
       event.preventDefault();
       navigate(href);
@@ -226,6 +249,28 @@ export async function navigate(url: string, options: { replace?: boolean } = {})
   try {
     // Parse the URL.
     const fullUrl = new URL(url, window.location.origin);
+    const currentUrl = new URL(window.location.href);
+
+    // Same-page hash navigation: path and search are identical, only hash differs.
+    // Update the URL and scroll to the element without triggering a route change.
+    if (
+      fullUrl.pathname === currentUrl.pathname &&
+      fullUrl.search === currentUrl.search &&
+      fullUrl.hash
+    ) {
+      scrollPositions.set(navIndex, { x: window.scrollX, y: window.scrollY });
+      capScrollPositions();
+      navIndex++;
+      const state = { _utopiaNavIndex: navIndex };
+      if (options.replace) {
+        history.replaceState(state, '', fullUrl.href);
+      } else {
+        history.pushState(state, '', fullUrl.href);
+      }
+      scrollToHash(fullUrl.hash.slice(1));
+      return;
+    }
+
     const match = matchRoute(fullUrl, routes);
 
     // Run beforeNavigate hooks.
@@ -269,22 +314,14 @@ export async function navigate(url: string, options: { replace?: boolean } = {})
     // Update the current route signal.
     currentRoute.set(match);
 
-    // Scroll to top on forward navigation (not back/forward).
-    requestAnimationFrame(() => {
-      // If the URL has a hash, scroll to the element.
-      // Validate the hash is a safe DOM id to prevent DOM clobbering / selector injection.
-      if (fullUrl.hash) {
-        const hashId = fullUrl.hash.slice(1);
-        if (hashId && VALID_DOM_ID_RE.test(hashId)) {
-          const el = document.getElementById(hashId);
-          if (el) {
-            el.scrollIntoView();
-            return;
-          }
-        }
-      }
-      window.scrollTo(0, 0);
-    });
+    // Scroll handling for forward navigation.
+    if (fullUrl.hash) {
+      // Cross-page hash navigation: the target element may not exist yet because
+      // the route component loads asynchronously. Poll across multiple frames.
+      scrollToHash(fullUrl.hash.slice(1));
+    } else {
+      requestAnimationFrame(() => window.scrollTo(0, 0));
+    }
   } finally {
     redirectDepth--;
     isNavigating.set(false);
@@ -404,4 +441,28 @@ function capScrollPositions(): void {
     const firstKey = scrollPositions.keys().next().value;
     if (firstKey !== undefined) scrollPositions.delete(firstKey);
   }
+}
+
+/**
+ * Scroll to an element identified by a hash fragment.
+ *
+ * The target element may not exist yet (e.g. route component loading
+ * asynchronously), so we poll across multiple animation frames before
+ * giving up.
+ *
+ * @param hashId - The element id (without the leading `#`)
+ * @param maxAttempts - Maximum number of frames to poll (default 25 ≈ 400ms)
+ */
+function scrollToHash(hashId: string, maxAttempts = 25): void {
+  if (!hashId || !VALID_DOM_ID_RE.test(hashId)) return;
+
+  const attempt = (remaining: number) => {
+    const el = document.getElementById(hashId);
+    if (el) {
+      el.scrollIntoView();
+    } else if (remaining > 0) {
+      requestAnimationFrame(() => attempt(remaining - 1));
+    }
+  };
+  requestAnimationFrame(() => attempt(maxAttempts));
 }

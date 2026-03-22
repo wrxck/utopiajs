@@ -3,6 +3,7 @@ import remarkParse from 'remark-parse';
 import remarkRehype from 'remark-rehype';
 import rehypeStringify from 'rehype-stringify';
 import rehypeHighlight from 'rehype-highlight';
+import rehypeSlug from 'rehype-slug';
 
 export interface MarkdownOptions {
   /** Additional remark plugins */
@@ -34,6 +35,7 @@ export async function renderMarkdown(
   }
 
   processor = processor.use(remarkRehype);
+  processor = processor.use(rehypeSlug);
 
   if (highlight) {
     processor = processor.use(rehypeHighlight);
