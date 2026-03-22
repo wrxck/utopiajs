@@ -56,6 +56,7 @@ export function generatePrerenderedPage(
       </div>
     </article>
   </div>
+  <script>document.getElementById('app').innerHTML=''</script>
   ${assets.scripts}
 </body>
 </html>`;

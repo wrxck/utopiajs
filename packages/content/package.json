@@ -1,6 +1,6 @@
 {
   "name": "@matthesketh/utopia-content",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "Content collections, markdown pipeline, and MCP content server for UtopiaJS",
   "type": "module",
   "license": "MIT",
