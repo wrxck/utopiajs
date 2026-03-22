@@ -11,12 +11,8 @@ export interface SeoEntry {
 
 /** OG image customisation */
 export interface OgImageConfig {
-  /** Path to logo SVG (inlined into the template) */
-  logo?: string;
-  /** Background colour (default: '#000000') */
-  background?: string;
-  /** Text colour (default: '#ffffff') */
-  textColor?: string;
+  /** Variant: 'dark' = white M on black (default), 'light' = black M on white */
+  variant?: 'dark' | 'light';
 }
 
 /** SEO plugin configuration */
