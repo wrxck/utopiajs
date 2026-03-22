@@ -157,6 +157,12 @@ importers:
         specifier: ^6.9.1
         version: 6.9.1(@react-email/render@1.1.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4))
 
+  packages/helmet:
+    dependencies:
+      '@matthesketh/utopia-core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/router:
     dependencies:
       '@matthesketh/utopia-core':

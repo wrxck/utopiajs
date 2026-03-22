@@ -1,6 +1,6 @@
 {
   "name": "@matthesketh/utopia-router",
-  "version": "0.7.0",
+  "version": "0.7.3",
   "description": "File-based routing for UtopiaJS",
   "type": "module",
   "license": "MIT",

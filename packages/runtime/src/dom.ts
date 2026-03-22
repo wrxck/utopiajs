@@ -6,6 +6,7 @@
  * and keeps the runtime footprint small.
  */
 
+import { effect } from '@matthesketh/utopia-core';
 import { isHydrating, claimNode, unclaimNode, enterNode, exitNode } from './hydration.js';
 
 // ---------------------------------------------------------------------------
@@ -123,6 +124,26 @@ export function setText(node: Text, value: unknown): void {
   if (node.data !== text) {
     node.data = text;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Reactive HTML
+// ---------------------------------------------------------------------------
+
+/**
+ * Set the innerHTML of an element reactively. The getter function is wrapped
+ * in an effect so the HTML updates when signals change.
+ *
+ * **Warning:** This sets raw HTML — only use with trusted content.
+ */
+export function setHtml(el: Element, getter: () => unknown): void {
+  effect(() => {
+    const value = getter();
+    const html = value == null ? '' : String(value);
+    if (el.innerHTML !== html) {
+      el.innerHTML = html;
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------

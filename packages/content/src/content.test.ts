@@ -12,6 +12,8 @@ import { validateSchema, applyDefaults } from './schema.js';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.js';
 import { renderMarkdown } from './markdown.js';
 import { createFilesystemAdapter } from './adapters/filesystem.js';
+import { createVirtualAdapter } from './adapters/virtual.js';
+import { generateRssFeed, generateAtomFeed } from './feed.js';
 import {
   createContent,
   defineCollection,
@@ -22,6 +24,7 @@ import {
 } from './collection.js';
 import { createContentMCPServer } from './mcp/index.js';
 import type { CollectionSchema } from './types.js';
+import type { FeedEntry, FeedOptions } from './feed.js';
 
 // ---------------------------------------------------------------------------
 // Schema validation
@@ -1406,5 +1409,256 @@ describe('Security — MCP tool input validation', () => {
       rpc('resources/read', { uri: 'content://blog/../etc/passwd' }),
     );
     expect(res.error).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Virtual adapter
+// ---------------------------------------------------------------------------
+
+describe('createVirtualAdapter', () => {
+  const collections = {
+    blog: [
+      {
+        slug: 'hello-world',
+        data: { title: 'Hello World', date: '2026-01-01', tags: ['intro'] },
+        body: '# Hello\n\nThis is a test.',
+        html: '<h1>Hello</h1>\n<p>This is a test.</p>',
+      },
+      {
+        slug: 'second-post',
+        data: { title: 'Second Post', date: '2026-02-01' },
+        body: 'Body text',
+      },
+    ],
+    notes: [{ slug: 'note-one', data: { title: 'Note One' } }],
+  };
+
+  const blogConfig = { name: 'blog', directory: 'blog' };
+  const notesConfig = { name: 'notes', directory: 'notes' };
+  const emptyConfig = { name: 'nonexistent', directory: 'nonexistent' };
+
+  it('readEntries returns all entries for a collection', async () => {
+    const adapter = createVirtualAdapter(collections);
+    const entries = await adapter.readEntries(blogConfig);
+    expect(entries).toHaveLength(2);
+    expect(entries[0].slug).toBe('hello-world');
+    expect(entries[0].data.title).toBe('Hello World');
+    expect(entries[0].html).toBe('<h1>Hello</h1>\n<p>This is a test.</p>');
+    expect(entries[0].body).toBe('# Hello\n\nThis is a test.');
+    expect(entries[0].collection).toBe('blog');
+    expect(entries[0].filePath).toBe('virtual:blog/hello-world');
+  });
+
+  it('readEntries returns empty array for unknown collection', async () => {
+    const adapter = createVirtualAdapter(collections);
+    const entries = await adapter.readEntries(emptyConfig);
+    expect(entries).toEqual([]);
+  });
+
+  it('readEntry returns a single entry by slug', async () => {
+    const adapter = createVirtualAdapter(collections);
+    const entry = await adapter.readEntry(blogConfig, 'second-post');
+    expect(entry).not.toBeNull();
+    expect(entry!.slug).toBe('second-post');
+    expect(entry!.data.title).toBe('Second Post');
+    expect(entry!.body).toBe('Body text');
+    expect(entry!.html).toBeUndefined();
+  });
+
+  it('readEntry returns null for missing slug', async () => {
+    const adapter = createVirtualAdapter(collections);
+    const entry = await adapter.readEntry(blogConfig, 'nonexistent');
+    expect(entry).toBeNull();
+  });
+
+  it('readEntry returns null for missing collection', async () => {
+    const adapter = createVirtualAdapter(collections);
+    const entry = await adapter.readEntry(emptyConfig, 'hello-world');
+    expect(entry).toBeNull();
+  });
+
+  it('listSlugs returns slugs for a collection', async () => {
+    const adapter = createVirtualAdapter(collections);
+    const slugs = await adapter.listSlugs(blogConfig);
+    expect(slugs).toEqual(['hello-world', 'second-post']);
+  });
+
+  it('listSlugs returns empty array for unknown collection', async () => {
+    const adapter = createVirtualAdapter(collections);
+    const slugs = await adapter.listSlugs(emptyConfig);
+    expect(slugs).toEqual([]);
+  });
+
+  it('writeEntry throws read-only error', async () => {
+    const adapter = createVirtualAdapter(collections);
+    await expect(adapter.writeEntry(blogConfig, 'test', {}, '')).rejects.toThrow('read-only');
+  });
+
+  it('updateEntry throws read-only error', async () => {
+    const adapter = createVirtualAdapter(collections);
+    await expect(adapter.updateEntry(blogConfig, 'test')).rejects.toThrow('read-only');
+  });
+
+  it('deleteEntry throws read-only error', async () => {
+    const adapter = createVirtualAdapter(collections);
+    await expect(adapter.deleteEntry(blogConfig, 'test')).rejects.toThrow('read-only');
+  });
+
+  it('works with collection engine', async () => {
+    clearCollections();
+    const adapter = createVirtualAdapter(collections);
+    createContent({ contentDir: '/virtual', adapter });
+    defineCollection({ name: 'notes', directory: 'notes' });
+
+    const entries = await getCollection('notes');
+    expect(entries).toHaveLength(1);
+    expect(entries[0].data.title).toBe('Note One');
+    clearCollections();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Feed generation
+// ---------------------------------------------------------------------------
+
+describe('generateRssFeed', () => {
+  const feedOptions: FeedOptions = {
+    title: 'Test Blog',
+    description: 'A test blog',
+    siteUrl: 'https://example.com',
+    feedUrl: 'https://example.com/feed.xml',
+    language: 'en',
+    author: 'Test Author',
+    copyright: '2026 Test',
+  };
+
+  const entries: FeedEntry[] = [
+    {
+      slug: 'hello',
+      title: 'Hello World',
+      description: 'First post',
+      date: '2026-01-15T00:00:00Z',
+      html: '<p>Hello!</p>',
+      url: 'https://example.com/blog/hello',
+      tags: ['intro', 'test'],
+    },
+    {
+      slug: 'second',
+      title: 'Second Post',
+      date: '2026-02-01T00:00:00Z',
+      url: 'https://example.com/blog/second',
+    },
+  ];
+
+  it('generates valid RSS 2.0 XML', () => {
+    const rss = generateRssFeed(entries, feedOptions);
+    expect(rss).toContain('<?xml version="1.0" encoding="UTF-8"?>');
+    expect(rss).toContain('<rss version="2.0"');
+    expect(rss).toContain('<title>Test Blog</title>');
+    expect(rss).toContain('<description>A test blog</description>');
+    expect(rss).toContain('<link>https://example.com</link>');
+    expect(rss).toContain('<language>en</language>');
+    expect(rss).toContain('<copyright>2026 Test</copyright>');
+  });
+
+  it('includes feed entries with correct structure', () => {
+    const rss = generateRssFeed(entries, feedOptions);
+    expect(rss).toContain('<title>Hello World</title>');
+    expect(rss).toContain('<link>https://example.com/blog/hello</link>');
+    expect(rss).toContain('<guid isPermaLink="true">https://example.com/blog/hello</guid>');
+    expect(rss).toContain('<description>First post</description>');
+    expect(rss).toContain('<content:encoded><![CDATA[<p>Hello!</p>]]></content:encoded>');
+    expect(rss).toContain('<category>intro</category>');
+    expect(rss).toContain('<category>test</category>');
+  });
+
+  it('handles entries without optional fields', () => {
+    const rss = generateRssFeed(entries, feedOptions);
+    expect(rss).toContain('<title>Second Post</title>');
+    // Second entry should not have description or content:encoded
+    const secondItemStart = rss.indexOf('<title>Second Post</title>');
+    const secondItemEnd = rss.indexOf('</item>', secondItemStart);
+    const secondItem = rss.slice(secondItemStart, secondItemEnd);
+    expect(secondItem).not.toContain('<description>');
+    expect(secondItem).not.toContain('<content:encoded>');
+  });
+
+  it('includes atom:link self reference', () => {
+    const rss = generateRssFeed(entries, feedOptions);
+    expect(rss).toContain('atom:link href="https://example.com/feed.xml" rel="self"');
+  });
+
+  it('escapes XML special characters', () => {
+    const rss = generateRssFeed(
+      [
+        {
+          slug: 'test',
+          title: 'A & B <> "quotes"',
+          date: '2026-01-01T00:00:00Z',
+          url: 'https://example.com/blog/test',
+        },
+      ],
+      feedOptions,
+    );
+    expect(rss).toContain('A &amp; B &lt;&gt; &quot;quotes&quot;');
+  });
+
+  it('works with empty entries', () => {
+    const rss = generateRssFeed([], feedOptions);
+    expect(rss).toContain('<channel>');
+    expect(rss).toContain('</channel>');
+    expect(rss).not.toContain('<item>');
+  });
+});
+
+describe('generateAtomFeed', () => {
+  const feedOptions: FeedOptions = {
+    title: 'Test Blog',
+    description: 'A test blog',
+    siteUrl: 'https://example.com',
+    feedUrl: 'https://example.com/atom.xml',
+    author: 'Test Author',
+  };
+
+  const entries: FeedEntry[] = [
+    {
+      slug: 'hello',
+      title: 'Hello World',
+      description: 'First post',
+      date: '2026-01-15T00:00:00Z',
+      html: '<p>Hello!</p>',
+      url: 'https://example.com/blog/hello',
+      tags: ['intro'],
+    },
+  ];
+
+  it('generates valid Atom 1.0 XML', () => {
+    const atom = generateAtomFeed(entries, feedOptions);
+    expect(atom).toContain('<?xml version="1.0" encoding="UTF-8"?>');
+    expect(atom).toContain('<feed xmlns="http://www.w3.org/2005/Atom">');
+    expect(atom).toContain('<title>Test Blog</title>');
+    expect(atom).toContain('<subtitle>A test blog</subtitle>');
+  });
+
+  it('includes author element', () => {
+    const atom = generateAtomFeed(entries, feedOptions);
+    expect(atom).toContain('<author>');
+    expect(atom).toContain('<name>Test Author</name>');
+  });
+
+  it('includes entry with correct structure', () => {
+    const atom = generateAtomFeed(entries, feedOptions);
+    expect(atom).toContain('<title>Hello World</title>');
+    expect(atom).toContain('<link href="https://example.com/blog/hello"/>');
+    expect(atom).toContain('<id>https://example.com/blog/hello</id>');
+    expect(atom).toContain('<summary>First post</summary>');
+    expect(atom).toContain('<content type="html"><![CDATA[<p>Hello!</p>]]></content>');
+    expect(atom).toContain('<category term="intro"/>');
+  });
+
+  it('includes self link', () => {
+    const atom = generateAtomFeed(entries, feedOptions);
+    expect(atom).toContain('href="https://example.com/atom.xml" rel="self"');
   });
 });
