@@ -796,9 +796,14 @@ class CodeGenerator {
   // ---- u-html ---------------------------------------------------------------
 
   private genHtml(elVar: string, dir: Directive, scope: LocalScope): void {
-    this.helpers.add('setHtml');
     const expr = this.resolveExpression(dir.expression, scope);
-    this.emit(`setHtml(${elVar}, () => ${expr})`);
+    if (dir.modifiers.includes('raw')) {
+      this.helpers.add('setHtml');
+      this.emit(`setHtml(${elVar}, () => ${expr})`);
+    } else {
+      this.helpers.add('setSafeHtml');
+      this.emit(`setSafeHtml(${elVar}, () => ${expr})`);
+    }
   }
 
   // ---- u-transition ---------------------------------------------------------
