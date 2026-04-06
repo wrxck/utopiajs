@@ -14,6 +14,18 @@
 // ============================================================================
 
 // ---------------------------------------------------------------------------
+// Internal error types
+// ---------------------------------------------------------------------------
+
+/** Thrown by flushPendingEffects when an infinite effect re-queue is detected. */
+class FlushGuardError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FlushGuardError';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Global error handler
 // ---------------------------------------------------------------------------
 
@@ -105,8 +117,14 @@ let computeDepth = 0;
 /** Maximum allowed nesting depth for computed recomputation. */
 const MAX_COMPUTE_DEPTH = 100;
 
+/** Maximum allowed iterations for flushing pending effects. */
+const MAX_FLUSH_ITERATIONS = 100;
+
 /** Queue of effects waiting to run after the current batch completes. */
 let pendingEffects: Set<EffectNode> = new Set();
+
+/** Re-entrancy depth counter for flushPendingEffects — detects effect-triggered infinite flush loops. */
+let flushDepth = 0;
 
 // ---------------------------------------------------------------------------
 // pushSubscriber / popSubscriber
@@ -405,6 +423,9 @@ class EffectNode implements Subscriber {
       const result = this._fn();
       this._cleanupFn = typeof result === 'function' ? result : undefined;
     } catch (err) {
+      if (err instanceof FlushGuardError) {
+        throw err;
+      }
       reportEffectError('Error in effect:', err);
     } finally {
       popSubscriber();
@@ -500,12 +521,30 @@ export function batch<T>(fn: () => T): T {
  * queue additional effects.
  */
 function flushPendingEffects(): void {
-  while (pendingEffects.size > 0) {
-    const effects = Array.from(pendingEffects);
-    pendingEffects.clear();
-    for (let i = 0; i < effects.length; i++) {
-      effects[i]._run();
+  flushDepth++;
+  try {
+    if (flushDepth > MAX_FLUSH_ITERATIONS) {
+      pendingEffects.clear();
+      throw new FlushGuardError(
+        'Maximum effect flush iterations exceeded (possible infinite loop: an effect is re-triggering itself)',
+      );
     }
+    let iterations = 0;
+    while (pendingEffects.size > 0) {
+      if (++iterations > MAX_FLUSH_ITERATIONS) {
+        pendingEffects.clear();
+        throw new FlushGuardError(
+          'Maximum effect flush iterations exceeded (possible infinite loop: an effect is re-triggering itself)',
+        );
+      }
+      const effects = Array.from(pendingEffects);
+      pendingEffects.clear();
+      for (let i = 0; i < effects.length; i++) {
+        effects[i]._run();
+      }
+    }
+  } finally {
+    flushDepth--;
   }
 }
 
