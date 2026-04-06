@@ -147,6 +147,48 @@ export function setHtml(el: Element, getter: () => unknown): void {
 }
 
 // ---------------------------------------------------------------------------
+// Safe reactive HTML (with sanitization)
+// ---------------------------------------------------------------------------
+
+/** Tags that are never safe in user content. */
+const UNSAFE_TAGS_RE = /<\/?(?:script|iframe|object|embed|form|input|textarea|select|button|link|style|meta|base|applet)\b[^>]*>/gi;
+
+/** Event handler attributes like onclick, onerror, onload, etc. */
+const EVENT_ATTR_RE = /\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi;
+
+/** javascript: or data: URIs in href/src/action attributes. */
+const DANGEROUS_URI_RE = /\s+(href|src|action)\s*=\s*(?:"(?:javascript|data|vbscript):[^"]*"|'(?:javascript|data|vbscript):[^']*')/gi;
+
+/**
+ * Basic HTML sanitizer that strips dangerous tags, event handler attributes,
+ * and javascript: URIs. NOT a substitute for DOMPurify in high-risk contexts,
+ * but provides baseline protection for rendered markdown/content.
+ */
+export function sanitizeHtml(html: string): string {
+  return html
+    .replace(UNSAFE_TAGS_RE, '')
+    .replace(EVENT_ATTR_RE, '')
+    .replace(DANGEROUS_URI_RE, '');
+}
+
+/**
+ * Set the innerHTML of an element reactively with basic sanitization.
+ * Strips script tags, event handlers, and javascript: URIs.
+ *
+ * For fully trusted content, use `setHtml()` instead.
+ */
+export function setSafeHtml(el: Element, getter: () => unknown): void {
+  effect(() => {
+    const value = getter();
+    const raw = value == null ? '' : String(value);
+    const html = sanitizeHtml(raw);
+    if (el.innerHTML !== html) {
+      el.innerHTML = html;
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Attributes
 // ---------------------------------------------------------------------------
 

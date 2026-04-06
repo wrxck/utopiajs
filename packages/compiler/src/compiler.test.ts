@@ -1064,3 +1064,18 @@ describe('u-transition directive', () => {
     expect(result.code).toContain("name: 'fade'");
   });
 });
+
+describe('u-html directive — sanitization', () => {
+  it('u-html uses setSafeHtml by default', () => {
+    const result = compileTemplate('<div u-html="content()"></div>');
+    expect(result.code).toContain('setSafeHtml');
+    expect(result.helpers.has('setSafeHtml')).toBe(true);
+  });
+
+  it('u-html.raw uses setHtml for trusted content', () => {
+    const result = compileTemplate('<div u-html.raw="trustedHtml()"></div>');
+    expect(result.code).toContain('setHtml');
+    expect(result.code).not.toContain('setSafeHtml');
+    expect(result.helpers.has('setHtml')).toBe(true);
+  });
+});

@@ -64,6 +64,22 @@ export function createMCPServer(config: MCPServerConfig): MCPServer {
   );
 
   async function handleRequest(request: JsonRpcRequest): Promise<JsonRpcResponse> {
+    // Validate JSON-RPC 2.0 envelope.
+    if (
+      !request ||
+      request.jsonrpc !== '2.0' ||
+      typeof request.method !== 'string'
+    ) {
+      return {
+        jsonrpc: '2.0',
+        id: request?.id ?? null,
+        error: {
+          code: -32600,
+          message: 'Invalid Request: must include jsonrpc "2.0" and a string method',
+        },
+      };
+    }
+
     try {
       const result = await dispatch(request);
       return { jsonrpc: '2.0', id: request.id, result };

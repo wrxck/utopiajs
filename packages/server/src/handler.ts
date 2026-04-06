@@ -3,15 +3,11 @@
 // ============================================================================
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { STYLE_CLOSE_RE } from './render-to-stream.js';
+import { STYLE_CLOSE_RE, escapeStyleContent } from './html-utils.js';
 import type { HeadConfig } from './ssr-runtime.js';
 import { serializeHead } from './render-to-string.js';
 import { buildApiRoutes, handleApiRequest } from './api-handler.js';
 import type { RequestEvent, RequestHandler } from './api-handler.js';
-
-function escapeStyleContent(css: string): string {
-  return css.replace(STYLE_CLOSE_RE, '<\\/style');
-}
 
 export interface HandlerOptions {
   /** The HTML template with <!--ssr-outlet--> and <!--ssr-head--> markers. */

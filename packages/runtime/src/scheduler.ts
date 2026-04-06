@@ -36,10 +36,13 @@ function flushJobs(): void {
   isFlushing = true;
 
   try {
-    // Process the queue. Jobs added during flush are picked up in the same pass.
-    for (const job of queue) {
-      queue.delete(job);
-      job();
+    // Snapshot and clear the queue before iterating. Jobs added during
+    // this flush will be picked up in the subsequent pass (not re-executed
+    // within the same iteration).
+    const jobs = Array.from(queue);
+    queue.clear();
+    for (let i = 0; i < jobs.length; i++) {
+      jobs[i]();
     }
   } finally {
     isFlushing = false;

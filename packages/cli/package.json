@@ -1,6 +1,6 @@
 {
   "name": "@matthesketh/utopia-cli",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "CLI for the UtopiaJS framework",
   "type": "module",
   "license": "MIT",
