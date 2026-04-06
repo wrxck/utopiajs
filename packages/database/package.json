@@ -1,0 +1,54 @@
+{
+  "name": "@matthesketh/utopia-database",
+  "version": "0.7.0",
+  "description": "Database adapters and query builder for UtopiaJS",
+  "type": "module",
+  "license": "MIT",
+  "author": "Matt <matt@matthesketh.pro>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wrxck/utopiajs.git",
+    "directory": "packages/database"
+  },
+  "homepage": "https://github.com/wrxck/utopiajs/tree/main/packages/database",
+  "keywords": ["database", "postgres", "mysql", "sqlite", "mongodb", "query-builder", "adapters", "utopiajs"],
+  "engines": { "node": "20.0.0" },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "require": "./dist/index.cjs" },
+    "./postgres": { "types": "./dist/adapters/postgres.d.ts", "import": "./dist/adapters/postgres.js", "require": "./dist/adapters/postgres.cjs" },
+    "./mysql": { "types": "./dist/adapters/mysql.d.ts", "import": "./dist/adapters/mysql.js", "require": "./dist/adapters/mysql.cjs" },
+    "./sqlite": { "types": "./dist/adapters/sqlite.d.ts", "import": "./dist/adapters/sqlite.js", "require": "./dist/adapters/sqlite.cjs" },
+    "./mongodb": { "types": "./dist/adapters/mongodb.d.ts", "import": "./dist/adapters/mongodb.js", "require": "./dist/adapters/mongodb.cjs" }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts src/adapters/postgres.ts src/adapters/mysql.ts src/adapters/sqlite.ts src/adapters/mongodb.ts --format esm,cjs --dts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "pg": "8.20.0",
+    "mysql2": "3.20.0",
+    "better-sqlite3": "12.8.0",
+    "mongodb": "7.1.1"
+  },
+  "peerDependenciesMeta": {
+    "pg": { "optional": true },
+    "mysql2": { "optional": true },
+    "better-sqlite3": { "optional": true },
+    "mongodb": { "optional": true }
+  },
+  "devDependencies": {
+    "pg": "8.20.0",
+    "@types/pg": "8.20.0",
+    "mysql2": "3.20.0",
+    "better-sqlite3": "12.8.0",
+    "@types/better-sqlite3": "7.6.13",
+    "mongodb": "7.1.1"
+  }
+}
