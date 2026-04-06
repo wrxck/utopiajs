@@ -55,7 +55,7 @@ export function createMongoAdapter(config: MongoConfig): MongoAdapter {
     async connect(): Promise<void> {
       let mongodb: { MongoClient: MongoClientConstructor }
       try {
-        mongodb = await import('mongodb') as { MongoClient: MongoClientConstructor }
+        mongodb = await import('mongodb') as unknown as { MongoClient: MongoClientConstructor }
       } catch {
         throw new Error('mongodb package is not installed. Run: npm install mongodb')
       }
