@@ -6,7 +6,7 @@
  * so no build step is required.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { signal, effect as coreEffect, type ReadonlySignal } from '@matthesketh/utopia-core';
 
 import {
@@ -1390,5 +1390,38 @@ describe('Security — transition double-fire prevention', () => {
 
     document.body.removeChild(el);
     vi.useRealTimers();
+  });
+});
+
+describe('hydrate — lifecycle and disposer capture', () => {
+  let container: HTMLElement;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    container.id = 'hydrate-test';
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    container.remove();
+  });
+
+  it('runs onMount callbacks after hydration', async () => {
+    const { hydrate } = await import('./hydration.js');
+    const { onMount } = await import('./component.js');
+
+    let mounted = false;
+
+    const comp = {
+      setup() {
+        onMount(() => { mounted = true; });
+        return {};
+      },
+      render() { return document.createTextNode('hello'); },
+    };
+
+    container.textContent = 'hello';
+    hydrate(comp, container);
+    expect(mounted).toBe(true);
   });
 });
