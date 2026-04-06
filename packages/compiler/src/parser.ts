@@ -31,10 +31,10 @@ export interface SFCDescriptor {
 // ---- Regex Constants --------------------------------------------------------
 
 /** Matches opening tags for the known SFC block types. */
-export const BLOCK_RE = /<(template|script|style|test)([\s][^>]*)?\s*>/g;
+const BLOCK_RE = /<(template|script|style|test)([\s][^>]*)?\s*>/g;
 
 /** Matches a single attribute in an opening tag (name, optional quoted/unquoted value). */
-export const ATTR_RE = /([a-zA-Z_][\w-]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g;
+const ATTR_RE = /([a-zA-Z_][\w-]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g;
 
 // ---- Implementation --------------------------------------------------------
 
