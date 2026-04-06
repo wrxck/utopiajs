@@ -984,3 +984,25 @@ describe('Security — VNode depth limit', () => {
     expect(() => serializeVNode(node)).not.toThrow();
   });
 });
+
+describe('escapeAttr — extended escaping', () => {
+  it('escapes single quotes', async () => {
+    const { escapeAttr } = await import('./html-utils.js');
+    expect(escapeAttr("it's")).toBe('it&#39;s');
+  });
+
+  it('escapes angle brackets', async () => {
+    const { escapeAttr } = await import('./html-utils.js');
+    expect(escapeAttr('<script>')).toBe('&lt;script&gt;');
+  });
+
+  it('escapes double quotes', async () => {
+    const { escapeAttr } = await import('./html-utils.js');
+    expect(escapeAttr('say "hello"')).toBe('say &quot;hello&quot;');
+  });
+
+  it('escapes ampersands', async () => {
+    const { escapeAttr } = await import('./html-utils.js');
+    expect(escapeAttr('a&b')).toBe('a&amp;b');
+  });
+});
