@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { createRequire } from 'node:module';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import {
   createServer,
   build as viteBuild,
@@ -328,7 +328,7 @@ function findClaude(): string | null {
   ];
   for (const bin of candidates) {
     try {
-      execSync(`${bin} --version`, { stdio: 'ignore' });
+      execFileSync(bin, ['--version'], { stdio: 'ignore' });
       return bin;
     } catch {
       // not found, try next
@@ -347,7 +347,7 @@ function mcpInstall(): void {
   }
 
   try {
-    execSync(`${claude} mcp add utopia-content -s project -- npx utopia mcp serve`, {
+    execFileSync(claude, ['mcp', 'add', 'utopia-content', '-s', 'project', '--', 'npx', 'utopia', 'mcp', 'serve'], {
       stdio: 'inherit',
       cwd: process.cwd(),
     });

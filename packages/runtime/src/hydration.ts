@@ -7,8 +7,14 @@
 // with signal tracking and event listeners attached.
 // ============================================================================
 
-import { createComponentInstance } from './component.js';
-import type { ComponentDefinition } from './component.js';
+import {
+  createComponentInstance,
+  startCapturingLifecycle,
+  stopCapturingLifecycle,
+  startCapturingDisposers,
+  stopCapturingDisposers,
+} from './component.js';
+import type { ComponentDefinition, ComponentInstance } from './component.js';
 
 // ---------------------------------------------------------------------------
 // Hydration state — module-level so dom.ts helpers can check it
@@ -80,7 +86,7 @@ export function exitNode(): void {
  * @param target    - A CSS selector string or DOM Element containing the
  *                    server-rendered HTML
  */
-export function hydrate(component: ComponentDefinition, target: string | Element): void {
+export function hydrate(component: ComponentDefinition, target: string | Element): ComponentInstance {
   const el = typeof target === 'string' ? document.querySelector(target) : target;
 
   if (!el) {
@@ -96,19 +102,20 @@ export function hydrate(component: ComponentDefinition, target: string | Element
   try {
     const instance = createComponentInstance(component);
 
-    // Run the normal mount flow. The hydration-aware helpers in dom.ts
-    // will claim existing nodes instead of creating new ones.
+    // Run setup with lifecycle hook capture.
+    startCapturingLifecycle();
     const ctx = component.setup ? component.setup(instance.props) : {};
+    const lifecycle = stopCapturingLifecycle();
 
     const renderCtx: Record<string, any> = {
       ...ctx,
       $slots: instance.slots,
     };
 
-    // Render — this runs the compiled template code which calls
-    // createElement, createTextNode, etc. During hydration these
-    // claim existing DOM nodes.
+    // Render with disposer capture.
+    const prev = startCapturingDisposers();
     instance.el = component.render(renderCtx);
+    const disposers = stopCapturingDisposers(prev);
 
     // Inject styles (same as normal mount).
     if (component.styles) {
@@ -116,6 +123,13 @@ export function hydrate(component: ComponentDefinition, target: string | Element
       style.textContent = component.styles;
       document.head.appendChild(style);
     }
+
+    // Run onMount callbacks after DOM claiming.
+    for (const cb of lifecycle.mount) {
+      cb();
+    }
+
+    return instance;
   } finally {
     // Exit hydration mode.
     isHydrating = false;

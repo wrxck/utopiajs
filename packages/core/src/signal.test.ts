@@ -946,3 +946,39 @@ describe('circular dependencies', () => {
     expect(() => computeds[100]()).toThrow('Circular dependency detected in computed chain');
   });
 });
+
+// ---------------------------------------------------------------------------
+// flushPendingEffects — infinite loop guard
+// ---------------------------------------------------------------------------
+
+describe('flushPendingEffects — infinite loop guard', () => {
+  it('throws when a cycle of effects creates an infinite re-queue loop', () => {
+    // Create N > MAX_FLUSH_ITERATIONS effects in a cycle so that creating each
+    // new effect triggers a cascade that re-queues effects already in the chain,
+    // causing flushPendingEffects to recurse beyond the allowed depth.
+    const N = 110;
+    const sigs = Array.from({ length: N }, () => signal(0));
+    const disposers: Array<() => void> = [];
+    let threw = false;
+
+    try {
+      for (let i = 0; i < N; i++) {
+        const idx = i;
+        const next = (i + 1) % N;
+        disposers.push(
+          effect(() => {
+            sigs[idx]();
+            sigs[next].set(sigs[idx].peek() + 1);
+          }),
+        );
+      }
+    } catch (e: unknown) {
+      threw = true;
+      expect((e as Error).message).toContain('Maximum effect flush iterations exceeded');
+    } finally {
+      disposers.forEach((d) => d());
+    }
+
+    expect(threw).toBe(true);
+  });
+});
