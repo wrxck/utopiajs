@@ -761,6 +761,50 @@ describe('Security — readBody size limit', () => {
   });
 });
 
+describe('MCP server — JSON-RPC validation', () => {
+  it('returns error for missing jsonrpc field', async () => {
+    const server = createMCPServer({ name: 'test' });
+    const response = await server.handleRequest({
+      id: 1,
+      method: 'ping',
+    } as any);
+    expect(response.error).toBeDefined();
+    expect(response.error!.code).toBe(-32600);
+  });
+
+  it('returns error for wrong jsonrpc version', async () => {
+    const server = createMCPServer({ name: 'test' });
+    const response = await server.handleRequest({
+      jsonrpc: '1.0',
+      id: 1,
+      method: 'ping',
+    } as any);
+    expect(response.error).toBeDefined();
+    expect(response.error!.code).toBe(-32600);
+  });
+
+  it('returns error for missing method field', async () => {
+    const server = createMCPServer({ name: 'test' });
+    const response = await server.handleRequest({
+      jsonrpc: '2.0',
+      id: 1,
+    } as any);
+    expect(response.error).toBeDefined();
+    expect(response.error!.code).toBe(-32600);
+  });
+
+  it('returns error for non-string method', async () => {
+    const server = createMCPServer({ name: 'test' });
+    const response = await server.handleRequest({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 123,
+    } as any);
+    expect(response.error).toBeDefined();
+    expect(response.error!.code).toBe(-32600);
+  });
+});
+
 describe('Security — CORS default', () => {
   it('does not set CORS header when no corsOrigin configured', async () => {
     const server = createTestServer();

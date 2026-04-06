@@ -527,7 +527,7 @@ getCollection('blog', {
         <span u-for="tag in post().data.tags" class="tag">{{ tag }}</span>
       </div>
     </header>
-    <div class="content" u-bind:innerHTML="post().html"></div>
+    <div class="content" u-html="post().html"></div>
     <a href="/blog" class="back">Back to blog</a>
   </article>
 </template>

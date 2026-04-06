@@ -107,7 +107,7 @@ export async function* parseSSEStream(response: Response): AsyncIterable<ChatChu
           try {
             yield JSON.parse(data) as ChatChunk;
           } catch {
-            // Skip malformed SSE data
+            console.warn('[utopia-ai] Skipping malformed SSE data:', data);
           }
         }
       }

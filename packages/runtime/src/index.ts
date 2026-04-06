@@ -13,6 +13,8 @@ export {
   createTextNode,
   setText,
   setHtml,
+  setSafeHtml,
+  sanitizeHtml,
   setAttr,
   addEventListener,
   insertBefore,
