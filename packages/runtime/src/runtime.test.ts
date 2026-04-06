@@ -1393,6 +1393,61 @@ describe('Security — transition double-fire prevention', () => {
   });
 });
 
+describe('setSafeHtml', () => {
+  let container: HTMLElement;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    container.remove();
+  });
+
+  it('renders safe HTML as-is', async () => {
+    const { setSafeHtml } = await import('./dom.js');
+    const el = document.createElement('div');
+    container.appendChild(el);
+    setSafeHtml(el, () => '<b>bold</b> and <em>italic</em>');
+    expect(el.innerHTML).toBe('<b>bold</b> and <em>italic</em>');
+  });
+
+  it('strips <script> tags', async () => {
+    const { setSafeHtml } = await import('./dom.js');
+    const el = document.createElement('div');
+    container.appendChild(el);
+    setSafeHtml(el, () => '<p>hello</p><script>alert("xss")</script>');
+    expect(el.innerHTML).not.toContain('<script');
+    expect(el.innerHTML).toContain('<p>hello</p>');
+  });
+
+  it('strips event handler attributes', async () => {
+    const { setSafeHtml } = await import('./dom.js');
+    const el = document.createElement('div');
+    container.appendChild(el);
+    setSafeHtml(el, () => '<img onerror="alert(1)" src="x">');
+    expect(el.innerHTML).not.toContain('onerror');
+  });
+
+  it('strips javascript: URLs', async () => {
+    const { setSafeHtml } = await import('./dom.js');
+    const el = document.createElement('div');
+    container.appendChild(el);
+    setSafeHtml(el, () => '<a href="javascript:alert(1)">click</a>');
+    expect(el.innerHTML).not.toContain('javascript:');
+  });
+
+  it('strips <iframe> tags', async () => {
+    const { setSafeHtml } = await import('./dom.js');
+    const el = document.createElement('div');
+    container.appendChild(el);
+    setSafeHtml(el, () => '<iframe src="evil.com"></iframe><p>ok</p>');
+    expect(el.innerHTML).not.toContain('<iframe');
+    expect(el.innerHTML).toContain('<p>ok</p>');
+  });
+});
+
 describe('hydrate — lifecycle and disposer capture', () => {
   let container: HTMLElement;
 
