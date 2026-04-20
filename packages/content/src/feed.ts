@@ -27,6 +27,10 @@ function escapeXml(str: string): string {
     .replace(/'/g, '&apos;');
 }
 
+function escapeCdata(html: string): string {
+  return html.replace(/]]>/g, ']]]]><![CDATA[>');
+}
+
 function toRfc822(date: string | Date): string {
   return new Date(date).toUTCString();
 }
@@ -47,7 +51,7 @@ export function generateRssFeed(entries: FeedEntry[], options: FeedOptions): str
       <title>${escapeXml(entry.title)}</title>
       <link>${escapeXml(entry.url)}</link>
       <guid isPermaLink="true">${escapeXml(entry.url)}</guid>
-      <pubDate>${toRfc822(entry.date)}</pubDate>${entry.description ? `\n      <description>${escapeXml(entry.description)}</description>` : ''}${entry.html ? `\n      <content:encoded><![CDATA[${entry.html}]]></content:encoded>` : ''}${entry.tags ? entry.tags.map((t) => `\n      <category>${escapeXml(t)}</category>`).join('') : ''}
+      <pubDate>${toRfc822(entry.date)}</pubDate>${entry.description ? `\n      <description>${escapeXml(entry.description)}</description>` : ''}${entry.html ? `\n      <content:encoded><![CDATA[${escapeCdata(entry.html)}]]></content:encoded>` : ''}${entry.tags ? entry.tags.map((t) => `\n      <category>${escapeXml(t)}</category>`).join('') : ''}
     </item>`,
     )
     .join('\n');
@@ -77,7 +81,7 @@ export function generateAtomFeed(entries: FeedEntry[], options: FeedOptions): st
     <title>${escapeXml(entry.title)}</title>
     <link href="${escapeXml(entry.url)}"/>
     <id>${escapeXml(entry.url)}</id>
-    <updated>${toIso8601(entry.date)}</updated>${entry.description ? `\n    <summary>${escapeXml(entry.description)}</summary>` : ''}${entry.html ? `\n    <content type="html"><![CDATA[${entry.html}]]></content>` : ''}${entry.tags ? entry.tags.map((t) => `\n    <category term="${escapeXml(t)}"/>`).join('') : ''}
+    <updated>${toIso8601(entry.date)}</updated>${entry.description ? `\n    <summary>${escapeXml(entry.description)}</summary>` : ''}${entry.html ? `\n    <content type="html"><![CDATA[${escapeCdata(entry.html)}]]></content>` : ''}${entry.tags ? entry.tags.map((t) => `\n    <category term="${escapeXml(t)}"/>`).join('') : ''}
   </entry>`,
     )
     .join('\n');
