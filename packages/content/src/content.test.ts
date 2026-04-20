@@ -1519,6 +1519,87 @@ describe('createVirtualAdapter', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Security — CDATA injection (SEC-0003)
+// ---------------------------------------------------------------------------
+
+describe('Security — CDATA injection in feed generation', () => {
+  const feedOptions: FeedOptions = {
+    title: 'Blog',
+    description: 'desc',
+    siteUrl: 'https://example.com',
+  };
+
+  it('RSS: ]]> in entry.html is escaped and does not break out of CDATA', () => {
+    const entry: FeedEntry = {
+      slug: 'test',
+      title: 'Test',
+      date: '2026-01-01T00:00:00Z',
+      html: 'before]]>after',
+      url: 'https://example.com/test',
+    };
+    const rss = generateRssFeed([entry], feedOptions);
+    // The raw terminator must not appear verbatim inside the encoded element
+    expect(rss).not.toContain('<![CDATA[before]]>after]]>');
+    // The escaped split form must be present instead
+    expect(rss).toContain('<![CDATA[before]]]]><![CDATA[>after]]>');
+  });
+
+  it('RSS: ]]> in entry.html is replaced with the CDATA split sequence', () => {
+    const entry: FeedEntry = {
+      slug: 'inject',
+      title: 'Inject',
+      date: '2026-01-01T00:00:00Z',
+      html: 'a]]>b',
+      url: 'https://example.com/inject',
+    };
+    const rss = generateRssFeed([entry], feedOptions);
+    // The escaped split form must be present
+    expect(rss).toContain('a]]]]><![CDATA[>b');
+    // The raw sequence must not appear as a premature CDATA terminator
+    // (i.e., <![CDATA[a]]> must not appear — only <![CDATA[a]]]]><![CDATA[>b]]>)
+    expect(rss).not.toContain('<![CDATA[a]]>');
+  });
+
+  it('Atom: ]]> in entry.html is escaped and does not break out of CDATA', () => {
+    const entry: FeedEntry = {
+      slug: 'test',
+      title: 'Test',
+      date: '2026-01-01T00:00:00Z',
+      html: 'before]]>after',
+      url: 'https://example.com/test',
+    };
+    const atom = generateAtomFeed([entry], feedOptions);
+    expect(atom).not.toContain('<![CDATA[before]]>after]]>');
+    expect(atom).toContain('<![CDATA[before]]]]><![CDATA[>after]]>');
+  });
+
+  it('Atom: ]]> in entry.html is replaced with the CDATA split sequence', () => {
+    const entry: FeedEntry = {
+      slug: 'inject',
+      title: 'Inject',
+      date: '2026-01-01T00:00:00Z',
+      html: 'a]]>b',
+      url: 'https://example.com/inject',
+    };
+    const atom = generateAtomFeed([entry], feedOptions);
+    expect(atom).toContain('a]]]]><![CDATA[>b');
+    expect(atom).not.toContain('<![CDATA[a]]>');
+  });
+
+  it('normal HTML without ]]> is passed through unchanged', () => {
+    const entry: FeedEntry = {
+      slug: 'normal',
+      title: 'Normal',
+      date: '2026-01-01T00:00:00Z',
+      html: '<p>Hello <strong>world</strong></p>',
+      url: 'https://example.com/normal',
+    };
+    const rss = generateRssFeed([entry], feedOptions);
+    expect(rss).toContain('<![CDATA[<p>Hello <strong>world</strong></p>]]>');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Feed generation
 // ---------------------------------------------------------------------------
 
