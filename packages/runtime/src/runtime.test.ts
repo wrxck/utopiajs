@@ -1448,6 +1448,34 @@ describe('setSafeHtml', () => {
   });
 });
 
+// SEC-0001 regression tests — bypass vectors that defeated the old regex sanitizer
+describe('sanitizeHtml — SEC-0001 bypass regression tests', () => {
+  it('strips onerror with slash separator (bypass 1: EVENT_ATTR_RE whitespace assumption)', async () => {
+    const { sanitizeHtml } = await import('./dom.js');
+    const result = sanitizeHtml('<img/src=x/onerror=alert(1)>');
+    expect(result).not.toContain('onerror');
+  });
+
+  it('strips svg onload with slash separator (bypass 2: svg not in old UNSAFE_TAGS_RE)', async () => {
+    const { sanitizeHtml } = await import('./dom.js');
+    const result = sanitizeHtml('<svg/onload=alert(1)>');
+    expect(result).not.toContain('onload');
+  });
+
+  it('strips nested script tag breakout (bypass 3: <scr<script>ipt> reconstruction)', async () => {
+    const { sanitizeHtml } = await import('./dom.js');
+    const result = sanitizeHtml('<scr<script>ipt>alert(1)</script>');
+    expect(result).not.toMatch(/<script/i);
+    expect(result).not.toContain('ipt>alert(1)');
+  });
+
+  it('strips javascript: URI in style attribute (bypass 4: style not covered by old DANGEROUS_URI_RE)', async () => {
+    const { sanitizeHtml } = await import('./dom.js');
+    const result = sanitizeHtml("<p style=\"background:url('javascript:alert(1)')\">hello</p>");
+    expect(result).not.toContain('javascript:');
+  });
+});
+
 describe('hydrate — lifecycle and disposer capture', () => {
   let container: HTMLElement;
 

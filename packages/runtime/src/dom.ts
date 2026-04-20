@@ -150,25 +150,139 @@ export function setHtml(el: Element, getter: () => unknown): void {
 // Safe reactive HTML (with sanitization)
 // ---------------------------------------------------------------------------
 
-/** Tags that are never safe in user content. */
-const UNSAFE_TAGS_RE = /<\/?(?:script|iframe|object|embed|form|input|textarea|select|button|link|style|meta|base|applet)\b[^>]*>/gi;
-
-/** Event handler attributes like onclick, onerror, onload, etc. */
-const EVENT_ATTR_RE = /\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi;
-
-/** javascript: or data: URIs in href/src/action attributes. */
-const DANGEROUS_URI_RE = /\s+(href|src|action)\s*=\s*(?:"(?:javascript|data|vbscript):[^"]*"|'(?:javascript|data|vbscript):[^']*')/gi;
+/**
+ * HTML elements whose tags are safe to keep in user content.
+ * Anything not in this set is removed (but its text children are kept).
+ */
+const SAFE_TAGS = new Set([
+  'a', 'abbr', 'acronym', 'address', 'article', 'aside',
+  'b', 'bdi', 'bdo', 'big', 'blockquote', 'br',
+  'caption', 'cite', 'code', 'col', 'colgroup',
+  'data', 'dd', 'del', 'details', 'dfn', 'div', 'dl', 'dt',
+  'em',
+  'figcaption', 'figure', 'footer',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hgroup', 'hr',
+  'i', 'img', 'ins',
+  'kbd',
+  'li',
+  'main', 'mark', 'menu',
+  'nav',
+  'ol',
+  'p', 'picture', 'pre',
+  'q',
+  'rp', 'rt', 'ruby',
+  's', 'samp', 'section', 'small', 'source', 'span', 'strong', 'sub', 'summary', 'sup',
+  'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'time', 'tr',
+  'u', 'ul',
+  'var',
+  'wbr',
+]);
 
 /**
- * Basic HTML sanitizer that strips dangerous tags, event handler attributes,
- * and javascript: URIs. NOT a substitute for DOMPurify in high-risk contexts,
- * but provides baseline protection for rendered markdown/content.
+ * Attributes that are safe on any element.
+ * Event handler attributes (on*) and dangerous globals are excluded.
+ */
+const SAFE_ATTRS = new Set([
+  'abbr', 'align', 'alt', 'axis',
+  'border',
+  'cellpadding', 'cellspacing', 'char', 'charoff', 'charset', 'cite', 'class', 'cols',
+  'colspan', 'compact',
+  'datetime', 'dir',
+  'frame',
+  'headers', 'height', 'hreflang',
+  'id',
+  'lang',
+  'nowrap',
+  'rel', 'reversed', 'rowspan', 'rules',
+  'scope', 'span', 'start', 'summary',
+  'tabindex', 'target', 'title', 'type',
+  'valign', 'value',
+  'width',
+]);
+
+/** URI-bearing attributes that must not contain javascript:/data:/vbscript: values. */
+const URI_ATTRS = new Set(['href', 'src', 'action', 'cite', 'poster', 'data']);
+
+/** Schemes that are forbidden in URI attributes. */
+const DANGEROUS_SCHEME_RE = /^\s*(?:javascript|data|vbscript)\s*:/i;
+
+/**
+ * DOM-based HTML sanitizer. Parses the input into an inert document fragment,
+ * walks every node, removes disallowed elements and attributes (including all
+ * event-handler attributes and dangerous URI schemes), then serialises back to
+ * an HTML string.
+ *
+ * Parsing is done with DOMParser so no user markup ever runs as code during
+ * sanitization. The allowlist approach means new bypass techniques (nested
+ * tags, slash-separated attributes, SVG vectors, etc.) cannot slip through.
  */
 export function sanitizeHtml(html: string): string {
-  return html
-    .replace(UNSAFE_TAGS_RE, '')
-    .replace(EVENT_ATTR_RE, '')
-    .replace(DANGEROUS_URI_RE, '');
+  const doc = new DOMParser().parseFromString(
+    `<!DOCTYPE html><body>${html}</body>`,
+    'text/html',
+  );
+
+  // Walk the tree bottom-up so removals don't invalidate the iterator.
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  const elements: Element[] = [];
+
+  let node = walker.nextNode();
+  while (node !== null) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      elements.push(node as Element);
+    }
+    node = walker.nextNode();
+  }
+
+  // Process elements in reverse (bottom-up) order.
+  for (let i = elements.length - 1; i >= 0; i--) {
+    const el = elements[i];
+    const tag = el.tagName.toLowerCase();
+
+    if (!SAFE_TAGS.has(tag)) {
+      // Replace disallowed element with its text content so we don't silently
+      // swallow legitimate text inside, e.g. inside <span> inside <div>.
+      const frag = doc.createDocumentFragment();
+      while (el.firstChild) {
+        frag.appendChild(el.firstChild);
+      }
+      el.parentNode?.replaceChild(frag, el);
+      continue;
+    }
+
+    // Sanitize attributes on allowed elements.
+    const attrsToRemove: string[] = [];
+    for (let j = 0; j < el.attributes.length; j++) {
+      const attr = el.attributes[j];
+      const name = attr.name.toLowerCase();
+
+      // Block all event handlers (on*).
+      if (name.startsWith('on')) {
+        attrsToRemove.push(attr.name);
+        continue;
+      }
+
+      // Block dangerous URI schemes in URI-bearing attributes.
+      if (URI_ATTRS.has(name)) {
+        if (DANGEROUS_SCHEME_RE.test(attr.value)) {
+          attrsToRemove.push(attr.name);
+        }
+        // Allow safe URIs (http, https, mailto, relative, etc.).
+        continue;
+      }
+
+      // Remove any attribute not on the safe list.
+      if (!SAFE_ATTRS.has(name)) {
+        attrsToRemove.push(attr.name);
+      }
+    }
+
+    for (const name of attrsToRemove) {
+      el.removeAttribute(name);
+    }
+  }
+
+  return doc.body.innerHTML;
 }
 
 /**
