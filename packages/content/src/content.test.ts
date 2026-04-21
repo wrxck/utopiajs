@@ -25,6 +25,8 @@ import {
 import { createContentMCPServer } from './mcp/index.js';
 import type { CollectionSchema } from './types.js';
 import type { FeedEntry, FeedOptions } from './feed.js';
+import { generatePrerenderedPage } from './seo/prerender.js';
+import type { SeoEntry, SeoConfig } from './seo/types.js';
 
 // ---------------------------------------------------------------------------
 // Schema validation
@@ -1741,5 +1743,84 @@ describe('generateAtomFeed', () => {
   it('includes self link', () => {
     const atom = generateAtomFeed(entries, feedOptions);
     expect(atom).toContain('href="https://example.com/atom.xml" rel="self"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Security — prerender XSS (SEC-0004)
+// ---------------------------------------------------------------------------
+
+describe('Security — prerender XSS sanitisation (SEC-0004)', () => {
+  const config: SeoConfig = {
+    siteUrl: 'https://example.com',
+    siteTitle: 'Test Blog',
+    siteDescription: 'A test blog',
+  };
+  const assets = { scripts: '', styles: '' };
+
+  it('strips <script> tags from entry.html before embedding in the prose div', () => {
+    const entry: SeoEntry = {
+      slug: 'evil-post',
+      title: 'Innocent Title',
+      date: '2026-01-01T00:00:00Z',
+      html: '<p>Hello</p><script>window.__xss=true;</script>',
+    };
+    const output = generatePrerenderedPage(entry, config, assets);
+    expect(output).not.toContain('<script>window.__xss=true;</script>');
+    // Safe content must be preserved
+    expect(output).toContain('<p>Hello</p>');
+  });
+
+  it('strips multiline <script> blocks', () => {
+    const entry: SeoEntry = {
+      slug: 'multiline-xss',
+      title: 'Post',
+      date: '2026-01-01T00:00:00Z',
+      html: '<p>Text</p>\n<script type="text/javascript">\nalert(1);\n</script>\n<p>After</p>',
+    };
+    const output = generatePrerenderedPage(entry, config, assets);
+    expect(output).not.toContain('<script');
+    expect(output).not.toContain('alert(1)');
+    expect(output).toContain('<p>Text</p>');
+    expect(output).toContain('<p>After</p>');
+  });
+
+  it('strips on* event handler attributes from HTML elements', () => {
+    const entry: SeoEntry = {
+      slug: 'event-handler-xss',
+      title: 'Post',
+      date: '2026-01-01T00:00:00Z',
+      html: '<img src="x" onerror="alert(1)"><p>Safe</p>',
+    };
+    const output = generatePrerenderedPage(entry, config, assets);
+    expect(output).not.toContain('onerror');
+    expect(output).not.toContain('alert(1)');
+    expect(output).toContain('<p>Safe</p>');
+  });
+
+  it('preserves normal markdown HTML (paragraphs, headings, code) unchanged', () => {
+    const normalHtml = '<h2 id="section">Section</h2>\n<p>A paragraph with <strong>bold</strong>.</p>\n<pre><code>const x = 1;</code></pre>';
+    const entry: SeoEntry = {
+      slug: 'normal-post',
+      title: 'Normal Post',
+      date: '2026-01-01T00:00:00Z',
+      html: normalHtml,
+    };
+    const output = generatePrerenderedPage(entry, config, assets);
+    expect(output).toContain('<h2 id="section">Section</h2>');
+    expect(output).toContain('<strong>bold</strong>');
+    expect(output).toContain('<pre><code>const x = 1;</code></pre>');
+  });
+
+  it('title is still escaped (regression guard)', () => {
+    const entry: SeoEntry = {
+      slug: 'title-escape',
+      title: '<script>alert(1)</script>',
+      date: '2026-01-01T00:00:00Z',
+      html: '<p>content</p>',
+    };
+    const output = generatePrerenderedPage(entry, config, assets);
+    expect(output).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(output).not.toContain('<h1><script>');
   });
 });

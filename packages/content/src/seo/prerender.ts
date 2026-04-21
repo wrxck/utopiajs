@@ -52,7 +52,7 @@ export function generatePrerenderedPage(
         <time datetime="${new Date(entry.date).toISOString()}">${dateStr}</time>
       </header>
       <div class="prose">
-        ${entry.html ?? ''}
+        ${sanitiseHtml(entry.html ?? '')}
       </div>
     </article>
   </div>
@@ -68,4 +68,12 @@ function escapeHtml(str: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/** Strip executable content from rendered markdown HTML before embedding in static pages. */
+function sanitiseHtml(html: string): string {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/\bon\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, '');
 }
