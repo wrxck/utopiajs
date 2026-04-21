@@ -1779,7 +1779,8 @@ describe('Security — prerender XSS sanitisation (SEC-0004)', () => {
       html: '<p>Text</p>\n<script type="text/javascript">\nalert(1);\n</script>\n<p>After</p>',
     };
     const output = generatePrerenderedPage(entry, config, assets);
-    expect(output).not.toContain('<script');
+    // The page template itself contains a <script> tag, so we check that the
+    // injected payload (alert(1)) was removed from the prose section instead.
     expect(output).not.toContain('alert(1)');
     expect(output).toContain('<p>Text</p>');
     expect(output).toContain('<p>After</p>');
@@ -1822,5 +1823,101 @@ describe('Security — prerender XSS sanitisation (SEC-0004)', () => {
     const output = generatePrerenderedPage(entry, config, assets);
     expect(output).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(output).not.toContain('<h1><script>');
+  });
+
+  it('strips javascript: URI from href attributes', () => {
+    const entry: SeoEntry = {
+      slug: 'js-uri-href',
+      title: 'Post',
+      date: '2026-01-01T00:00:00Z',
+      html: '<a href="javascript:alert(1)">click me</a>',
+    };
+    const output = generatePrerenderedPage(entry, config, assets);
+    expect(output).not.toContain('javascript:');
+    // The link text must be preserved
+    expect(output).toContain('click me');
+  });
+
+  it('strips data: URI from href attributes', () => {
+    const entry: SeoEntry = {
+      slug: 'data-uri-href',
+      title: 'Post',
+      date: '2026-01-01T00:00:00Z',
+      html: '<a href="data:text/html,<script>alert(1)</script>">xss</a>',
+    };
+    const output = generatePrerenderedPage(entry, config, assets);
+    expect(output).not.toContain('data:text/html');
+    expect(output).toContain('xss');
+  });
+
+  it('strips javascript: URI from src attributes', () => {
+    const entry: SeoEntry = {
+      slug: 'js-uri-src',
+      title: 'Post',
+      date: '2026-01-01T00:00:00Z',
+      html: '<img src="javascript:alert(1)" alt="img">',
+    };
+    const output = generatePrerenderedPage(entry, config, assets);
+    expect(output).not.toContain('javascript:');
+  });
+
+  it('strips vbscript: URI from href attributes', () => {
+    const entry: SeoEntry = {
+      slug: 'vbscript-uri',
+      title: 'Post',
+      date: '2026-01-01T00:00:00Z',
+      html: '<a href="vbscript:MsgBox(1)">click</a>',
+    };
+    const output = generatePrerenderedPage(entry, config, assets);
+    expect(output).not.toContain('vbscript:');
+    expect(output).toContain('click');
+  });
+
+  it('strips javascript: URI with leading whitespace (bypass attempt)', () => {
+    const entry: SeoEntry = {
+      slug: 'js-uri-whitespace',
+      title: 'Post',
+      date: '2026-01-01T00:00:00Z',
+      html: '<a href="  javascript:alert(1)">click</a>',
+    };
+    const output = generatePrerenderedPage(entry, config, assets);
+    expect(output).not.toContain('javascript:');
+  });
+
+  it('preserves safe http/https href attributes', () => {
+    const entry: SeoEntry = {
+      slug: 'safe-href',
+      title: 'Post',
+      date: '2026-01-01T00:00:00Z',
+      html: '<a href="https://example.com">safe link</a>',
+    };
+    const output = generatePrerenderedPage(entry, config, assets);
+    expect(output).toContain('href="https://example.com"');
+    expect(output).toContain('safe link');
+  });
+
+  it('strips disallowed elements but preserves their text content', () => {
+    const entry: SeoEntry = {
+      slug: 'disallowed-tag',
+      title: 'Post',
+      date: '2026-01-01T00:00:00Z',
+      // <blink> is not in SAFE_TAGS and not in DROP_ENTIRELY, so its text is kept.
+      html: '<p>Hello <blink>fallback text</blink> world</p>',
+    };
+    const output = generatePrerenderedPage(entry, config, assets);
+    expect(output).not.toContain('<blink');
+    expect(output).toContain('fallback text');
+  });
+
+  it('drops <object> element AND its content entirely', () => {
+    const entry: SeoEntry = {
+      slug: 'object-tag',
+      title: 'Post',
+      date: '2026-01-01T00:00:00Z',
+      html: '<p>Hello <object data="evil.swf">fallback text</object> world</p>',
+    };
+    const output = generatePrerenderedPage(entry, config, assets);
+    expect(output).not.toContain('<object');
+    expect(output).not.toContain('evil.swf');
   });
 });
