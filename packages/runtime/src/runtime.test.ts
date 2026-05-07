@@ -22,7 +22,12 @@ import {
 } from './dom.js';
 
 import { createIf, createFor, createComponent } from './directives.js';
-import { createComponentInstance, mount } from './component.js';
+import {
+  createComponentInstance,
+  mount,
+  startCapturingDisposers,
+  stopCapturingDisposers,
+} from './component.js';
 import type { ComponentDefinition } from './component.js';
 import { queueJob, nextTick } from './scheduler.js';
 import { hydrate } from './hydration.js';
@@ -717,6 +722,87 @@ describe('Directives', () => {
       const after = Array.from(parent.querySelectorAll('li'));
       expect(after[0]).toBe(first);
       expect(after[1]).toBe(second);
+    });
+
+    it('keeps click handlers firing on reused nodes after a list re-render', () => {
+      // regression test for the bottom-nav scenario: tapping a tab worked
+      // on first render but stopped firing after any signal-driven list
+      // update unless the rendered node was reused with its handler intact.
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+
+      const items = signal([{ id: 'home' }, { id: 'food' }, { id: 'body' }]);
+      const clicks: string[] = [];
+
+      createFor(
+        anchor,
+        () => items(),
+        (item) => {
+          const btn = createElement('button') as HTMLButtonElement;
+          btn.id = `btn-${item.id}`;
+          btn.addEventListener('click', () => clicks.push(item.id));
+          return btn;
+        },
+        (item) => item.id,
+      );
+
+      const foodBtn = parent.querySelector('#btn-food') as HTMLButtonElement;
+      foodBtn.click();
+      expect(clicks).toEqual(['food']);
+
+      // re-emit the same array shape with a new reference (what the layout
+      // does every time `navItems()` is invoked thanks to the spread).
+      items.set([{ id: 'home' }, { id: 'food' }, { id: 'body' }]);
+      const foodAfter = parent.querySelector('#btn-food') as HTMLButtonElement;
+      expect(foodAfter).toBe(foodBtn);
+      foodAfter.click();
+      expect(clicks).toEqual(['food', 'food']);
+    });
+
+    it('disposes effects of removed items but leaves kept items running', () => {
+      // motivation: a removed list row's `:class="x()"` binding must stop
+      // firing — otherwise it tries to mutate a detached node forever.
+      // a kept row's binding must keep firing — otherwise reactive bindings
+      // inside the row appear "dead" after the next list update.
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+
+      const items = signal([{ id: 'a' }, { id: 'b' }]);
+      const tick = signal(0);
+      const renders: Record<string, number> = { a: 0, b: 0 };
+
+      // wrap createFor with a captured-disposer scope, mirroring how a
+      // component's render() invokes it: each renderItem's createEffect
+      // calls push their disposer onto the scope, scoped per-item.
+      const prev = startCapturingDisposers();
+      try {
+        createFor(
+          anchor,
+          () => items(),
+          (item) => {
+            const div = createElement('div');
+            div.id = `row-${item.id}`;
+            createEffect(() => {
+              tick();
+              renders[item.id] = (renders[item.id] ?? 0) + 1;
+            });
+            return div;
+          },
+          (item) => item.id,
+        );
+      } finally {
+        stopCapturingDisposers(prev);
+      }
+
+      const baseA = renders.a;
+      const baseB = renders.b;
+      // remove 'a'; tick should now only re-run 'b's effect.
+      items.set([{ id: 'b' }]);
+      tick.set(tick() + 1);
+      expect(renders.a).toBe(baseA);
+      expect(renders.b).toBeGreaterThan(baseB);
     });
 
     it('preserves user input on a kept node across re-renders', () => {
