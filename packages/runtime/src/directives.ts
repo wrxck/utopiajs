@@ -120,35 +120,102 @@ export function createFor<T>(
   renderItem: (item: T, index: number) => Node,
   key?: (item: T, index: number) => string | number,
 ): () => void {
-  let currentNodes: Node[] = [];
+  // keyed reconciliation: every render we diff the new list against the
+  // previous one by key. nodes whose key still exists are reused (and moved
+  // if their position changed); only added/removed/reordered keys touch the
+  // dom. without this every signal update that tweaks any field of any item
+  // (or even sets the array to an identical-shaped copy) tore down the
+  // entire list and rebuilt it from scratch — visible as macro values
+  // flickering, modal contents jumping, and taps landing on dom nodes that
+  // had been destroyed mid-gesture.
+  //
+  // when no key callback is supplied we fall back to identity (item ===) so
+  // stable object references still benefit from reuse. callers passing
+  // primitives without a key fall through to value equality which is the
+  // best we can do with no identity hint.
+  type Entry = { key: string | number; node: Node };
+  let entries: Entry[] = [];
 
-  // We intentionally mark `key` as used so that linters / TS don't complain.
-  // It's reserved for the future keyed-diffing optimisation.
-  void key;
+  const keyOf = (item: T, index: number): string | number => {
+    if (key) return key(item, index);
+    if (item !== null && typeof item === 'object') {
+      const id = (item as Record<string, unknown>).id;
+      if (typeof id === 'string' || typeof id === 'number') return id;
+      // identity fallback — uses the WeakMap below so the same object always
+      // hashes to the same key across re-renders.
+      let hash = identityKeys.get(item as object);
+      if (hash === undefined) {
+        hash = nextIdentityKey++;
+        identityKeys.set(item as object, hash);
+      }
+      return `__id_${hash}`;
+    }
+    return `__v_${index}_${String(item)}`;
+  };
 
   const dispose = effect(() => {
     const items = list();
-
     const parent = anchor.parentNode;
     if (!parent) return;
 
-    // --- Simple strategy: clear everything and re-render. ---
-    // This is intentionally naive. A keyed reconciliation algorithm will
-    // replace this path once the framework stabilises.
-    clearNodes(currentNodes);
+    const prev = entries;
+    const prevByKey = new Map<string | number, Entry>();
+    for (const e of prev) prevByKey.set(e.key, e);
+
+    const next: Entry[] = new Array(items.length);
+    const seen = new Set<string | number>();
 
     for (let i = 0; i < items.length; i++) {
-      const node = renderItem(items[i], i);
-      currentNodes.push(node);
-      insertBefore(parent, node, anchor);
+      const item = items[i] as T;
+      let k = keyOf(item, i);
+      // duplicate keys would collide; suffix until unique, but keep the
+      // duplicate stable across renders by remembering its position.
+      while (seen.has(k)) k = `${k}__dup${i}`;
+      seen.add(k);
+      const existing = prevByKey.get(k);
+      if (existing) {
+        next[i] = existing;
+        prevByKey.delete(k);
+      } else {
+        next[i] = { key: k, node: renderItem(item, i) };
+      }
     }
+
+    // remove nodes whose keys are gone.
+    for (const e of prevByKey.values()) {
+      if (e.node.parentNode === parent) parent.removeChild(e.node);
+    }
+
+    // insert/move into final order — we walk forward, comparing the actual
+    // dom sibling order to the desired order. nodes already in the right
+    // place are left alone; only out-of-order nodes are moved.
+    let cursor: Node = anchor;
+    for (let i = items.length - 1; i >= 0; i--) {
+      const e = next[i]!;
+      if (e.node.nextSibling !== cursor) {
+        parent.insertBefore(e.node, cursor);
+      }
+      cursor = e.node;
+    }
+
+    entries = next;
   });
 
   return () => {
     dispose();
-    clearNodes(currentNodes);
+    const parent = anchor.parentNode;
+    for (const e of entries) {
+      if (parent && e.node.parentNode === parent) parent.removeChild(e.node);
+    }
+    entries = [];
   };
 }
+
+// shared across all createFor instances — never grows past the working set
+// because entries are dropped from the WeakMap when no createFor still
+// references the source object.
+const identityKeys: WeakMap<object, number> = new WeakMap();
+let nextIdentityKey = 0;
 
 // ---------------------------------------------------------------------------
 // createComponent

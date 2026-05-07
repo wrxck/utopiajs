@@ -583,6 +583,170 @@ describe('Directives', () => {
         );
       }).not.toThrow();
     });
+
+    // ---- keyed reconciliation -----------------------------------------
+    // these tests verify the property that motivates the rewrite: when the
+    // list signal is replaced with a new array whose items are still
+    // identifiable, the existing dom nodes are reused rather than torn down
+    // and rebuilt. without this, every refetch in a consuming app caused
+    // visible flicker, lost focus, and dropped taps mid-gesture.
+
+    it('reuses dom nodes when the list is replaced with the same keys', () => {
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+
+      const items = signal([
+        { id: 'a', n: 1 },
+        { id: 'b', n: 2 },
+      ]);
+
+      createFor(
+        anchor,
+        () => items(),
+        (item) => {
+          const li = createElement('li');
+          li.textContent = `${item.id}:${item.n}`;
+          return li;
+        },
+        (item) => item.id,
+      );
+
+      const before = Array.from(parent.querySelectorAll('li'));
+      // refetch returning a structurally identical list
+      items.set([
+        { id: 'a', n: 1 },
+        { id: 'b', n: 2 },
+      ]);
+      const after = Array.from(parent.querySelectorAll('li'));
+      expect(after).toHaveLength(2);
+      expect(after[0]).toBe(before[0]);
+      expect(after[1]).toBe(before[1]);
+    });
+
+    it('only adds the new node when an item is appended', () => {
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+      const items = signal([{ id: 'a' }, { id: 'b' }]);
+      createFor(
+        anchor,
+        () => items(),
+        (item) => {
+          const li = createElement('li');
+          li.textContent = String(item.id);
+          return li;
+        },
+        (item) => item.id,
+      );
+      const [a, b] = Array.from(parent.querySelectorAll('li'));
+      items.set([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+      const after = Array.from(parent.querySelectorAll('li'));
+      expect(after).toHaveLength(3);
+      expect(after[0]).toBe(a);
+      expect(after[1]).toBe(b);
+      expect(after[2]?.textContent).toBe('c');
+    });
+
+    it('only removes the gone node when an item is deleted', () => {
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+      const items = signal([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+      createFor(
+        anchor,
+        () => items(),
+        (item) => {
+          const li = createElement('li');
+          li.textContent = String(item.id);
+          return li;
+        },
+        (item) => item.id,
+      );
+      const [a, , c] = Array.from(parent.querySelectorAll('li'));
+      items.set([{ id: 'a' }, { id: 'c' }]);
+      const after = Array.from(parent.querySelectorAll('li'));
+      expect(after).toHaveLength(2);
+      expect(after[0]).toBe(a);
+      expect(after[1]).toBe(c);
+    });
+
+    it('moves nodes to match a reordered list without recreating them', () => {
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+      const items = signal([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+      createFor(
+        anchor,
+        () => items(),
+        (item) => {
+          const li = createElement('li');
+          li.textContent = String(item.id);
+          return li;
+        },
+        (item) => item.id,
+      );
+      const [a, b, c] = Array.from(parent.querySelectorAll('li'));
+      items.set([{ id: 'c' }, { id: 'a' }, { id: 'b' }]);
+      const after = Array.from(parent.querySelectorAll('li'));
+      expect(after).toHaveLength(3);
+      expect(after[0]).toBe(c);
+      expect(after[1]).toBe(a);
+      expect(after[2]).toBe(b);
+    });
+
+    it('falls back to identity equality when no key callback is given', () => {
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+      const a = { n: 1 };
+      const b = { n: 2 };
+      const items = signal([a, b]);
+      createFor(
+        anchor,
+        () => items(),
+        (item) => {
+          const li = createElement('li');
+          li.textContent = String(item.n);
+          return li;
+        },
+      );
+      const [first, second] = Array.from(parent.querySelectorAll('li'));
+      // same references → both nodes preserved
+      items.set([a, b]);
+      const after = Array.from(parent.querySelectorAll('li'));
+      expect(after[0]).toBe(first);
+      expect(after[1]).toBe(second);
+    });
+
+    it('preserves user input on a kept node across re-renders', () => {
+      // this is the regression that motivated keyed reconciliation: an input
+      // inside a list row used to lose focus and discard typed text every
+      // time the parent list signal was reassigned.
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+      const items = signal([{ id: 'a' }, { id: 'b' }]);
+      createFor(
+        anchor,
+        () => items(),
+        (item) => {
+          const div = createElement('div');
+          const input = createElement('input') as HTMLInputElement;
+          input.id = `input-${item.id}`;
+          div.appendChild(input);
+          return div;
+        },
+        (item) => item.id,
+      );
+      const inputA = parent.querySelector('#input-a') as HTMLInputElement;
+      inputA.value = 'typed';
+      // identical list — under the old non-keyed strategy this wiped the dom
+      items.set([{ id: 'a' }, { id: 'b' }]);
+      const after = parent.querySelector('#input-a') as HTMLInputElement;
+      expect(after).toBe(inputA);
+      expect(after.value).toBe('typed');
+    });
   });
 
   describe('createComponent', () => {
