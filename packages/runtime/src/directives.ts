@@ -9,6 +9,7 @@ import { effect } from '@matthesketh/utopia-core';
 import { insertBefore, removeNode } from './dom.js';
 import {
   createComponentInstance,
+  pushDisposer,
   startCapturingDisposers,
   stopCapturingDisposers,
   startCapturingLifecycle,
@@ -120,20 +121,26 @@ export function createFor<T>(
   renderItem: (item: T, index: number) => Node,
   key?: (item: T, index: number) => string | number,
 ): () => void {
-  // keyed reconciliation: every render we diff the new list against the
-  // previous one by key. nodes whose key still exists are reused (and moved
-  // if their position changed); only added/removed/reordered keys touch the
-  // dom. without this every signal update that tweaks any field of any item
-  // (or even sets the array to an identical-shaped copy) tore down the
-  // entire list and rebuilt it from scratch — visible as macro values
-  // flickering, modal contents jumping, and taps landing on dom nodes that
-  // had been destroyed mid-gesture.
+  // keyed reconciliation: on every list update we diff the new array
+  // against the previous one by key. nodes whose key still exists are
+  // reused — and moved if their position changed. only added/removed/
+  // reordered keys touch the dom. without this every signal update that
+  // produced a structurally identical array tore down every item and
+  // rebuilt it from scratch (the previous "naive clear-and-rebuild"
+  // strategy), visible as flickering values, lost focus, and taps landing
+  // on detached dom nodes.
   //
-  // when no key callback is supplied we fall back to identity (item ===) so
-  // stable object references still benefit from reuse. callers passing
-  // primitives without a key fall through to value equality which is the
-  // best we can do with no identity hint.
-  type Entry = { key: string | number; node: Node };
+  // each rendered item gets its OWN captured-disposer scope so its inner
+  // createEffect calls are tied to the item's lifetime, not the parent
+  // createFor's. that means:
+  //   - reused items keep their reactive bindings firing
+  //   - removed items dispose their effects (no leak, no orphaned updates)
+  //   - new items capture fresh and register with the parent component
+  //
+  // the disposers are also forwarded to the surrounding scope (the
+  // component or the calling createFor) via pushDisposer so unmount still
+  // sweeps everything up.
+  type Entry = { key: string | number; node: Node; dispose: () => void };
   let entries: Entry[] = [];
 
   const keyOf = (item: T, index: number): string | number => {
@@ -141,8 +148,7 @@ export function createFor<T>(
     if (item !== null && typeof item === 'object') {
       const id = (item as Record<string, unknown>).id;
       if (typeof id === 'string' || typeof id === 'number') return id;
-      // identity fallback — uses the WeakMap below so the same object always
-      // hashes to the same key across re-renders.
+      // identity fallback — same object → same key across re-renders.
       let hash = identityKeys.get(item as object);
       if (hash === undefined) {
         hash = nextIdentityKey++;
@@ -153,14 +159,35 @@ export function createFor<T>(
     return `__v_${index}_${String(item)}`;
   };
 
-  const dispose = effect(() => {
+  // create + scope an item: returns the entry plus a dispose that runs
+  // every effect captured during its renderItem call. on throw we still
+  // restore the parent disposer scope before propagating, so a faulty
+  // renderItem can't leak the disposer-capture stack.
+  const renderEntry = (item: T, index: number, k: string | number): Entry => {
+    const prev = startCapturingDisposers();
+    let node: Node;
+    try {
+      node = renderItem(item, index);
+    } catch (err) {
+      stopCapturingDisposers(prev);
+      throw err;
+    }
+    const disposers = stopCapturingDisposers(prev);
+    const dispose = (): void => {
+      for (const d of disposers) {
+        try { d(); } catch { /* swallow — dispose path must not throw */ }
+      }
+    };
+    return { key: k, node, dispose };
+  };
+
+  const reconcile = effect(() => {
     const items = list();
     const parent = anchor.parentNode;
     if (!parent) return;
 
-    const prev = entries;
     const prevByKey = new Map<string | number, Entry>();
-    for (const e of prev) prevByKey.set(e.key, e);
+    for (const e of entries) prevByKey.set(e.key, e);
 
     const next: Entry[] = new Array(items.length);
     const seen = new Set<string | number>();
@@ -168,8 +195,8 @@ export function createFor<T>(
     for (let i = 0; i < items.length; i++) {
       const item = items[i] as T;
       let k = keyOf(item, i);
-      // duplicate keys would collide; suffix until unique, but keep the
-      // duplicate stable across renders by remembering its position.
+      // duplicate keys are degenerate input; suffix per-position so two
+      // identical keys at different indices don't collide on lookup.
       while (seen.has(k)) k = `${k}__dup${i}`;
       seen.add(k);
       const existing = prevByKey.get(k);
@@ -177,18 +204,19 @@ export function createFor<T>(
         next[i] = existing;
         prevByKey.delete(k);
       } else {
-        next[i] = { key: k, node: renderItem(item, i) };
+        next[i] = renderEntry(item, i, k);
       }
     }
 
-    // remove nodes whose keys are gone.
+    // remove nodes whose keys are gone, disposing their captured effects.
     for (const e of prevByKey.values()) {
+      try { e.dispose(); } catch { /* ignore */ }
       if (e.node.parentNode === parent) parent.removeChild(e.node);
     }
 
-    // insert/move into final order — we walk forward, comparing the actual
-    // dom sibling order to the desired order. nodes already in the right
-    // place are left alone; only out-of-order nodes are moved.
+    // walk backwards from the anchor to coerce the dom into matching the
+    // desired order. nodes already in position are left alone; only
+    // out-of-order nodes get an insertBefore call.
     let cursor: Node = anchor;
     for (let i = items.length - 1; i >= 0; i--) {
       const e = next[i]!;
@@ -201,19 +229,24 @@ export function createFor<T>(
     entries = next;
   });
 
-  return () => {
-    dispose();
+  const disposeAll = (): void => {
+    reconcile();
     const parent = anchor.parentNode;
     for (const e of entries) {
+      try { e.dispose(); } catch { /* ignore */ }
       if (parent && e.node.parentNode === parent) parent.removeChild(e.node);
     }
     entries = [];
   };
+
+  // forward our own dispose to the caller's scope (component or outer
+  // createFor) so a parent unmount tears the whole list down properly.
+  pushDisposer(disposeAll);
+  return disposeAll;
 }
 
-// shared across all createFor instances — never grows past the working set
-// because entries are dropped from the WeakMap when no createFor still
-// references the source object.
+// shared across all createFor instances — entries fall out of the weakmap
+// when no list keeps the source object alive.
 const identityKeys: WeakMap<object, number> = new WeakMap();
 let nextIdentityKey = 0;
 
