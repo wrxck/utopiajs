@@ -3,7 +3,15 @@
 // ============================================================================
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
+
 import type { ChatChunk } from './types';
+
+/**
+ * upper bound on the unflushed sse buffer. a single `data:` line should never
+ * approach this; a stream that sends a large amount of data with no newline
+ * would otherwise grow the buffer without bound (memory-exhaustion dos).
+ */
+const MAX_SSE_BUFFER = 1024 * 1024;
 
 /**
  * Stream AI chat chunks as Server-Sent Events (SSE).
@@ -97,6 +105,9 @@ export async function* parseSSEStream(response: Response): AsyncIterable<ChatChu
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
+      if (buffer.length > MAX_SSE_BUFFER) {
+        throw new Error('SSE stream exceeded maximum buffer size without a line delimiter');
+      }
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';
 

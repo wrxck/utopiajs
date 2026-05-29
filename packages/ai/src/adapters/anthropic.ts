@@ -44,6 +44,11 @@ export function anthropicAdapter(config: AnthropicConfig): AIAdapter {
       );
     }
 
+    // only http(s) base urls are permitted (no file:, etc.).
+    if (config.baseURL && !/^https?:$/.test(new URL(config.baseURL).protocol)) {
+      throw new Error(`Anthropic baseURL must be http(s): ${config.baseURL}`);
+    }
+
     client = new AnthropicCtor({
       apiKey: config.apiKey,
       ...(config.baseURL ? { baseURL: config.baseURL } : {}),

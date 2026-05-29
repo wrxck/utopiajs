@@ -178,7 +178,11 @@ export function createFor<T>(
       }
       return `__id_${hash}`;
     }
-    return `__v_${index}_${String(item)}`;
+    // value-only key for primitives (the index is deliberately excluded) so a
+    // reorder of unique primitives reuses the existing nodes rather than
+    // rebuilding the tail. duplicate values collide here and are disambiguated
+    // per-occurrence by the `seen` pass below.
+    return `__v_${String(item)}`;
   };
 
   // create + scope an item: returns the entry plus a dispose that runs
