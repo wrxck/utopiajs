@@ -1,4 +1,4 @@
-import type { ContentAdapter, CollectionConfig, ContentEntry, ContentFormat } from '../types.js';
+import type { ContentAdapter, CollectionConfig, ContentEntry, ContentFormat } from '../types';
 
 export interface VirtualEntry {
   slug: string;

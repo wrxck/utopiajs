@@ -1,5 +1,5 @@
-import type { SeoConfig, SeoEntry } from './types.js';
-import { generateMetaTags, generateJsonLd } from './meta.js';
+import type { SeoConfig, SeoEntry } from './types';
+import { generateMetaTags, generateJsonLd } from './meta';
 
 /** Extract <script> and <link rel="stylesheet"> tags from the built index.html */
 export function extractAssetTags(indexHtml: string): { scripts: string; styles: string } {
@@ -82,25 +82,81 @@ function escapeHtml(str: string): string {
  * Anything not in this set is replaced with its text children.
  */
 const SAFE_TAGS = new Set([
-  'a', 'abbr', 'acronym', 'address', 'article', 'aside',
-  'b', 'bdi', 'bdo', 'big', 'blockquote', 'br',
-  'caption', 'cite', 'code', 'col', 'colgroup',
-  'data', 'dd', 'del', 'details', 'dfn', 'div', 'dl', 'dt',
+  'a',
+  'abbr',
+  'acronym',
+  'address',
+  'article',
+  'aside',
+  'b',
+  'bdi',
+  'bdo',
+  'big',
+  'blockquote',
+  'br',
+  'caption',
+  'cite',
+  'code',
+  'col',
+  'colgroup',
+  'data',
+  'dd',
+  'del',
+  'details',
+  'dfn',
+  'div',
+  'dl',
+  'dt',
   'em',
-  'figcaption', 'figure', 'footer',
-  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hgroup', 'hr',
-  'i', 'img', 'ins',
+  'figcaption',
+  'figure',
+  'footer',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'header',
+  'hgroup',
+  'hr',
+  'i',
+  'img',
+  'ins',
   'kbd',
   'li',
-  'main', 'mark', 'menu',
+  'main',
+  'mark',
+  'menu',
   'nav',
   'ol',
-  'p', 'picture', 'pre',
+  'p',
+  'picture',
+  'pre',
   'q',
-  'rp', 'rt', 'ruby',
-  's', 'samp', 'section', 'small', 'source', 'span', 'strong', 'sub', 'summary', 'sup',
-  'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'time', 'tr',
-  'u', 'ul',
+  'rp',
+  'rt',
+  'ruby',
+  's',
+  'samp',
+  'section',
+  'small',
+  'source',
+  'span',
+  'strong',
+  'sub',
+  'summary',
+  'sup',
+  'table',
+  'tbody',
+  'td',
+  'tfoot',
+  'th',
+  'thead',
+  'time',
+  'tr',
+  'u',
+  'ul',
   'var',
   'wbr',
 ]);
@@ -110,20 +166,44 @@ const SAFE_TAGS = new Set([
  * Event handler attributes (on*) and dangerous globals are excluded.
  */
 const SAFE_ATTRS = new Set([
-  'abbr', 'align', 'alt', 'axis',
+  'abbr',
+  'align',
+  'alt',
+  'axis',
   'border',
-  'cellpadding', 'cellspacing', 'char', 'charoff', 'charset', 'cite', 'class', 'cols',
-  'colspan', 'compact',
-  'datetime', 'dir',
+  'cellpadding',
+  'cellspacing',
+  'char',
+  'charoff',
+  'charset',
+  'cite',
+  'class',
+  'cols',
+  'colspan',
+  'compact',
+  'datetime',
+  'dir',
   'frame',
-  'headers', 'height', 'hreflang',
+  'headers',
+  'height',
+  'hreflang',
   'id',
   'lang',
   'nowrap',
-  'rel', 'reversed', 'rowspan', 'rules',
-  'scope', 'span', 'start', 'summary',
-  'tabindex', 'target', 'title', 'type',
-  'valign', 'value',
+  'rel',
+  'reversed',
+  'rowspan',
+  'rules',
+  'scope',
+  'span',
+  'start',
+  'summary',
+  'tabindex',
+  'target',
+  'title',
+  'type',
+  'valign',
+  'value',
   'width',
 ]);
 
@@ -152,7 +232,7 @@ const DROP_ENTIRELY = new Set(['script', 'style', 'iframe', 'object', 'embed', '
  * Using a real HTML parser means bypass techniques (nested tags, SVG vectors,
  * unusual attribute quoting) cannot slip through the way they can with regex.
  */
-function sanitiseHtml(html: string): string {
+export function sanitiseHtml(html: string): string {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { JSDOM } = require('jsdom') as typeof import('jsdom');
   const dom = new JSDOM(`<!DOCTYPE html><body>${html}</body>`);
@@ -160,10 +240,7 @@ function sanitiseHtml(html: string): string {
 
   // Collect elements bottom-up so parent removals don't invalidate the list.
   const elements: Element[] = [];
-  const walker = dom.window.document.createTreeWalker(
-    body,
-    0x1 /* NodeFilter.SHOW_ELEMENT */,
-  );
+  const walker = dom.window.document.createTreeWalker(body, 0x1 /* NodeFilter.SHOW_ELEMENT */);
   let node = walker.nextNode();
   while (node !== null) {
     elements.push(node as Element);

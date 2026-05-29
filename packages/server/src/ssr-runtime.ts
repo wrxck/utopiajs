@@ -8,11 +8,58 @@
 // ============================================================================
 
 import { signal, computed, batch, untrack } from '@matthesketh/utopia-core';
-import type { VElement, VText, VComment, VNode } from './vnode.js';
+import type { VElement, VText, VComment, VNode } from './vnode';
 
 const UPPER_CASE_RE = /([A-Z])/g;
 
-// Re-export reactivity primitives (these work identically on the server).
+// ---------------------------------------------------------------------------
+// attribute safety (mirrors the client runtime's dom.ts guards so ssr output
+// never carries a dangerous url or inline event handler)
+// ---------------------------------------------------------------------------
+
+const BOOLEAN_ATTRS = new Set([
+  'disabled',
+  'checked',
+  'readonly',
+  'hidden',
+  'selected',
+  'required',
+  'multiple',
+  'autofocus',
+  'autoplay',
+  'controls',
+  'loop',
+  'muted',
+  'open',
+  'novalidate',
+]);
+
+const JS_SCHEME_RE = /^\s*(?:javascript|vbscript)\s*:/i;
+const DATA_SCHEME_RE = /^\s*data:/i;
+const SAFE_DATA_RE = /^\s*data:(?:image|audio|video|font)\//i;
+const EVENT_ATTR_RE = /^on[a-z]/i;
+const NAV_URI_ATTRS = new Set([
+  'href',
+  'action',
+  'formaction',
+  'xlink:href',
+  'data',
+  'ping',
+  'cite',
+  'background',
+  'srcdoc',
+]);
+const MEDIA_URI_ATTRS = new Set(['src', 'poster']);
+
+function isDangerousUrlValue(attr: string, value: string): boolean {
+  if (JS_SCHEME_RE.test(value)) return true;
+  if (DATA_SCHEME_RE.test(value)) {
+    return !(MEDIA_URI_ATTRS.has(attr) && SAFE_DATA_RE.test(value));
+  }
+  return false;
+}
+
+// re-export reactivity primitives (these work identically on the server).
 export { signal, computed, batch, untrack };
 
 // ---------------------------------------------------------------------------
@@ -116,24 +163,7 @@ export function setAttr(el: VElement, name: string, value: unknown): void {
     return;
   }
 
-  // Boolean attributes
-  const BOOLEAN_ATTRS = new Set([
-    'disabled',
-    'checked',
-    'readonly',
-    'hidden',
-    'selected',
-    'required',
-    'multiple',
-    'autofocus',
-    'autoplay',
-    'controls',
-    'loop',
-    'muted',
-    'open',
-    'novalidate',
-  ]);
-
+  // boolean attributes
   if (BOOLEAN_ATTRS.has(name)) {
     if (value) {
       el.attrs[name] = '';
@@ -143,12 +173,30 @@ export function setAttr(el: VElement, name: string, value: unknown): void {
     return;
   }
 
-  // Generic attributes
+  // generic attributes
+  const lower = name.toLowerCase();
+
+  // never serialise an inline event handler from a :bind.
+  if (EVENT_ATTR_RE.test(lower)) {
+    delete el.attrs[name];
+    return;
+  }
+
   if (value == null || value === false) {
     delete el.attrs[name];
-  } else {
-    el.attrs[name] = value === true ? '' : String(value);
+    return;
   }
+
+  const out = value === true ? '' : String(value);
+
+  // block javascript:/vbscript: (and unsafe data:) urls so a bound value can't
+  // round-trip through the html serialiser as a live xss sink.
+  if ((NAV_URI_ATTRS.has(lower) || MEDIA_URI_ATTRS.has(lower)) && isDangerousUrlValue(lower, out)) {
+    delete el.attrs[name];
+    return;
+  }
+
+  el.attrs[name] = out;
 }
 
 // ---------------------------------------------------------------------------

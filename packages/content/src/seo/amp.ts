@@ -1,5 +1,6 @@
-import type { SeoConfig, SeoEntry } from './types.js';
-import { generateMetaTags, generateJsonLd } from './meta.js';
+import type { SeoConfig, SeoEntry } from './types';
+import { generateMetaTags, generateJsonLd } from './meta';
+import { sanitiseHtml } from './prerender';
 
 const AMP_BOILERPLATE = `<style amp-boilerplate>body{-webkit-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-moz-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-ms-animation:-amp-start 8s steps(1,end) 0s 1 normal both;animation:-amp-start 8s steps(1,end) 0s 1 normal both}@-webkit-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-moz-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-ms-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-o-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}</style><noscript><style amp-boilerplate>body{-webkit-animation:none;-moz-animation:none;-ms-animation:none;animation:none}</style></noscript>`;
 
@@ -15,12 +16,7 @@ function convertImages(html: string): string {
   });
 }
 
-/** Strip any <script> tags (AMP does not allow custom JS) */
-function stripScripts(html: string): string {
-  return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-}
-
-/** Generate inline CSS for AMP pages (must be under 75KB) */
+/** generate inline css for amp pages (must be under 75kb) */
 function generateAmpCss(): string {
   return `
 body {
@@ -151,10 +147,12 @@ export function generateAmpPage(entry: SeoEntry, config: SeoConfig): string {
     day: 'numeric',
   });
 
-  // Process content for AMP compliance
-  let content = entry.html ?? '';
+  // sanitise before converting images: the allowlist parser removes
+  // <script>/<style>, event-handler attributes and dangerous urls. a regex
+  // script-strip alone is trivially bypassable (e.g. <img src=x onerror=…>,
+  // <svg onload=…>), so the html must go through the real sanitiser.
+  let content = sanitiseHtml(entry.html ?? '');
   content = convertImages(content);
-  content = stripScripts(content);
 
   const tagsHtml = entry.tags
     ? `<div class="tags">${entry.tags.map((t) => `<span>${escapeHtml(t)}</span>`).join('')}</div>`

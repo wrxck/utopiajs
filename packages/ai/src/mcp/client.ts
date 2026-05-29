@@ -12,8 +12,8 @@ import type {
   MCPPromptResult,
   JsonRpcRequest,
   JsonRpcResponse,
-} from './types.js';
-import type { ToolHandler } from '../ai.js';
+} from './types';
+import type { ToolHandler } from '../ai';
 
 export interface MCPClient {
   /** Initialize the connection and get server capabilities. */
@@ -87,6 +87,12 @@ interface PromptsListResult {
 export function createMCPClient(config: MCPClientConfig): MCPClient {
   let requestId = 0;
 
+  // validate the endpoint once: only http(s) is permitted (no file:, etc.).
+  const parsedUrl = new URL(config.url);
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    throw new Error(`MCP client URL must be http(s): ${config.url}`);
+  }
+
   async function rpc<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T> {
     const request: JsonRpcRequest = {
       jsonrpc: '2.0',
@@ -102,6 +108,10 @@ export function createMCPClient(config: MCPClientConfig): MCPClient {
         ...config.headers,
       },
       body: JSON.stringify(request),
+      // never follow redirects: a 3xx to another host would otherwise re-send
+      // config.headers (often a bearer token) to that host, leaking the
+      // credential and enabling an ssrf pivot.
+      redirect: 'error',
       signal: AbortSignal.timeout(30000),
     });
 

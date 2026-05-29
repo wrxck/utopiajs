@@ -21,12 +21,12 @@ export {
   removeNode,
   appendChild,
   createComment,
-} from './dom.js';
+} from './dom';
 
 // ---------------------------------------------------------------------------
 // Directives (used by compiled control-flow constructs)
 // ---------------------------------------------------------------------------
-export { createIf, createFor, createComponent } from './directives.js';
+export { createIf, createFor, createComponent } from './directives';
 
 // ---------------------------------------------------------------------------
 // Component lifecycle
@@ -39,19 +39,19 @@ export {
   stopCapturingDisposers,
   onMount,
   onDestroy,
-} from './component.js';
+} from './component';
 
-export type { ComponentDefinition, ComponentInstance } from './component.js';
+export type { ComponentDefinition, ComponentInstance } from './component';
 
 // ---------------------------------------------------------------------------
 // Scheduler
 // ---------------------------------------------------------------------------
-export { queueJob, nextTick } from './scheduler.js';
+export { queueJob, nextTick } from './scheduler';
 
 // ---------------------------------------------------------------------------
 // Hydration
 // ---------------------------------------------------------------------------
-export { hydrate } from './hydration.js';
+export { hydrate } from './hydration';
 
 // ---------------------------------------------------------------------------
 // Reactivity primitives (re-exported from @matthesketh/utopia-core)
@@ -62,7 +62,7 @@ export { signal, computed, effect, batch, untrack } from '@matthesketh/utopia-co
 // createEffect — wrapped effect() that captures disposers
 // ---------------------------------------------------------------------------
 import { effect as _coreEffect } from '@matthesketh/utopia-core';
-import { pushDisposer } from './component.js';
+import { pushDisposer } from './component';
 
 export function createEffect(fn: () => void | (() => void)): () => void {
   const dispose = _coreEffect(fn);
@@ -83,28 +83,28 @@ export {
   email,
   pattern,
   validate,
-} from './form.js';
+} from './form';
 
-export type { ValidationRule, FieldConfig, FormField, Form } from './form.js';
+export type { ValidationRule, FieldConfig, FormField, Form } from './form';
 
 // ---------------------------------------------------------------------------
 // Head management
 // ---------------------------------------------------------------------------
-export { useHead } from './head.js';
-export type { HeadConfig } from './head.js';
+export { useHead } from './head';
+export type { HeadConfig } from './head';
 
 // ---------------------------------------------------------------------------
 // Error boundaries
 // ---------------------------------------------------------------------------
-export { createErrorBoundary } from './error-boundary.js';
+export { createErrorBoundary } from './error-boundary';
 
 // ---------------------------------------------------------------------------
 // Lazy components
 // ---------------------------------------------------------------------------
-export { defineLazy } from './lazy.js';
+export { defineLazy } from './lazy';
 
 // ---------------------------------------------------------------------------
 // Transitions
 // ---------------------------------------------------------------------------
-export { createTransition, performEnter, performLeave } from './transition.js';
-export type { TransitionOptions, TransitionHooks } from './transition.js';
+export { createTransition, performEnter, performLeave } from './transition';
+export type { TransitionOptions, TransitionHooks } from './transition';

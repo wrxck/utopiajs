@@ -1,5 +1,5 @@
 import { effect } from '@matthesketh/utopia-core';
-import type { HeadConfig, MetaDescriptor, LinkDescriptor } from './types.js';
+import type { HeadConfig, MetaDescriptor, LinkDescriptor } from './types';
 
 // ---------------------------------------------------------------------------
 // Internal tracking — managed elements are tagged so we can clean them up
@@ -43,21 +43,44 @@ function metaKey(desc: MetaDescriptor): string {
   return '';
 }
 
+/**
+ * escape a value for safe interpolation into a css attribute selector. uses the
+ * standard CSS.escape where available, otherwise escapes quotes/backslashes.
+ * without this a descriptor value containing `"` produces an invalid selector
+ * (querySelector throws a SyntaxError, breaking the reactive head update).
+ */
+function cssEscape(value: string): string {
+  const escape = (globalThis as { CSS?: { escape?: (s: string) => string } }).CSS?.escape;
+  return escape ? escape(value) : value.replace(/["\\]/g, '\\$&');
+}
+
 function findExistingMeta(desc: MetaDescriptor): Element | null {
-  if (desc.charset) return document.head.querySelector('meta[charset]');
-  if (desc.httpEquiv) return document.head.querySelector(`meta[http-equiv="${desc.httpEquiv}"]`);
-  if (desc.property) return document.head.querySelector(`meta[property="${desc.property}"]`);
-  if (desc.name) return document.head.querySelector(`meta[name="${desc.name}"]`);
+  try {
+    if (desc.charset) return document.head.querySelector('meta[charset]');
+    if (desc.httpEquiv) {
+      return document.head.querySelector(`meta[http-equiv="${cssEscape(desc.httpEquiv)}"]`);
+    }
+    if (desc.property)
+      return document.head.querySelector(`meta[property="${cssEscape(desc.property)}"]`);
+    if (desc.name) return document.head.querySelector(`meta[name="${cssEscape(desc.name)}"]`);
+  } catch {
+    return null;
+  }
   return null;
 }
 
 function findExistingLink(desc: LinkDescriptor): Element | null {
+  const rel = cssEscape(desc.rel);
   const selector = desc.sizes
-    ? `link[rel="${desc.rel}"][sizes="${desc.sizes}"]`
+    ? `link[rel="${rel}"][sizes="${cssEscape(desc.sizes)}"]`
     : desc.type
-      ? `link[rel="${desc.rel}"][type="${desc.type}"]`
-      : `link[rel="${desc.rel}"][href="${desc.href}"]`;
-  return document.head.querySelector(selector);
+      ? `link[rel="${rel}"][type="${cssEscape(desc.type)}"]`
+      : `link[rel="${rel}"][href="${cssEscape(desc.href)}"]`;
+  try {
+    return document.head.querySelector(selector);
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

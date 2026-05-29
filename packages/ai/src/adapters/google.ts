@@ -13,7 +13,7 @@ import type {
   GoogleConfig,
   ToolCall,
   ToolDefinition,
-} from '../types.js';
+} from '../types';
 
 import type {
   GoogleGenerativeAI as GoogleGenAIType,

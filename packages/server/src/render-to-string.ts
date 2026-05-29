@@ -2,9 +2,9 @@
 // @matthesketh/utopia-server — renderToString
 // ============================================================================
 
-import type { VNode, VElement } from './vnode.js';
-import type { ComponentDefinition, HeadConfig } from './ssr-runtime.js';
-import { createComponent, flushStyles, flushHead } from './ssr-runtime.js';
+import type { VNode, VElement } from './vnode';
+import type { ComponentDefinition, HeadConfig } from './ssr-runtime';
+import { createComponent, flushStyles, flushHead } from './ssr-runtime';
 import {
   VOID_ELEMENTS,
   escapeHtml,
@@ -12,7 +12,7 @@ import {
   escapeComment,
   validateTag,
   validateAttr,
-} from './html-utils.js';
+} from './html-utils';
 
 const MAX_VNODE_DEPTH = 1000;
 
@@ -20,47 +20,61 @@ const MAX_VNODE_DEPTH = 1000;
  * Serialize a VNode tree to an HTML string.
  */
 export function serializeVNode(node: VNode, depth: number = 0): string {
+  // chunks are pushed into a single shared buffer and joined once. the old
+  // implementation did `html += serializeVNode(child)` at every level, which
+  // re-copied each already-materialised subtree string into its parent —
+  // quadratic in total html size × depth. a single array + join is linear.
+  const out: string[] = [];
+  pushVNode(out, node, depth);
+  return out.join('');
+}
+
+function pushVNode(out: string[], node: VNode, depth: number): void {
   if (depth > MAX_VNODE_DEPTH) {
     throw new Error(`VNode tree exceeded maximum depth of ${MAX_VNODE_DEPTH}`);
   }
   switch (node.type) {
     case 1: // VElement
-      return serializeElement(node, depth);
+      pushElement(out, node, depth);
+      return;
     case 2: // VText
-      return escapeHtml(node.text);
+      out.push(escapeHtml(node.text));
+      return;
     case 3: // VComment
-      return `<!--${escapeComment(node.text)}-->`;
+      out.push(`<!--${escapeComment(node.text)}-->`);
+      return;
   }
 }
 
-function serializeElement(el: VElement, depth: number): string {
-  const tag = el.tag;
-  let html = `<${validateTag(tag)}`;
+function pushElement(out: string[], el: VElement, depth: number): void {
+  // validate the tag once and reuse for both the opening and closing tag.
+  const tag = validateTag(el.tag);
+  out.push(`<${tag}`);
 
-  // Attributes
-  for (const [name, value] of Object.entries(el.attrs)) {
+  // attributes
+  for (const name of Object.keys(el.attrs)) {
+    const value = el.attrs[name];
     if (value === '') {
-      html += ` ${validateAttr(name)}`;
+      out.push(` ${validateAttr(name)}`);
     } else {
-      html += ` ${validateAttr(name)}="${escapeAttr(value)}"`;
+      out.push(` ${validateAttr(name)}="${escapeAttr(value)}"`);
     }
   }
 
-  // Void elements — no closing tag, no children.
-  if (VOID_ELEMENTS.has(tag.toLowerCase())) {
-    html += '>';
-    return html;
+  // void elements — no closing tag, no children.
+  if (VOID_ELEMENTS.has(el.tag.toLowerCase())) {
+    out.push('>');
+    return;
   }
 
-  html += '>';
+  out.push('>');
 
-  // Children
+  // children
   for (const child of el.children) {
-    html += serializeVNode(child, depth + 1);
+    pushVNode(out, child, depth + 1);
   }
 
-  html += `</${validateTag(tag)}>`;
-  return html;
+  out.push(`</${tag}>`);
 }
 
 /**

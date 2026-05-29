@@ -7,7 +7,9 @@
  */
 
 import { effect } from '@matthesketh/utopia-core';
-import { isHydrating, claimNode, unclaimNode, enterNode, exitNode } from './hydration.js';
+
+import { pushDisposer } from './component';
+import { isHydrating, claimNode, unclaimNode, enterNode, exitNode } from './hydration';
 
 // ---------------------------------------------------------------------------
 // SVG support
@@ -137,13 +139,18 @@ export function setText(node: Text, value: unknown): void {
  * **Warning:** This sets raw HTML — only use with trusted content.
  */
 export function setHtml(el: Element, getter: () => unknown): void {
-  effect(() => {
-    const value = getter();
-    const html = value == null ? '' : String(value);
-    if (el.innerHTML !== html) {
-      el.innerHTML = html;
-    }
-  });
+  // register the effect's disposer with the surrounding component/list/branch
+  // scope so it is torn down on unmount instead of leaking its subscription
+  // and retaining the (possibly detached) element forever.
+  pushDisposer(
+    effect(() => {
+      const value = getter();
+      const html = value == null ? '' : String(value);
+      if (el.innerHTML !== html) {
+        el.innerHTML = html;
+      }
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -155,25 +162,81 @@ export function setHtml(el: Element, getter: () => unknown): void {
  * Anything not in this set is removed (but its text children are kept).
  */
 const SAFE_TAGS = new Set([
-  'a', 'abbr', 'acronym', 'address', 'article', 'aside',
-  'b', 'bdi', 'bdo', 'big', 'blockquote', 'br',
-  'caption', 'cite', 'code', 'col', 'colgroup',
-  'data', 'dd', 'del', 'details', 'dfn', 'div', 'dl', 'dt',
+  'a',
+  'abbr',
+  'acronym',
+  'address',
+  'article',
+  'aside',
+  'b',
+  'bdi',
+  'bdo',
+  'big',
+  'blockquote',
+  'br',
+  'caption',
+  'cite',
+  'code',
+  'col',
+  'colgroup',
+  'data',
+  'dd',
+  'del',
+  'details',
+  'dfn',
+  'div',
+  'dl',
+  'dt',
   'em',
-  'figcaption', 'figure', 'footer',
-  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hgroup', 'hr',
-  'i', 'img', 'ins',
+  'figcaption',
+  'figure',
+  'footer',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'header',
+  'hgroup',
+  'hr',
+  'i',
+  'img',
+  'ins',
   'kbd',
   'li',
-  'main', 'mark', 'menu',
+  'main',
+  'mark',
+  'menu',
   'nav',
   'ol',
-  'p', 'picture', 'pre',
+  'p',
+  'picture',
+  'pre',
   'q',
-  'rp', 'rt', 'ruby',
-  's', 'samp', 'section', 'small', 'source', 'span', 'strong', 'sub', 'summary', 'sup',
-  'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'time', 'tr',
-  'u', 'ul',
+  'rp',
+  'rt',
+  'ruby',
+  's',
+  'samp',
+  'section',
+  'small',
+  'source',
+  'span',
+  'strong',
+  'sub',
+  'summary',
+  'sup',
+  'table',
+  'tbody',
+  'td',
+  'tfoot',
+  'th',
+  'thead',
+  'time',
+  'tr',
+  'u',
+  'ul',
   'var',
   'wbr',
 ]);
@@ -183,28 +246,133 @@ const SAFE_TAGS = new Set([
  * Event handler attributes (on*) and dangerous globals are excluded.
  */
 const SAFE_ATTRS = new Set([
-  'abbr', 'align', 'alt', 'axis',
+  'abbr',
+  'align',
+  'alt',
+  'axis',
   'border',
-  'cellpadding', 'cellspacing', 'char', 'charoff', 'charset', 'cite', 'class', 'cols',
-  'colspan', 'compact',
-  'datetime', 'dir',
+  'cellpadding',
+  'cellspacing',
+  'char',
+  'charoff',
+  'charset',
+  'cite',
+  'class',
+  'cols',
+  'colspan',
+  'compact',
+  'datetime',
+  'dir',
   'frame',
-  'headers', 'height', 'hreflang',
+  'headers',
+  'height',
+  'hreflang',
   'id',
   'lang',
   'nowrap',
-  'rel', 'reversed', 'rowspan', 'rules',
-  'scope', 'span', 'start', 'summary',
-  'tabindex', 'target', 'title', 'type',
-  'valign', 'value',
+  'rel',
+  'reversed',
+  'rowspan',
+  'rules',
+  'scope',
+  'span',
+  'start',
+  'summary',
+  'tabindex',
+  'target',
+  'title',
+  'type',
+  'valign',
+  'value',
   'width',
 ]);
 
-/** URI-bearing attributes that must not contain javascript:/data:/vbscript: values. */
+/** uri-bearing attributes that must not contain javascript:/data:/vbscript: values. */
 const URI_ATTRS = new Set(['href', 'src', 'action', 'cite', 'poster', 'data']);
 
-/** Schemes that are forbidden in URI attributes. */
+/** schemes that are forbidden in uri attributes. */
 const DANGEROUS_SCHEME_RE = /^\s*(?:javascript|data|vbscript)\s*:/i;
+
+/**
+ * tags whose entire subtree (including text content) must be discarded during
+ * sanitisation — their danger lives in their text/children, not just the tag.
+ * mirrors the server-side sanitiser so both layers behave identically.
+ */
+const DROP_ENTIRELY = new Set([
+  'script',
+  'style',
+  'iframe',
+  'object',
+  'embed',
+  'base',
+  'link',
+  'meta',
+  'noscript',
+  'template',
+  'form',
+  'svg',
+  'math',
+]);
+
+// ---------------------------------------------------------------------------
+// url-attribute scheme guard (shared by setAttr)
+// ---------------------------------------------------------------------------
+
+/** always-forbidden executable url schemes (any url-bearing attribute). */
+const JS_SCHEME_RE = /^\s*(?:javascript|vbscript)\s*:/i;
+/** any data: url. */
+const DATA_SCHEME_RE = /^\s*data:/i;
+/** data: urls that are safe to keep on media attributes (images/av/fonts). */
+const SAFE_DATA_RE = /^\s*data:(?:image|audio|video|font)\//i;
+/** event-handler attribute names (onclick, onerror, …) — never settable via :bind. */
+const EVENT_ATTR_RE = /^on[a-z]/i;
+
+/** navigational / embedding url attributes — data: is never allowed here. */
+const NAV_URI_ATTRS = new Set([
+  'href',
+  'action',
+  'formaction',
+  'xlink:href',
+  'data',
+  'ping',
+  'cite',
+  'background',
+  'srcdoc',
+]);
+/** media url attributes — data:image/… etc. is permitted, other data: is not. */
+const MEDIA_URI_ATTRS = new Set(['src', 'poster']);
+
+/**
+ * decide whether a url value is dangerous for the given attribute. blocks
+ * `javascript:`/`vbscript:` everywhere and `data:` on navigational/embedding
+ * attributes, while still allowing `data:image/…` (and av/font) on media
+ * attributes so legitimate inline images keep working.
+ */
+function isDangerousUrlValue(attr: string, value: string): boolean {
+  if (JS_SCHEME_RE.test(value)) return true;
+  if (DATA_SCHEME_RE.test(value)) {
+    return !(MEDIA_URI_ATTRS.has(attr) && SAFE_DATA_RE.test(value));
+  }
+  return false;
+}
+
+/** boolean attributes that map truthiness to presence/absence of the attribute. */
+const BOOLEAN_ATTRS = new Set([
+  'disabled',
+  'checked',
+  'readonly',
+  'hidden',
+  'selected',
+  'required',
+  'multiple',
+  'autofocus',
+  'autoplay',
+  'controls',
+  'loop',
+  'muted',
+  'open',
+  'novalidate',
+]);
 
 /**
  * DOM-based HTML sanitizer. Parses the input into an inert document fragment,
@@ -217,10 +385,7 @@ const DANGEROUS_SCHEME_RE = /^\s*(?:javascript|data|vbscript)\s*:/i;
  * tags, slash-separated attributes, SVG vectors, etc.) cannot slip through.
  */
 export function sanitizeHtml(html: string): string {
-  const doc = new DOMParser().parseFromString(
-    `<!DOCTYPE html><body>${html}</body>`,
-    'text/html',
-  );
+  const doc = new DOMParser().parseFromString(`<!DOCTYPE html><body>${html}</body>`, 'text/html');
 
   // Walk the tree bottom-up so removals don't invalidate the iterator.
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
@@ -239,8 +404,15 @@ export function sanitizeHtml(html: string): string {
     const el = elements[i];
     const tag = el.tagName.toLowerCase();
 
+    if (DROP_ENTIRELY.has(tag)) {
+      // remove the element AND its contents — the payload of <script>/<style>
+      // etc. lives in the text/children, so unwrapping would resurrect it.
+      el.parentNode?.removeChild(el);
+      continue;
+    }
+
     if (!SAFE_TAGS.has(tag)) {
-      // Replace disallowed element with its text content so we don't silently
+      // replace disallowed element with its text content so we don't silently
       // swallow legitimate text inside, e.g. inside <span> inside <div>.
       const frag = doc.createDocumentFragment();
       while (el.firstChild) {
@@ -280,6 +452,11 @@ export function sanitizeHtml(html: string): string {
     for (const name of attrsToRemove) {
       el.removeAttribute(name);
     }
+
+    // harden target="_blank" links against reverse-tabnabbing.
+    if (tag === 'a' && el.getAttribute('target') === '_blank') {
+      el.setAttribute('rel', 'noopener noreferrer');
+    }
   }
 
   return doc.body.innerHTML;
@@ -292,14 +469,21 @@ export function sanitizeHtml(html: string): string {
  * For fully trusted content, use `setHtml()` instead.
  */
 export function setSafeHtml(el: Element, getter: () => unknown): void {
-  effect(() => {
-    const value = getter();
-    const raw = value == null ? '' : String(value);
-    const html = sanitizeHtml(raw);
-    if (el.innerHTML !== html) {
-      el.innerHTML = html;
-    }
-  });
+  let lastRaw: string | null = null;
+  let lastSanitised = '';
+  // disposer registered with the surrounding scope (see setHtml). the raw→safe
+  // result is memoised so an identical re-render skips the DOMParser walk.
+  pushDisposer(
+    effect(() => {
+      const value = getter();
+      const raw = value == null ? '' : String(value);
+      const html =
+        raw === lastRaw ? lastSanitised : (lastSanitised = sanitizeHtml((lastRaw = raw)));
+      if (el.innerHTML !== html) {
+        el.innerHTML = html;
+      }
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -373,23 +557,6 @@ export function setAttr(el: Element, name: string, value: unknown): void {
   }
 
   // --- boolean attributes --------------------------------------------------
-  const BOOLEAN_ATTRS = new Set([
-    'disabled',
-    'checked',
-    'readonly',
-    'hidden',
-    'selected',
-    'required',
-    'multiple',
-    'autofocus',
-    'autoplay',
-    'controls',
-    'loop',
-    'muted',
-    'open',
-    'novalidate',
-  ]);
-
   if (BOOLEAN_ATTRS.has(name)) {
     if (value) {
       el.setAttribute(name, '');
@@ -414,11 +581,30 @@ export function setAttr(el: Element, name: string, value: unknown): void {
   }
 
   // --- generic attributes --------------------------------------------------
+  const lower = name.toLowerCase();
+
+  // never let a :bind install an inline event handler (onclick, onerror, …).
+  // legitimate handlers go through addEventListener via @/u-on.
+  if (EVENT_ATTR_RE.test(lower)) {
+    el.removeAttribute(name);
+    return;
+  }
+
   if (value == null || value === false) {
     el.removeAttribute(name);
-  } else {
-    el.setAttribute(name, value === true ? '' : String(value));
+    return;
   }
+
+  const out = value === true ? '' : String(value);
+
+  // block javascript:/vbscript: (and unsafe data:) urls in url-bearing
+  // attributes so a bound user value can't become an xss sink.
+  if ((NAV_URI_ATTRS.has(lower) || MEDIA_URI_ATTRS.has(lower)) && isDangerousUrlValue(lower, out)) {
+    el.removeAttribute(name);
+    return;
+  }
+
+  el.setAttribute(name, out);
 }
 
 // ---------------------------------------------------------------------------

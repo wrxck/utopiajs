@@ -1,5 +1,5 @@
-import type { CollectionConfig, ContentAdapter, ContentFormat } from '../types.js';
-import { validateSlug } from '../adapters/filesystem.js';
+import type { CollectionConfig, ContentAdapter, ContentFormat } from '../types';
+import { validateSlug } from '../adapters/filesystem';
 
 /** JSON Schema type (compatible with MCP tool definitions) */
 interface JsonSchema {

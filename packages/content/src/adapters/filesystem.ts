@@ -1,16 +1,41 @@
-import { readdir, readFile, writeFile, unlink, mkdir } from 'node:fs/promises';
-import { join, extname, basename, resolve } from 'node:path';
-import { existsSync } from 'node:fs';
-import type { ContentAdapter, CollectionConfig, ContentEntry, ContentFormat } from '../types.js';
-import { parseFrontmatter, serializeFrontmatter } from '../frontmatter.js';
-import { renderMarkdown } from '../markdown.js';
+import { readdir, readFile, writeFile, unlink, mkdir, stat } from 'node:fs/promises';
+import { join, extname, basename, resolve, sep } from 'node:path';
+import { existsSync, realpathSync } from 'node:fs';
 
-/** Slug must start with alphanumeric, then allow alphanumeric, hyphens, underscores, and slashes. */
+import type { ContentAdapter, CollectionConfig, ContentEntry, ContentFormat } from '../types';
+import { parseFrontmatter, serializeFrontmatter } from '../frontmatter';
+import { renderMarkdown } from '../markdown';
+
+/** slug must start with alphanumeric, then allow alphanumeric, hyphens, underscores, and slashes. */
 export const VALID_SLUG_RE = /^[a-zA-Z0-9][a-zA-Z0-9_/-]*$/;
 
 export function validateSlug(slug: string): void {
   if (!slug || !VALID_SLUG_RE.test(slug) || slug.includes('..') || slug.includes('//')) {
     throw new Error(`Invalid slug: ${JSON.stringify(slug)}`);
+  }
+}
+
+/**
+ * verify a target path resolves inside the content root. uses a path-separator
+ * boundary (so a sibling like `${root}-secret` cannot satisfy a prefix match)
+ * and resolves symlinks via realpath so a symlinked file/dir inside the root
+ * cannot point the read/write/delete at a target outside it.
+ */
+function assertWithinRoot(filePath: string, dir: string): void {
+  const root = resolve(dir);
+  const resolved = resolve(filePath);
+  if (resolved !== root && !resolved.startsWith(root + sep)) {
+    throw new Error('Path traversal detected');
+  }
+  if (!existsSync(root)) return;
+  const realRoot = realpathSync(root);
+  // resolve the file itself if it exists (catches a symlinked file), otherwise
+  // its parent directory (catches a symlinked containing directory on writes).
+  const probe = existsSync(resolved) ? resolved : resolve(filePath, '..');
+  if (!existsSync(probe)) return;
+  const realProbe = realpathSync(probe);
+  if (realProbe !== realRoot && !realProbe.startsWith(realRoot + sep)) {
+    throw new Error('Path traversal detected');
   }
 }
 
@@ -45,12 +70,36 @@ export function createFilesystemAdapter(baseDir?: string): ContentAdapter {
     return baseDir ? resolve(baseDir, config.directory) : resolve(config.directory);
   }
 
+  // parsed entries are cached by path + mtime so repeated getCollection calls
+  // don't re-read, re-parse frontmatter and (for markdown) re-run the full
+  // unified pipeline on unchanged files. invalidates automatically when a file
+  // is edited (mtime changes).
+  const parseCache = new Map<string, { mtimeMs: number; entry: ContentEntry }>();
+
   async function parseFile(filePath: string, collection: string): Promise<ContentEntry> {
     const ext = extname(filePath);
     const format = FORMAT_EXTENSIONS[ext]!;
     const slug = slugFromFilename(filePath);
-    const raw = await readFile(filePath, 'utf-8');
 
+    const stats = await stat(filePath);
+    const cached = parseCache.get(filePath);
+    if (cached && cached.mtimeMs === stats.mtimeMs) {
+      return cached.entry;
+    }
+
+    const raw = await readFile(filePath, 'utf-8');
+    const entry = await parseRaw(raw, format, slug, collection, filePath);
+    parseCache.set(filePath, { mtimeMs: stats.mtimeMs, entry });
+    return entry;
+  }
+
+  async function parseRaw(
+    raw: string,
+    format: ContentFormat,
+    slug: string,
+    collection: string,
+    filePath: string,
+  ): Promise<ContentEntry> {
     switch (format) {
       case 'md': {
         const { data, body } = parseFrontmatter(raw);
@@ -99,9 +148,8 @@ export function createFilesystemAdapter(baseDir?: string): ContentAdapter {
 
       for (const format of formats) {
         const filePath = join(dir, `${slug}${FORMAT_EXT_MAP[format]}`);
-        const resolved = resolve(filePath);
-        if (!resolved.startsWith(resolve(dir))) throw new Error('Path traversal detected');
         if (existsSync(filePath)) {
+          assertWithinRoot(filePath, dir);
           return parseFile(filePath, config.name);
         }
       }
@@ -123,8 +171,7 @@ export function createFilesystemAdapter(baseDir?: string): ContentAdapter {
       }
 
       const filePath = join(dir, `${slug}${FORMAT_EXT_MAP[format]}`);
-      const resolved = resolve(filePath);
-      if (!resolved.startsWith(resolve(dir))) throw new Error('Path traversal detected');
+      assertWithinRoot(filePath, dir);
 
       switch (format) {
         case 'md': {
@@ -155,6 +202,7 @@ export function createFilesystemAdapter(baseDir?: string): ContentAdapter {
       data?: Record<string, unknown>,
       body?: string,
     ): Promise<void> {
+      validateSlug(slug);
       const existing = await this.readEntry(config, slug);
       if (!existing) {
         throw new Error(`Entry "${slug}" not found in collection "${config.name}"`);
@@ -166,11 +214,14 @@ export function createFilesystemAdapter(baseDir?: string): ContentAdapter {
     },
 
     async deleteEntry(config: CollectionConfig, slug: string): Promise<void> {
+      validateSlug(slug);
       const existing = await this.readEntry(config, slug);
       if (!existing) {
         throw new Error(`Entry "${slug}" not found in collection "${config.name}"`);
       }
+      assertWithinRoot(existing.filePath, resolveDir(config));
       await unlink(existing.filePath);
+      parseCache.delete(existing.filePath);
     },
 
     async listSlugs(config: CollectionConfig): Promise<string[]> {

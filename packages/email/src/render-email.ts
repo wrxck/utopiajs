@@ -3,10 +3,10 @@
 // ============================================================================
 
 import { renderToString } from '@matthesketh/utopia-server';
-import { inlineCSS } from './css-inliner.js';
-import { htmlToText } from './html-to-text.js';
-import { wrapEmailDocument } from './email-document.js';
-import type { RenderEmailOptions, RenderEmailResult } from './types.js';
+import { inlineCSS } from './css-inliner';
+import { htmlToText } from './html-to-text';
+import { wrapEmailDocument } from './email-document';
+import type { RenderEmailOptions, RenderEmailResult } from './types';
 
 /**
  * Render a UtopiaJS component as a complete email document.

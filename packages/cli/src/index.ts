@@ -347,10 +347,14 @@ function mcpInstall(): void {
   }
 
   try {
-    execFileSync(claude, ['mcp', 'add', 'utopia-content', '-s', 'project', '--', 'npx', 'utopia', 'mcp', 'serve'], {
-      stdio: 'inherit',
-      cwd: process.cwd(),
-    });
+    execFileSync(
+      claude,
+      ['mcp', 'add', 'utopia-content', '-s', 'project', '--', 'npx', 'utopia', 'mcp', 'serve'],
+      {
+        stdio: 'inherit',
+        cwd: process.cwd(),
+      },
+    );
     console.log('\nUtopiaJS MCP server registered with Claude Code.');
     console.log('Claude Code can now manage your content collections.');
   } catch (err: unknown) {

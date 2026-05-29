@@ -10,7 +10,7 @@ import type {
   MCPPromptHandler,
   JsonRpcRequest,
   JsonRpcResponse,
-} from './types.js';
+} from './types';
 
 export interface MCPServer {
   /** Handle a JSON-RPC request and return a response. */
@@ -65,11 +65,7 @@ export function createMCPServer(config: MCPServerConfig): MCPServer {
 
   async function handleRequest(request: JsonRpcRequest): Promise<JsonRpcResponse> {
     // Validate JSON-RPC 2.0 envelope.
-    if (
-      !request ||
-      request.jsonrpc !== '2.0' ||
-      typeof request.method !== 'string'
-    ) {
+    if (!request || request.jsonrpc !== '2.0' || typeof request.method !== 'string') {
       return {
         jsonrpc: '2.0',
         id: request?.id ?? null,
@@ -85,14 +81,21 @@ export function createMCPServer(config: MCPServerConfig): MCPServer {
       return { jsonrpc: '2.0', id: request.id, result };
     } catch (err: unknown) {
       const rpcErr = err as { code?: number; message?: string; data?: unknown };
+      // only surface details for intentional json-rpc errors (those carry a
+      // numeric code from makeError). a raw handler exception is collapsed to a
+      // generic message so internal details — db errors, file paths, stack
+      // text — are not echoed back to the (possibly untrusted) caller.
+      if (typeof rpcErr.code === 'number') {
+        return {
+          jsonrpc: '2.0',
+          id: request.id,
+          error: { code: rpcErr.code, message: rpcErr.message ?? 'Error', data: rpcErr.data },
+        };
+      }
       return {
         jsonrpc: '2.0',
         id: request.id,
-        error: {
-          code: rpcErr.code ?? -32603,
-          message: rpcErr.message ?? 'Internal error',
-          data: rpcErr.data,
-        },
+        error: { code: -32603, message: 'Internal error' },
       };
     }
   }
@@ -123,12 +126,22 @@ export function createMCPServer(config: MCPServerConfig): MCPServer {
         };
 
       case 'tools/call': {
-        const params = request.params as { name: string; arguments?: Record<string, unknown> };
-        const tool = toolMap.get(params.name);
-        if (!tool) {
-          throw makeError(-32602, `Unknown tool: ${params.name}`);
+        const params = asParamsObject(request.params, 'tools/call');
+        const name = params.name;
+        if (typeof name !== 'string') {
+          throw makeError(-32602, 'tools/call requires a string "name"');
         }
-        return tool.handler(params.arguments ?? {});
+        const tool = toolMap.get(name);
+        if (!tool) {
+          throw makeError(-32602, `Unknown tool: ${name}`);
+        }
+        const args = params.arguments ?? {};
+        if (typeof args !== 'object' || args === null || Array.isArray(args)) {
+          throw makeError(-32602, 'tool arguments must be an object');
+        }
+        const argRecord = args as Record<string, unknown>;
+        validateAgainstSchema(tool.definition.inputSchema, argRecord, name);
+        return tool.handler(argRecord);
       }
 
       case 'resources/list':
@@ -142,12 +155,16 @@ export function createMCPServer(config: MCPServerConfig): MCPServer {
         };
 
       case 'resources/read': {
-        const params = request.params as { uri: string };
-        const resource = findResource(params.uri);
-        if (!resource) {
-          throw makeError(-32602, `Unknown resource: ${params.uri}`);
+        const params = asParamsObject(request.params, 'resources/read');
+        const uri = params.uri;
+        if (typeof uri !== 'string') {
+          throw makeError(-32602, 'resources/read requires a string "uri"');
         }
-        const content = await resource.handler(params.uri);
+        const resource = findResource(uri);
+        if (!resource) {
+          throw makeError(-32602, `Unknown resource: ${uri}`);
+        }
+        const content = await resource.handler(uri);
         return { contents: [content] };
       }
 
@@ -161,12 +178,17 @@ export function createMCPServer(config: MCPServerConfig): MCPServer {
         };
 
       case 'prompts/get': {
-        const params = request.params as { name: string; arguments?: Record<string, string> };
-        const prompt = promptMap.get(params.name);
-        if (!prompt) {
-          throw makeError(-32602, `Unknown prompt: ${params.name}`);
+        const params = asParamsObject(request.params, 'prompts/get');
+        const name = params.name;
+        if (typeof name !== 'string') {
+          throw makeError(-32602, 'prompts/get requires a string "name"');
         }
-        return prompt.handler(params.arguments ?? {});
+        const prompt = promptMap.get(name);
+        if (!prompt) {
+          throw makeError(-32602, `Unknown prompt: ${name}`);
+        }
+        const args = (params.arguments ?? {}) as Record<string, string>;
+        return prompt.handler(args);
       }
 
       case 'ping':
@@ -211,4 +233,61 @@ function matchesTemplate(pattern: string, uri: string): boolean {
 
 function makeError(code: number, message: string): { code: number; message: string } {
   return { code, message };
+}
+
+/** assert request.params is a plain object, else raise an invalid-params error. */
+function asParamsObject(params: unknown, ctx: string): Record<string, unknown> {
+  if (params === null || typeof params !== 'object' || Array.isArray(params)) {
+    throw makeError(-32602, `Invalid params for ${ctx}: expected an object`);
+  }
+  return params as Record<string, unknown>;
+}
+
+/**
+ * lightweight check of tool arguments against the declared inputSchema:
+ * required keys must be present and primitive types must match. this stops a
+ * client (or a prompt-injected model) from sending malformed/wrong-typed args
+ * that a handler assumed its schema guaranteed.
+ */
+function validateAgainstSchema(
+  schema: unknown,
+  args: Record<string, unknown>,
+  toolName: string,
+): void {
+  if (!schema || typeof schema !== 'object') return;
+  const s = schema as {
+    required?: unknown;
+    properties?: Record<string, { type?: string }>;
+  };
+
+  if (Array.isArray(s.required)) {
+    for (const key of s.required) {
+      if (typeof key === 'string' && !(key in args)) {
+        throw makeError(-32602, `Missing required argument "${key}" for tool "${toolName}"`);
+      }
+    }
+  }
+
+  if (s.properties && typeof s.properties === 'object') {
+    for (const [key, prop] of Object.entries(s.properties)) {
+      const value = args[key];
+      if (value === undefined || value === null) continue;
+      const expected = prop?.type;
+      if (!expected) continue;
+      const ok =
+        expected === 'number' || expected === 'integer'
+          ? typeof value === 'number'
+          : expected === 'array'
+            ? Array.isArray(value)
+            : expected === 'object'
+              ? typeof value === 'object' && !Array.isArray(value)
+              : typeof value === expected;
+      if (!ok) {
+        throw makeError(
+          -32602,
+          `Argument "${key}" for tool "${toolName}" must be of type ${expected}`,
+        );
+      }
+    }
+  }
 }

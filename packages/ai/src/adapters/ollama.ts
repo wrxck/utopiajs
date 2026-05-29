@@ -13,7 +13,7 @@ import type {
   OllamaConfig,
   ToolCall,
   ToolDefinition,
-} from '../types.js';
+} from '../types';
 
 // ---------------------------------------------------------------------------
 // Internal Ollama API types (no SDK — native fetch)

@@ -5,10 +5,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { createMCPHandler } from './handler.js';
-import { createMCPClient } from './client.js';
-import { createMCPServer } from './server.js';
-import type { MCPServer } from './server.js';
+import { createMCPHandler } from './handler';
+import { createMCPClient } from './client';
+import { createMCPServer } from './server';
+import type { MCPServer } from './server';
 
 // ---------------------------------------------------------------------------
 // Test helpers

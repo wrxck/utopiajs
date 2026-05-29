@@ -10,7 +10,7 @@
 // falls back to a regular signal with no cross-tab behavior.
 // ============================================================================
 
-import { signal, type Signal } from './index.js';
+import { signal, type Signal } from './index';
 
 /**
  * Options for creating a shared signal.

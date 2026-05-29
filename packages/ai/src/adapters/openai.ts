@@ -13,7 +13,7 @@ import type {
   OpenAIConfig,
   ToolCall,
   ToolDefinition,
-} from '../types.js';
+} from '../types';
 
 import type OpenAI from 'openai';
 

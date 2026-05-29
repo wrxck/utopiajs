@@ -11,7 +11,7 @@ import type {
   AnthropicConfig,
   ToolCall,
   ToolDefinition,
-} from '../types.js';
+} from '../types';
 
 import type Anthropic from '@anthropic-ai/sdk';
 

@@ -9,8 +9,8 @@
 // ============================================================================
 
 import { effect } from '@matthesketh/utopia-core';
-import { currentRoute, navigate } from './router.js';
-import type { RouteMatch } from './types.js';
+import { currentRoute, navigate } from './router';
+import type { RouteMatch } from './types';
 
 // ---------------------------------------------------------------------------
 // Pre-load cache — enables synchronous initial render

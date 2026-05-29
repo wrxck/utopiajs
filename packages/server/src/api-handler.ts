@@ -97,12 +97,24 @@ export async function handleApiRequest(
     if (!match) continue;
 
     const params: Record<string, string> = {};
-    for (let i = 0; i < route.params.length; i++) {
-      params[route.params[i]] = decodeURIComponent(match[i + 1]);
+    try {
+      for (let i = 0; i < route.params.length; i++) {
+        params[route.params[i]] = decodeURIComponent(match[i + 1]);
+      }
+    } catch {
+      // malformed percent-encoding (e.g. /blog/%E0%A4) — a bad request, not a
+      // 500/crash from the thrown URIError.
+      return new Response('Bad Request', { status: 400 });
     }
 
     const mod = await route.module();
-    const handler = mod[method] as RequestHandler | undefined;
+    // only dispatch to an OWN, allow-listed http-method export. an
+    // attacker-supplied method must never resolve to an inherited prototype
+    // key (constructor/toString/…) on the module namespace object.
+    const handler =
+      HTTP_METHODS.has(method) && Object.hasOwn(mod, method)
+        ? (mod[method] as RequestHandler | undefined)
+        : undefined;
 
     if (!handler) {
       // Route matched but method not exported — return 405.

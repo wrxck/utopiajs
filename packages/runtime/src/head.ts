@@ -6,7 +6,7 @@
 // and script tags. Tags are tracked per component and cleaned up on unmount.
 // ============================================================================
 
-import { pushDisposer } from './component.js';
+import { pushDisposer } from './component';
 
 // ---------------------------------------------------------------------------
 // Attribute allowlists

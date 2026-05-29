@@ -3,10 +3,10 @@
 // ============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createAI } from './ai.js';
-import type { CreateAIOptions } from './ai.js';
-import { collectStream } from './streaming.js';
-import { createMCPServer } from './mcp/server.js';
+import { createAI } from './ai';
+import type { CreateAIOptions } from './ai';
+import { collectStream } from './streaming';
+import { createMCPServer } from './mcp/server';
 import type {
   AIAdapter,
   AIHooks,
@@ -18,7 +18,7 @@ import type {
   ImageContent,
   ToolCallContent,
   ToolResultContent,
-} from './types.js';
+} from './types';
 import type {
   MCPToolResult,
   MCPPromptResult,
@@ -27,7 +27,7 @@ import type {
   MCPResourceDefinition,
   MCPPromptDefinition,
   MCPPromptArgument,
-} from './mcp/types.js';
+} from './mcp/types';
 import type { ServerResponse } from 'node:http';
 
 // ---------------------------------------------------------------------------
@@ -525,7 +525,7 @@ describe('collectStream', () => {
 // streamSSE
 // ---------------------------------------------------------------------------
 
-import { streamSSE, parseSSEStream } from './streaming.js';
+import { streamSSE, parseSSEStream } from './streaming';
 
 function mockRes() {
   return {

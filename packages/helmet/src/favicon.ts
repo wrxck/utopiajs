@@ -1,4 +1,4 @@
-import type { LinkDescriptor, FaviconConfig } from './types.js';
+import type { LinkDescriptor, FaviconConfig } from './types';
 
 // ---------------------------------------------------------------------------
 // SVG favicon generation

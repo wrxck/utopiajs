@@ -19,19 +19,19 @@ import {
   removeNode,
   appendChild,
   createComment,
-} from './dom.js';
+} from './dom';
 
-import { createIf, createFor, createComponent } from './directives.js';
+import { createIf, createFor, createComponent } from './directives';
 import {
   createComponentInstance,
   mount,
   startCapturingDisposers,
   stopCapturingDisposers,
-} from './component.js';
-import type { ComponentDefinition } from './component.js';
-import { queueJob, nextTick } from './scheduler.js';
-import { hydrate } from './hydration.js';
-import { createEffect } from './index.js';
+} from './component';
+import type { ComponentDefinition } from './component';
+import { queueJob, nextTick } from './scheduler';
+import { hydrate } from './hydration';
+import { createEffect } from './index';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1309,7 +1309,7 @@ describe('Effect disposal on unmount', () => {
 // Error Boundaries
 // ===========================================================================
 
-import { createErrorBoundary } from './error-boundary.js';
+import { createErrorBoundary } from './error-boundary';
 
 describe('createErrorBoundary', () => {
   it('renders the try function when it succeeds', () => {
@@ -1384,7 +1384,7 @@ describe('createErrorBoundary', () => {
 // Lazy Components
 // ===========================================================================
 
-import { defineLazy } from './lazy.js';
+import { defineLazy } from './lazy';
 
 describe('defineLazy', () => {
   it('renders the fallback initially', () => {
@@ -1467,7 +1467,7 @@ describe('defineLazy', () => {
 // Transitions
 // ===========================================================================
 
-import { createTransition, performEnter, performLeave } from './transition.js';
+import { createTransition, performEnter, performLeave } from './transition';
 
 describe('createTransition', () => {
   it('returns transition hooks object', () => {
@@ -1524,7 +1524,7 @@ describe('createTransition', () => {
 // Security — Regression tests
 // ===========================================================================
 
-import { useHead } from './head.js';
+import { useHead } from './head';
 
 describe('Security — defineLazy error handling', () => {
   it('shows error message when loader rejects', async () => {
@@ -1656,7 +1656,7 @@ describe('setSafeHtml', () => {
   });
 
   it('renders safe HTML as-is', async () => {
-    const { setSafeHtml } = await import('./dom.js');
+    const { setSafeHtml } = await import('./dom');
     const el = document.createElement('div');
     container.appendChild(el);
     setSafeHtml(el, () => '<b>bold</b> and <em>italic</em>');
@@ -1664,7 +1664,7 @@ describe('setSafeHtml', () => {
   });
 
   it('strips <script> tags', async () => {
-    const { setSafeHtml } = await import('./dom.js');
+    const { setSafeHtml } = await import('./dom');
     const el = document.createElement('div');
     container.appendChild(el);
     setSafeHtml(el, () => '<p>hello</p><script>alert("xss")</script>');
@@ -1673,7 +1673,7 @@ describe('setSafeHtml', () => {
   });
 
   it('strips event handler attributes', async () => {
-    const { setSafeHtml } = await import('./dom.js');
+    const { setSafeHtml } = await import('./dom');
     const el = document.createElement('div');
     container.appendChild(el);
     setSafeHtml(el, () => '<img onerror="alert(1)" src="x">');
@@ -1681,7 +1681,7 @@ describe('setSafeHtml', () => {
   });
 
   it('strips javascript: URLs', async () => {
-    const { setSafeHtml } = await import('./dom.js');
+    const { setSafeHtml } = await import('./dom');
     const el = document.createElement('div');
     container.appendChild(el);
     setSafeHtml(el, () => '<a href="javascript:alert(1)">click</a>');
@@ -1689,7 +1689,7 @@ describe('setSafeHtml', () => {
   });
 
   it('strips <iframe> tags', async () => {
-    const { setSafeHtml } = await import('./dom.js');
+    const { setSafeHtml } = await import('./dom');
     const el = document.createElement('div');
     container.appendChild(el);
     setSafeHtml(el, () => '<iframe src="evil.com"></iframe><p>ok</p>');
@@ -1701,27 +1701,37 @@ describe('setSafeHtml', () => {
 // SEC-0001 regression tests — bypass vectors that defeated the old regex sanitizer
 describe('sanitizeHtml — SEC-0001 bypass regression tests', () => {
   it('strips onerror with slash separator (bypass 1: EVENT_ATTR_RE whitespace assumption)', async () => {
-    const { sanitizeHtml } = await import('./dom.js');
+    const { sanitizeHtml } = await import('./dom');
     const result = sanitizeHtml('<img/src=x/onerror=alert(1)>');
-    expect(result).not.toContain('onerror');
+    // the security property is "no live event-handler attribute survives", not
+    // "the substring onerror is absent": depending on the html parser the
+    // `/`-separated tokens parse either as a single benign `src` value (the
+    // literal "onerror" then appears inside a non-executing url) or as a
+    // distinct `onerror` attribute. either way no on* attribute may remain.
+    const doc = new DOMParser().parseFromString(result, 'text/html');
+    for (const el of Array.from(doc.querySelectorAll('*'))) {
+      for (const attr of Array.from(el.attributes)) {
+        expect(attr.name.toLowerCase().startsWith('on')).toBe(false);
+      }
+    }
   });
 
   it('strips svg onload with slash separator (bypass 2: svg not in old UNSAFE_TAGS_RE)', async () => {
-    const { sanitizeHtml } = await import('./dom.js');
+    const { sanitizeHtml } = await import('./dom');
     const result = sanitizeHtml('<svg/onload=alert(1)>');
     expect(result).not.toContain('onload');
   });
 
   it('strips nested script tag breakout (bypass 3: <scr<script>ipt> reconstruction)', async () => {
-    const { sanitizeHtml } = await import('./dom.js');
+    const { sanitizeHtml } = await import('./dom');
     const result = sanitizeHtml('<scr<script>ipt>alert(1)</script>');
     expect(result).not.toMatch(/<script/i);
     expect(result).not.toContain('ipt>alert(1)');
   });
 
   it('strips javascript: URI in style attribute (bypass 4: style not covered by old DANGEROUS_URI_RE)', async () => {
-    const { sanitizeHtml } = await import('./dom.js');
-    const result = sanitizeHtml("<p style=\"background:url('javascript:alert(1)')\">hello</p>");
+    const { sanitizeHtml } = await import('./dom');
+    const result = sanitizeHtml('<p style="background:url(\'javascript:alert(1)\')">hello</p>');
     expect(result).not.toContain('javascript:');
   });
 });
@@ -1740,17 +1750,21 @@ describe('hydrate — lifecycle and disposer capture', () => {
   });
 
   it('runs onMount callbacks after hydration', async () => {
-    const { hydrate } = await import('./hydration.js');
-    const { onMount } = await import('./component.js');
+    const { hydrate } = await import('./hydration');
+    const { onMount } = await import('./component');
 
     let mounted = false;
 
     const comp = {
       setup() {
-        onMount(() => { mounted = true; });
+        onMount(() => {
+          mounted = true;
+        });
         return {};
       },
-      render() { return document.createTextNode('hello'); },
+      render() {
+        return document.createTextNode('hello');
+      },
     };
 
     container.textContent = 'hello';

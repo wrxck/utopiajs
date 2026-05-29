@@ -6,6 +6,78 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-05-29
+
+A security- and performance-focused release. The headline change is keyed
+reconciliation in `createFor`; alongside it this release closes a set of XSS,
+injection, SSRF and memory-safety issues across the framework and adds
+regression tests for each. All relative import specifiers now omit the `.js`
+extension (the workspace already resolves modules via the bundler).
+
+### Security
+
+- `@matthesketh/utopia-runtime` / `@matthesketh/utopia-server` — `setAttr` now
+  blocks `javascript:`/`vbscript:` (and unsafe `data:`) URLs on URL-bearing
+  attributes and refuses to bind inline `on*` event-handler attributes, so a
+  bound user value can no longer become a DOM-XSS sink. `data:image/…` (and
+  audio/video/font) remain allowed on `src`/`poster`.
+- `@matthesketh/utopia-runtime` — the client HTML sanitiser now drops
+  `<script>`/`<style>`/`<iframe>` and other dangerous subtrees entirely
+  (matching the server sanitiser) and adds `rel="noopener noreferrer"` to
+  `target="_blank"` links.
+- `@matthesketh/utopia-content` — AMP pages now run `entry.html` through the
+  allowlist sanitiser instead of a bypassable regex script-strip; JSON-LD output
+  escapes `<`/`>`/`&` and the line/paragraph separators to prevent `</script>`
+  breakout; frontmatter parsing strips `__proto__`/`constructor`/`prototype`
+  keys.
+- `@matthesketh/utopia-content` — the filesystem adapter resolves symlinks and
+  uses a path-separator boundary check so reads/writes/deletes cannot escape the
+  content root, and validates the slug on `updateEntry`/`deleteEntry`.
+- `@matthesketh/utopia-ai` — the MCP HTTP handler gains an `authorize` gate and
+  an `allowedOrigins` allow-list (DNS-rebinding defence); the MCP server
+  validates JSON-RPC params and tool arguments against the declared schema and
+  no longer echoes raw handler exceptions to callers; the MCP client rejects
+  non-`http(s)` endpoints and no longer follows redirects (preventing
+  credential leakage to a redirect target).
+- `@matthesketh/utopia-email` — the mailer rejects CR/LF in recipient/subject/
+  header fields (header-injection defence).
+- `@matthesketh/utopia-server` — the SSR handler injects rendered markup with a
+  replacer function (so `$`-sequences are literal), validates API response
+  status codes, dispatches API routes only to own allow-listed methods, returns
+  400 (not 500) on malformed percent-encoding, and emits baseline security
+  headers plus an opt-in `csp`.
+- `@matthesketh/utopia-router` — same-origin guard applied on the `popstate`
+  redirect path and protocol-relative links rejected; route matching tolerates
+  malformed percent-encoding.
+- `@matthesketh/utopia-helmet` — descriptor values are escaped before being
+  interpolated into a `querySelector`.
+
+### Fixed
+
+- `@matthesketh/utopia-runtime` — child components mounted via `createComponent`
+  now have their effects disposed and `onDestroy` run when their parent
+  unmounts or their list row is removed; `createIf` disposes branch bindings on
+  toggle and tears down on unmount; `setHtml`/`setSafeHtml` register their
+  effects for disposal; lazy components clean up on unmount. These close a set
+  of memory leaks on unmount/toggle/list-removal.
+- `@matthesketh/utopia-email` — fixed catastrophic backtracking (ReDoS) in the
+  CSS-inliner tag regexes.
+
+### Performance
+
+- `@matthesketh/utopia-content` — the markdown processor is built once and
+  reused; parsed entries are cached by path + mtime, avoiding repeated disk
+  reads, frontmatter parsing and markdown rendering.
+- `@matthesketh/utopia-server` — SSR serialisation builds output in a single
+  buffer (was quadratic) and validates each tag once.
+- `@matthesketh/utopia-runtime` / `@matthesketh/utopia-server` — hoisted
+  per-call allocations out of `setAttr`.
+
+### Changed
+
+- All packages bumped to 0.8.0.
+- Relative imports no longer use `.js` extensions.
+
 ## [0.7.0] - 2026-03-16
 
 ### Added

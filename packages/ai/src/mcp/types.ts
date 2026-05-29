@@ -2,7 +2,7 @@
 // @matthesketh/utopia-ai — MCP Protocol Types
 // ============================================================================
 
-import type { JsonSchema } from '../types.js';
+import type { JsonSchema } from '../types';
 
 // ---------------------------------------------------------------------------
 // JSON-RPC 2.0
