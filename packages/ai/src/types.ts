@@ -189,7 +189,14 @@ export interface AIHooks {
     response: ChatResponse,
     request: ChatRequest,
   ) => ChatResponse | Promise<ChatResponse>;
-  /** Called on any adapter error. */
+  /**
+   * Called on any adapter error.
+   *
+   * `context.request` carries the full prompt (and any provider error may
+   * originate from the underlying SDK and reference request metadata), so do
+   * not forward these verbatim to an untrusted or shared log sink — redact or
+   * summarise first.
+   */
   onError?: (error: Error, context: { method: string; request?: ChatRequest }) => void;
 }
 

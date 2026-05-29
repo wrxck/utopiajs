@@ -51,10 +51,23 @@ interface OllamaChatResponse {
   eval_count?: number;
 }
 
-/** Matches a trailing slash for URL normalization. */
+/** matches a trailing slash for URL normalization. */
 export const TRAILING_SLASH_RE = /\/$/;
 
-/** Monotonic counter for generating unique tool call IDs. */
+/** upper bound on the unflushed ndjson stream buffer (memory-exhaustion guard). */
+const MAX_STREAM_BUFFER = 1024 * 1024;
+
+/** normalise and validate the base url: only http(s) is permitted (no file:, etc.). */
+function resolveBaseURL(raw: string | undefined): string {
+  const baseURL = (raw ?? 'http://localhost:11434').replace(TRAILING_SLASH_RE, '');
+  const protocol = new URL(baseURL).protocol;
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    throw new Error(`Ollama baseURL must be http(s): ${baseURL}`);
+  }
+  return baseURL;
+}
+
+/** monotonic counter for generating unique tool call IDs. */
 let ollamaToolCallCounter = 0;
 
 /**
@@ -70,7 +83,7 @@ let ollamaToolCallCounter = 0;
  * ```
  */
 export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
-  const baseURL = (config.baseURL ?? 'http://localhost:11434').replace(TRAILING_SLASH_RE, '');
+  const baseURL = resolveBaseURL(config.baseURL);
 
   return {
     async chat(request: ChatRequest): Promise<ChatResponse> {
@@ -170,6 +183,9 @@ export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
+        if (buffer.length > MAX_STREAM_BUFFER) {
+          throw new Error('Ollama stream exceeded maximum buffer size without a line delimiter');
+        }
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
 

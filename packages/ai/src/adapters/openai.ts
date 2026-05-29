@@ -50,6 +50,11 @@ export function openaiAdapter(config: OpenAIConfig): AIAdapter {
       );
     }
 
+    // only http(s) base urls are permitted (no file:, etc.).
+    if (config.baseURL && !/^https?:$/.test(new URL(config.baseURL).protocol)) {
+      throw new Error(`OpenAI baseURL must be http(s): ${config.baseURL}`);
+    }
+
     client = new OpenAICtor({
       apiKey: config.apiKey,
       baseURL: config.baseURL,

@@ -184,6 +184,35 @@ describe('list rows dispose child components on removal', () => {
   });
 });
 
+describe('createFor reuses nodes when reordering a primitive list', () => {
+  it('moves existing nodes instead of rebuilding the tail on reverse', () => {
+    const parent = document.createElement('div');
+    const anchor = document.createComment('for');
+    parent.appendChild(anchor);
+    document.body.appendChild(parent);
+
+    const items = signal(['a', 'b', 'c']);
+    createFor(
+      anchor,
+      () => items(),
+      (item) => {
+        const el = document.createElement('span');
+        el.textContent = item as string;
+        return el;
+      },
+    );
+
+    const nodeA = Array.from(parent.querySelectorAll('span')).find((n) => n.textContent === 'a')!;
+    items.set(['c', 'b', 'a']);
+    const after = Array.from(parent.querySelectorAll('span'));
+
+    expect(after.map((n) => n.textContent)).toEqual(['c', 'b', 'a']);
+    // the 'a' node was moved, not recreated (index-coupled keys would rebuild it).
+    expect(after.find((n) => n.textContent === 'a')).toBe(nodeA);
+    parent.remove();
+  });
+});
+
 describe('createIf disposes branch bindings on toggle', () => {
   it('stops the old branch effect after switching branches', () => {
     const parent = document.createElement('div');

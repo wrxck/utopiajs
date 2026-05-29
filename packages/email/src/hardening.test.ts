@@ -2,10 +2,28 @@
 // mailer header (crlf) injection.
 
 import { describe, it, expect } from 'vitest';
+import { renderToString } from '@matthesketh/utopia-server';
 
 import { inlineCSS } from './css-inliner';
 import { createMailer } from './mailer';
+import { EmailButton } from './components/email-button';
+import { EmailImage } from './components/email-image';
 import type { EmailAdapter, EmailMessage } from './types';
+
+describe('email components drop dangerous URL schemes', () => {
+  it('strips javascript: from an EmailButton href', () => {
+    const { html } = renderToString(EmailButton as never, {
+      href: 'javascript:alert(1)',
+      text: 'x',
+    });
+    expect(html).not.toContain('javascript:');
+  });
+
+  it('strips javascript: from an EmailImage src', () => {
+    const { html } = renderToString(EmailImage as never, { src: 'javascript:alert(1)', alt: 'x' });
+    expect(html).not.toContain('javascript:');
+  });
+});
 
 describe('css-inliner is not vulnerable to whitespace ReDoS', () => {
   it('processes a tag with a huge attribute whitespace run quickly', () => {

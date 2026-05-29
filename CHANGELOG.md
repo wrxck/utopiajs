@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-05-29
+
+Follow-up hardening on top of 0.8.0.
+
+### Security
+
+- `@matthesketh/utopia-ai` — the SSE and Ollama stream parsers now cap their
+  unflushed buffer, so an upstream that sends a large amount of data with no
+  line delimiter can no longer exhaust memory.
+- `@matthesketh/utopia-ai` — the Ollama, OpenAI and Anthropic adapters validate
+  that a configured `baseURL` is `http(s)` (rejecting `file:` and other
+  schemes). The `onError` hook is documented as receiving sensitive request
+  context that must not be logged verbatim.
+
+### Performance
+
+- `@matthesketh/utopia-runtime` — `createFor` now keys primitive lists by value
+  rather than by index, so reordering a list of primitives reuses and moves the
+  existing nodes instead of rebuilding the tail.
+
+### Changed
+
+- All packages bumped to 0.8.1.
+
 ## [0.8.0] - 2026-05-29
 
 A security- and performance-focused release. The headline change is keyed
