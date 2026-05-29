@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { computed } from '@matthesketh/utopia-core';
-import { currentRoute, navigate } from './router.js';
+import { currentRoute, navigate } from './router';
 
 /**
  * Reactive computed signal returning all current query parameters as a plain object.

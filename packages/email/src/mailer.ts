@@ -2,11 +2,26 @@
 // @matthesketh/utopia-email — Mailer abstraction
 // ============================================================================
 
-import { renderEmail } from './render-email.js';
-import type { EmailAdapter, EmailResult, MailerSendOptions } from './types.js';
+import { renderEmail } from './render-email';
+import type { EmailAdapter, EmailResult, MailerSendOptions } from './types';
 
 export interface Mailer {
   send(options: MailerSendOptions): Promise<EmailResult>;
+}
+
+/**
+ * reject CR/LF in any field that becomes an email header. without this a value
+ * like `"hi\r\nBcc: victim@x"` in a subject/recipient could inject extra
+ * headers or a new body once an adapter writes raw smtp headers.
+ */
+function assertNoHeaderInjection(value: string | string[] | undefined, field: string): void {
+  if (value === undefined) return;
+  const values = Array.isArray(value) ? value : [value];
+  for (const v of values) {
+    if (typeof v === 'string' && /[\r\n]/.test(v)) {
+      throw new Error(`Email header injection detected in "${field}"`);
+    }
+  }
 }
 
 /**
@@ -38,7 +53,15 @@ export function createMailer(adapter: EmailAdapter): Mailer {
 
       const emailSubject = subject ?? rendered.subject ?? '';
 
-      // Send via adapter
+      // reject header injection before anything is handed to the adapter.
+      assertNoHeaderInjection(to, 'to');
+      assertNoHeaderInjection(from, 'from');
+      assertNoHeaderInjection(emailSubject, 'subject');
+      assertNoHeaderInjection(cc, 'cc');
+      assertNoHeaderInjection(bcc, 'bcc');
+      assertNoHeaderInjection(replyTo, 'replyTo');
+
+      // send via adapter
       return adapter.send({
         to,
         from,

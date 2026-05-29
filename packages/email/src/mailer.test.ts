@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createMailer } from './mailer.js';
+import { createMailer } from './mailer';
 import {
   createElement,
   createTextNode,
   appendChild,
   setAttr,
 } from '@matthesketh/utopia-server/ssr-runtime';
-import type { EmailAdapter, EmailMessage, EmailResult } from './types.js';
+import type { EmailAdapter, EmailMessage, EmailResult } from './types';
 
 // Simple test component
 const TestComponent = {

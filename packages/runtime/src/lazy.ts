@@ -6,9 +6,8 @@
 // Shows an optional fallback during loading, then swaps in the real component.
 // ============================================================================
 
-import type { ComponentDefinition } from './component.js';
-import { createComponent } from './directives.js';
-import { removeNode } from './dom.js';
+import { pushDisposer, type ComponentDefinition } from './component';
+import { createComponent } from './directives';
 
 /** Cache for loaded modules, keyed by loader function. */
 const moduleCache = new Map<() => Promise<{ default: ComponentDefinition }>, ComponentDefinition>();
@@ -38,11 +37,18 @@ export function defineLazy(
         return createComponent(cached, ctx);
       }
 
-      // Create a container for the swap.
+      // create a container for the swap.
       const container = document.createElement('div');
       container.setAttribute('data-utopia-lazy', '');
 
-      // Show fallback while loading.
+      // the real component mounts asynchronously, outside any disposer-capture
+      // scope, so capture its cleanup here and forward it to the surrounding
+      // scope — otherwise the lazy component's effects + onDestroy leaked on
+      // unmount.
+      let innerCleanup: (() => void) | undefined;
+      pushDisposer(() => innerCleanup?.());
+
+      // show fallback while loading.
       if (fallback) {
         const fallbackNode = fallback();
         container.appendChild(fallbackNode);
@@ -64,11 +70,12 @@ export function defineLazy(
           // Don't mutate if container has been detached from the DOM.
           if (!container.parentNode) return;
 
-          // Clear fallback and mount real component.
+          // clear fallback and mount real component.
           while (container.firstChild) {
             container.removeChild(container.firstChild);
           }
           const node = createComponent(Component, ctx);
+          innerCleanup = (node as { __cleanup?: () => void }).__cleanup;
           container.appendChild(node);
         })
         .catch((err) => {

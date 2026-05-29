@@ -3,11 +3,24 @@
 // ============================================================================
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { MCPServer } from './server.js';
-import type { JsonRpcRequest } from './types.js';
+import type { MCPServer } from './server';
+import type { JsonRpcRequest } from './types';
 
 export interface MCPHandlerOptions {
   corsOrigin?: string;
+  /**
+   * allow-list of permitted `Origin` header values. when set, any request
+   * carrying an `Origin` not in the list is rejected with 403. this is the
+   * primary defence against dns-rebinding attacks on a locally-bound server.
+   */
+  allowedOrigins?: string[];
+  /**
+   * authorisation gate run before any request is dispatched to the server.
+   * return false (or throw) to reject with 401. an mcp server exposes tool
+   * execution, so it must not be reachable on a network without an authz
+   * check — there is intentionally no default-allow for remote callers.
+   */
+  authorize?: (req: IncomingMessage) => boolean | Promise<boolean>;
 }
 
 /**
@@ -35,6 +48,8 @@ export function createMCPHandler(
   options?: MCPHandlerOptions,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   const corsOrigin = options?.corsOrigin;
+  const allowedOrigins = options?.allowedOrigins;
+  const authorize = options?.authorize;
 
   return async (req: IncomingMessage, res: ServerResponse) => {
     // CORS headers (only set if explicitly configured)
@@ -50,9 +65,40 @@ export function createMCPHandler(
       return;
     }
 
+    // reject cross-origin requests early (dns-rebinding defence). only enforced
+    // when an allow-list is configured so existing same-origin setups are
+    // unaffected.
+    const origin = req.headers.origin;
+    if (allowedOrigins && origin !== undefined && !allowedOrigins.includes(origin)) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      res.end('Forbidden');
+      return;
+    }
+
+    // authorisation gate — runs before any tool/resource/prompt dispatch.
+    if (authorize) {
+      let allowed = false;
+      try {
+        allowed = await authorize(req);
+      } catch {
+        allowed = false;
+      }
+      if (!allowed) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: null,
+            error: { code: -32600, message: 'Unauthorized' },
+          }),
+        );
+        return;
+      }
+    }
+
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
-    // SSE endpoint for Streamable HTTP transport
+    // sse endpoint for streamable http transport
     if (url.pathname.endsWith('/sse') && req.method === 'GET') {
       handleSSE(server, req, res);
       return;

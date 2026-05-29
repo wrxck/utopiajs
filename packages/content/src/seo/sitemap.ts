@@ -1,4 +1,4 @@
-import type { SeoConfig, SeoEntry } from './types.js';
+import type { SeoConfig, SeoEntry } from './types';
 
 function escapeXml(str: string): string {
   return str

@@ -2,13 +2,13 @@
 // @matthesketh/utopia-ai — MCP Public API
 // ============================================================================
 
-export { createMCPServer } from './server.js';
-export type { MCPServer } from './server.js';
+export { createMCPServer } from './server';
+export type { MCPServer } from './server';
 
-export { createMCPClient } from './client.js';
-export type { MCPClient } from './client.js';
+export { createMCPClient } from './client';
+export type { MCPClient } from './client';
 
-export { createMCPHandler } from './handler.js';
+export { createMCPHandler } from './handler';
 
 export type {
   MCPServerConfig,
@@ -29,4 +29,4 @@ export type {
   JsonRpcResponse,
   JsonRpcError,
   JsonRpcNotification,
-} from './types.js';
+} from './types';

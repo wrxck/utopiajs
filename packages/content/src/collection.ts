@@ -5,9 +5,9 @@ import type {
   ContentEntry,
   ContentAdapter,
   QueryOptions,
-} from './types.js';
-import { validateSchema, applyDefaults } from './schema.js';
-import { createFilesystemAdapter } from './adapters/filesystem.js';
+} from './types';
+import { validateSchema, applyDefaults } from './schema';
+import { createFilesystemAdapter } from './adapters/filesystem';
 
 /** Registry of defined collections */
 const collections = new Map<string, Collection>();

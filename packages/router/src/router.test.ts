@@ -17,7 +17,7 @@
 // @vitest-environment happy-dom
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { filePathToRoute, compilePattern, matchRoute, buildRouteTable } from './matcher.js';
+import { filePathToRoute, compilePattern, matchRoute, buildRouteTable } from './matcher';
 import {
   createRouter,
   currentRoute,
@@ -25,9 +25,9 @@ import {
   navigate,
   beforeNavigate,
   destroy,
-} from './router.js';
-import { createLink } from './components.js';
-import type { Route, RouteMatch } from './types.js';
+} from './router';
+import { createLink } from './components';
+import type { Route, RouteMatch } from './types';
 
 /** Extended anchor type exposing the dispose function attached by createLink. */
 interface LinkWithDispose extends HTMLAnchorElement {

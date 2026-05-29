@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { signal } from '@matthesketh/utopia-core';
-import type { VElement, VText, VComment, VNode } from './vnode.js';
+import type { VElement, VText, VComment, VNode } from './vnode';
 import {
   createElement,
   createTextNode,
@@ -34,10 +34,10 @@ import {
   startCapturingDisposers,
   stopCapturingDisposers,
   useHead,
-} from './ssr-runtime.js';
-import { renderToString, serializeVNode, serializeHead } from './render-to-string.js';
-import { renderToStream } from './render-to-stream.js';
-import { createServerRouter } from './server-router.js';
+} from './ssr-runtime';
+import { renderToString, serializeVNode, serializeHead } from './render-to-string';
+import { renderToStream } from './render-to-stream';
+import { createServerRouter } from './server-router';
 
 // =========================================================================
 // VNode creation
@@ -761,7 +761,7 @@ describe('SSR useHead', () => {
 // API routes
 // =========================================================================
 
-import { buildApiRoutes, handleApiRequest } from './api-handler.js';
+import { buildApiRoutes, handleApiRequest } from './api-handler';
 
 describe('API routes', () => {
   it('buildApiRoutes creates route table from manifest', () => {
@@ -848,7 +848,7 @@ describe('API routes', () => {
 // SSR error boundaries
 // =========================================================================
 
-import { createErrorBoundary } from './ssr-runtime.js';
+import { createErrorBoundary } from './ssr-runtime';
 
 describe('SSR createErrorBoundary', () => {
   it('renders try function when it succeeds', () => {
@@ -882,7 +882,7 @@ describe('SSR createErrorBoundary', () => {
 // SSR lazy components
 // =========================================================================
 
-import { defineLazy } from './ssr-runtime.js';
+import { defineLazy } from './ssr-runtime';
 
 describe('SSR defineLazy', () => {
   it('returns a component that renders the fallback', () => {
@@ -987,22 +987,22 @@ describe('Security — VNode depth limit', () => {
 
 describe('escapeAttr — extended escaping', () => {
   it('escapes single quotes', async () => {
-    const { escapeAttr } = await import('./html-utils.js');
+    const { escapeAttr } = await import('./html-utils');
     expect(escapeAttr("it's")).toBe('it&#39;s');
   });
 
   it('escapes angle brackets', async () => {
-    const { escapeAttr } = await import('./html-utils.js');
+    const { escapeAttr } = await import('./html-utils');
     expect(escapeAttr('<script>')).toBe('&lt;script&gt;');
   });
 
   it('escapes double quotes', async () => {
-    const { escapeAttr } = await import('./html-utils.js');
+    const { escapeAttr } = await import('./html-utils');
     expect(escapeAttr('say "hello"')).toBe('say &quot;hello&quot;');
   });
 
   it('escapes ampersands', async () => {
-    const { escapeAttr } = await import('./html-utils.js');
+    const { escapeAttr } = await import('./html-utils');
     expect(escapeAttr('a&b')).toBe('a&amp;b');
   });
 });

@@ -8,9 +8,9 @@
 // ============================================================================
 
 // Types
-export type { HeadConfig, MetaDescriptor, LinkDescriptor, FaviconConfig } from './types.js';
+export type { HeadConfig, MetaDescriptor, LinkDescriptor, FaviconConfig } from './types';
 
-export type { ManifestIcon, WebManifest } from './favicon.js';
+export type { ManifestIcon, WebManifest } from './favicon';
 
 // Head management
 export {
@@ -22,7 +22,7 @@ export {
   setHead,
   useHead,
   resetHead,
-} from './head.js';
+} from './head';
 
 // Favicon generation
 export {
@@ -31,4 +31,4 @@ export {
   generateMaskSvg,
   generateManifest,
   faviconLinks,
-} from './favicon.js';
+} from './favicon';

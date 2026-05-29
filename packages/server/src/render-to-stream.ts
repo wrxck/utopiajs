@@ -3,9 +3,9 @@
 // ============================================================================
 
 import { Readable } from 'node:stream';
-import type { VNode, VElement } from './vnode.js';
-import type { ComponentDefinition } from './ssr-runtime.js';
-import { createComponent, flushStyles } from './ssr-runtime.js';
+import type { VNode, VElement } from './vnode';
+import type { ComponentDefinition } from './ssr-runtime';
+import { createComponent, flushStyles } from './ssr-runtime';
 import {
   VOID_ELEMENTS,
   escapeHtml,
@@ -14,7 +14,7 @@ import {
   escapeStyleContent,
   validateTag,
   validateAttr,
-} from './html-utils.js';
+} from './html-utils';
 
 /**
  * Render a component to a Node.js Readable stream.

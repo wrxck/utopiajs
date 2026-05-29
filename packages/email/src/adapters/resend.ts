@@ -2,7 +2,7 @@
 // @matthesketh/utopia-email — Resend Adapter
 // ============================================================================
 
-import type { EmailAdapter, EmailMessage, EmailResult, ResendConfig } from '../types.js';
+import type { EmailAdapter, EmailMessage, EmailResult, ResendConfig } from '../types';
 
 /**
  * Create a Resend email adapter.

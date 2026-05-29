@@ -2,10 +2,10 @@
 // @matthesketh/utopia-ai — Public API
 // ============================================================================
 
-export { createAI } from './ai.js';
-export { streamSSE, collectStream, parseSSEStream } from './streaming.js';
+export { createAI } from './ai';
+export { streamSSE, collectStream, parseSSEStream } from './streaming';
 
-export type { AI, ToolHandler, RunOptions, CreateAIOptions } from './ai.js';
+export type { AI, ToolHandler, RunOptions, CreateAIOptions } from './ai';
 
 export type {
   AIAdapter,
@@ -31,4 +31,4 @@ export type {
   OllamaConfig,
   AIHooks,
   RetryConfig,
-} from './types.js';
+} from './types';

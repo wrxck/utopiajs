@@ -14,7 +14,7 @@
 //
 // ============================================================================
 
-import type { Route, RouteMatch } from './types.js';
+import type { Route, RouteMatch } from './types';
 
 // ---------------------------------------------------------------------------
 // Regex constants — all patterns extracted for auditability and reuse
@@ -214,7 +214,15 @@ export function matchRoute(url: URL, routes: Route[]): RouteMatch | null {
     if (match) {
       const params: Record<string, string> = {};
       for (let i = 0; i < route.params.length; i++) {
-        params[route.params[i]] = decodeURIComponent(match[i + 1]);
+        const raw = match[i + 1];
+        // a malformed percent-escape (e.g. /blog/%E0%A4) makes
+        // decodeURIComponent throw a URIError; fall back to the raw segment so
+        // a crafted link can't break routing instead of yielding a match.
+        try {
+          params[route.params[i]] = decodeURIComponent(raw);
+        } catch {
+          params[route.params[i]] = raw;
+        }
       }
       return { route, params, url };
     }

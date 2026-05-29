@@ -1,4 +1,4 @@
-import type { SeoConfig } from './types.js';
+import type { SeoConfig } from './types';
 
 /** Generate robots.txt with sitemap reference */
 export function generateRobots(config: SeoConfig): string {

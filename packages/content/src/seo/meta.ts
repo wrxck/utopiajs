@@ -1,4 +1,4 @@
-import type { SeoConfig, SeoEntry } from './types.js';
+import type { SeoConfig, SeoEntry } from './types';
 
 function escapeHtml(str: string): string {
   return str
@@ -8,7 +8,7 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-/** Generate <meta> and JSON-LD tags for a blog post */
+/** generate <meta> and json-ld tags for a blog post */
 export function generateMetaTags(entry: SeoEntry, config: SeoConfig): string {
   const url = `${config.siteUrl}/${config.routePrefix ?? 'blog'}/${entry.slug}`;
   const ogImageUrl = `${config.siteUrl}/og/${entry.slug}.png`;
@@ -31,7 +31,7 @@ export function generateMetaTags(entry: SeoEntry, config: SeoConfig): string {
     `<meta property="og:image:height" content="630">`,
     `<meta property="og:locale" content="${locale}">`,
     `<meta property="og:site_name" content="${escapeHtml(config.siteTitle)}">`,
-    // Article
+    // article
     `<meta property="article:published_time" content="${new Date(entry.date).toISOString()}">`,
   ];
 
@@ -45,7 +45,7 @@ export function generateMetaTags(entry: SeoEntry, config: SeoConfig): string {
     }
   }
 
-  // Twitter
+  // twitter
   lines.push(
     `<meta name="twitter:card" content="summary_large_image">`,
     `<meta name="twitter:title" content="${escapeHtml(entry.title)}">`,
@@ -56,7 +56,21 @@ export function generateMetaTags(entry: SeoEntry, config: SeoConfig): string {
   return lines.join('\n  ');
 }
 
-/** Generate JSON-LD BlogPosting structured data */
+/**
+ * escape characters that would otherwise let attacker-influenced json-ld values
+ * break out of the surrounding <script> element. JSON.stringify does not escape
+ * `<`, `>`, `&` or the U+2028/U+2029 line/paragraph separators, so a `</script>`
+ * embedded in a title/description would close the json-ld block and inject
+ * markup. encoding them as \u escapes keeps the json valid and inert.
+ */
+function escapeJsonForHtml(json: string): string {
+  return json.replace(
+    /[<>&\u2028\u2029]/g,
+    (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'),
+  );
+}
+
+/** generate json-ld BlogPosting structured data */
 export function generateJsonLd(entry: SeoEntry, config: SeoConfig): string {
   const url = `${config.siteUrl}/${config.routePrefix ?? 'blog'}/${entry.slug}`;
   const ogImageUrl = `${config.siteUrl}/og/${entry.slug}.png`;
@@ -91,5 +105,5 @@ export function generateJsonLd(entry: SeoEntry, config: SeoConfig): string {
     ld.keywords = entry.tags.join(', ');
   }
 
-  return `<script type="application/ld+json">\n  ${JSON.stringify(ld)}\n  </script>`;
+  return `<script type="application/ld+json">\n  ${escapeJsonForHtml(JSON.stringify(ld))}\n  </script>`;
 }

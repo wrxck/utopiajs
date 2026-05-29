@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { createElement, appendChild, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
-import type { EmailComponentContext } from '../types.js';
+import type { EmailComponentContext } from '../types';
 
 const HEADING_SIZES: Record<number, string> = {
   1: '28px',

@@ -16,9 +16,9 @@
 // ============================================================================
 
 import { signal } from '@matthesketh/utopia-core';
-import { matchRoute } from './matcher.js';
-import { compilePattern } from './matcher.js';
-import type { Route, RouteConfig, RouteMatch, BeforeNavigateHook } from './types.js';
+import { matchRoute } from './matcher';
+import { compilePattern } from './matcher';
+import type { Route, RouteConfig, RouteMatch, BeforeNavigateHook } from './types';
 
 // ---------------------------------------------------------------------------
 // Regex constants
@@ -153,7 +153,19 @@ export function createRouter(routeTable: (Route | RouteConfig)[]): void {
         }
 
         if (typeof result === 'string') {
-          // Redirect.
+          // apply the same same-origin guard as navigate()'s guard-result path:
+          // a redirect computed during back/forward must not send the user
+          // cross-origin (e.g. a guard reading an attacker-controlled returnTo).
+          let safe = true;
+          try {
+            safe = new URL(result, window.location.origin).origin === window.location.origin;
+          } catch {
+            safe = false;
+          }
+          if (!safe) {
+            console.error('[utopia] Cross-origin redirect blocked:', result);
+            return;
+          }
           navigate(result, { replace: true });
           return;
         }
@@ -204,7 +216,9 @@ export function createRouter(routeTable: (Route | RouteConfig)[]): void {
         return;
       }
 
-      // Skip external links and non-HTTP protocols.
+      // skip external links and non-HTTP protocols. a protocol-relative href
+      // (`//evil.com`) starts with `/` but is cross-origin, so exclude it first.
+      if (href.startsWith('//')) return;
       if (!href.startsWith('/') && !href.startsWith(window.location.origin)) return;
 
       event.preventDefault();

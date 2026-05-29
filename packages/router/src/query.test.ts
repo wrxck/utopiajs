@@ -5,16 +5,10 @@
 // @vitest-environment happy-dom
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { buildRouteTable } from './matcher.js';
-import { createRouter, currentRoute, navigate, destroy } from './router.js';
-import {
-  queryParams,
-  getQueryParam,
-  setQueryParam,
-  setQueryParams,
-  getRouteParam,
-} from './query.js';
-import type { Route } from './types.js';
+import { buildRouteTable } from './matcher';
+import { createRouter, currentRoute, navigate, destroy } from './router';
+import { queryParams, getQueryParam, setQueryParam, setQueryParams, getRouteParam } from './query';
+import type { Route } from './types';
 
 // Helper to create a route table with a dynamic route.
 const makeRoutes = (): Route[] => {

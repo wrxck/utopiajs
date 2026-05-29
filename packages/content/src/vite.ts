@@ -3,16 +3,16 @@ import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join, extname, basename, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { parseFrontmatter } from './frontmatter.js';
-import { renderMarkdown } from './markdown.js';
-import { generateRssFeed, generateAtomFeed } from './feed.js';
-import type { FeedOptions } from './feed.js';
-import type { SeoOptions, SeoConfig, SeoEntry } from './seo/types.js';
-import { extractAssetTags, generatePrerenderedPage } from './seo/prerender.js';
-import { generateAmpPage } from './seo/amp.js';
-import { generateOgSvg, svgToPng } from './seo/og-image.js';
-import { generateSitemap } from './seo/sitemap.js';
-import { generateRobots } from './seo/robots.js';
+import { parseFrontmatter } from './frontmatter';
+import { renderMarkdown } from './markdown';
+import { generateRssFeed, generateAtomFeed } from './feed';
+import type { FeedOptions } from './feed';
+import type { SeoOptions, SeoConfig, SeoEntry } from './seo/types';
+import { extractAssetTags, generatePrerenderedPage } from './seo/prerender';
+import { generateAmpPage } from './seo/amp';
+import { generateOgSvg, svgToPng } from './seo/og-image';
+import { generateSitemap } from './seo/sitemap';
+import { generateRobots } from './seo/robots';
 
 export interface ContentPluginOptions {
   /** Base directory for content files (default: 'content') */

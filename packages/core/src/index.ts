@@ -575,5 +575,5 @@ export function untrack<T>(fn: () => T): T {
 // Shared signals (cross-tab sync via BroadcastChannel)
 // ---------------------------------------------------------------------------
 
-export { sharedSignal } from './shared.js';
-export type { SharedSignal, SharedSignalOptions } from './shared.js';
+export { sharedSignal } from './shared';
+export type { SharedSignal, SharedSignalOptions } from './shared';

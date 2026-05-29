@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { htmlToText } from './html-to-text.js';
+import { htmlToText } from './html-to-text';
 
 describe('HTML to Text', () => {
   it('strips HTML tags', () => {

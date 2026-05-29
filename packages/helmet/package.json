@@ -1,6 +1,6 @@
 {
   "name": "@matthesketh/utopia-helmet",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Document head management and favicon generation for UtopiaJS",
   "type": "module",
   "license": "MIT",

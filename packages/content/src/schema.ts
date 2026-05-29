@@ -1,4 +1,4 @@
-import type { CollectionSchema, SchemaField, ValidationError } from './types.js';
+import type { CollectionSchema, SchemaField, ValidationError } from './types';
 
 /**
  * Validate data against a collection schema.

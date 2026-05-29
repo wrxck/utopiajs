@@ -56,11 +56,17 @@ export const LEADING_PSEUDO_RE = /^:[\w-]+(\([^)]*\))?/;
 /** Matches whitespace runs (for splitting). */
 export const WHITESPACE_RUN_RE = /\s+/;
 
-/** Matches an opening HTML tag, capturing tag name and attributes. */
-export const OPENING_TAG_RE = /<([a-zA-Z][\w-]*)(\s[^>]*?)?\s*\/?>/g;
+// the attribute region is captured with a single greedy `[^>]*` rather than the
+// previous `(\s[^>]*?)?\s*` form. that form was ambiguous — the lazy `[^>]*?`
+// and the trailing `\s*` could both match the same whitespace run, so a tag
+// with a long whitespace run backtracked quadratically (a multi-second stall on
+// a crafted attribute value). a single `[^>]*` has no such overlap.
 
-/** Matches any HTML tag (opening or closing), capturing tag name and attributes. */
-export const ALL_TAGS_RE = /<\/?([a-zA-Z][\w-]*)(\s[^>]*?)?\s*\/?>/g;
+/** matches an opening HTML tag, capturing tag name and attributes. */
+export const OPENING_TAG_RE = /<([a-zA-Z][\w-]*)([^>]*)>/g;
+
+/** matches any HTML tag (opening or closing), capturing tag name and attributes. */
+export const ALL_TAGS_RE = /<\/?([a-zA-Z][\w-]*)([^>]*)>/g;
 
 /** Matches an HTML attribute name and optional quoted value. */
 export const ATTR_PARSE_RE = /([a-zA-Z_:][\w:.-]*)\s*(?:=\s*"([^"]*)")?/g;

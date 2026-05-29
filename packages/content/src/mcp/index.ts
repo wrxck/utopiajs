@@ -1,6 +1,6 @@
-import type { CollectionConfig, ContentAdapter } from '../types.js';
-import { createFilesystemAdapter, validateSlug } from '../adapters/filesystem.js';
-import { createContentTools } from './tools.js';
+import type { CollectionConfig, ContentAdapter } from '../types';
+import { createFilesystemAdapter, validateSlug } from '../adapters/filesystem';
+import { createContentTools } from './tools';
 
 /** JSON-RPC 2.0 types (self-contained — no dependency on @matthesketh/utopia-ai) */
 interface JsonRpcRequest {
@@ -163,5 +163,5 @@ export function createContentMCPServer(config: ContentMCPServerConfig): ContentM
   return { handleRequest, info: () => serverInfo };
 }
 
-export { createContentTools } from './tools.js';
-export type { ContentToolHandler, ContentToolDefinition, ContentToolResult } from './tools.js';
+export { createContentTools } from './tools';
+export type { ContentToolHandler, ContentToolDefinition, ContentToolResult } from './tools';

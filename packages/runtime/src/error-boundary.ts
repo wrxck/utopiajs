@@ -7,8 +7,8 @@
 // ============================================================================
 
 import { signal } from '@matthesketh/utopia-core';
-import { startCapturingDisposers, stopCapturingDisposers } from './component.js';
-import { removeNode } from './dom.js';
+import { startCapturingDisposers, stopCapturingDisposers } from './component';
+import { removeNode } from './dom';
 
 /**
  * Create an error boundary that catches errors during rendering.

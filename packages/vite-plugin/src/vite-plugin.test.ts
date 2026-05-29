@@ -4,7 +4,7 @@
 // ============================================================================
 
 import { describe, it, expect } from 'vitest';
-import utopiaPlugin from './index.js';
+import utopiaPlugin from './index';
 import type { Plugin } from 'vite';
 
 // Helper to extract the plugin hooks from the returned plugin object.

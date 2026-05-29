@@ -13,8 +13,8 @@ import {
   stopCapturingLifecycle,
   startCapturingDisposers,
   stopCapturingDisposers,
-} from './component.js';
-import type { ComponentDefinition, ComponentInstance } from './component.js';
+} from './component';
+import type { ComponentDefinition, ComponentInstance } from './component';
 
 // ---------------------------------------------------------------------------
 // Hydration state — module-level so dom.ts helpers can check it
@@ -86,7 +86,10 @@ export function exitNode(): void {
  * @param target    - A CSS selector string or DOM Element containing the
  *                    server-rendered HTML
  */
-export function hydrate(component: ComponentDefinition, target: string | Element): ComponentInstance {
+export function hydrate(
+  component: ComponentDefinition,
+  target: string | Element,
+): ComponentInstance {
   const el = typeof target === 'string' ? document.querySelector(target) : target;
 
   if (!el) {

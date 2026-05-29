@@ -3,7 +3,7 @@
 // ============================================================================
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { ChatChunk } from './types.js';
+import type { ChatChunk } from './types';
 
 /**
  * Stream AI chat chunks as Server-Sent Events (SSE).

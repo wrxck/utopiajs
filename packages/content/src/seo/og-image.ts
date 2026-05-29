@@ -1,4 +1,4 @@
-import type { OgImageConfig } from './types.js';
+import type { OgImageConfig } from './types';
 
 /**
  * DM Mono "M" glyph as an SVG path (no font rendering needed).

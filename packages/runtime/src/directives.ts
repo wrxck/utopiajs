@@ -6,7 +6,7 @@
  */
 
 import { effect } from '@matthesketh/utopia-core';
-import { insertBefore, removeNode } from './dom.js';
+import { insertBefore, removeNode } from './dom';
 import {
   createComponentInstance,
   pushDisposer,
@@ -14,8 +14,8 @@ import {
   stopCapturingDisposers,
   startCapturingLifecycle,
   stopCapturingLifecycle,
-} from './component.js';
-import type { ComponentDefinition } from './component.js';
+} from './component';
+import type { ComponentDefinition } from './component';
 
 /** A DOM Node with optional cleanup/dispose callbacks attached by the runtime. */
 interface DisposableNode extends Node {
@@ -27,24 +27,6 @@ interface DisposableNode extends Node {
 // ---------------------------------------------------------------------------
 
 const injectedStyles = new Set<string>();
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Remove an array of DOM nodes (and run their __cleanup if present) and clear
- * the array in-place.
- */
-function clearNodes(nodes: Node[]): void {
-  for (const node of nodes) {
-    if ((node as DisposableNode).__cleanup) {
-      (node as DisposableNode).__cleanup!();
-    }
-    removeNode(node);
-  }
-  nodes.length = 0;
-}
 
 // ---------------------------------------------------------------------------
 // createIf
@@ -68,12 +50,49 @@ export function createIf(
   renderFalse?: () => Node,
 ): () => void {
   let currentNodes: Node[] = [];
+  let currentDisposers: (() => void)[] = [];
   let lastConditionTruthy: boolean | undefined;
+  let disposed = false;
+
+  // tear down the active branch: dispose the effects captured during its
+  // render, run any child-component cleanup, then remove its nodes. without
+  // disposing the captured effects, every toggle leaked the previous branch's
+  // reactive bindings (they kept firing against detached dom).
+  const teardownBranch = (): void => {
+    for (const d of currentDisposers) {
+      try {
+        d();
+      } catch {
+        /* dispose path must not throw */
+      }
+    }
+    currentDisposers = [];
+    for (const node of currentNodes) {
+      (node as DisposableNode).__cleanup?.();
+      removeNode(node);
+    }
+    currentNodes.length = 0;
+  };
+
+  // render a branch inside its OWN disposer-capture scope so its bindings are
+  // owned by the branch (disposed on the next toggle) instead of the
+  // surrounding component scope (disposed only on full unmount).
+  const renderBranch = (factory: () => Node, parent: Node): void => {
+    const prev = startCapturingDisposers();
+    let node: Node;
+    try {
+      node = factory();
+    } finally {
+      currentDisposers = stopCapturingDisposers(prev);
+    }
+    currentNodes.push(node);
+    insertBefore(parent, node, anchor);
+  };
 
   const dispose = effect(() => {
     const truthy = !!condition();
 
-    // Only switch branches when the truthiness actually changes.
+    // only switch branches when the truthiness actually changes.
     if (truthy === lastConditionTruthy) {
       return;
     }
@@ -82,24 +101,27 @@ export function createIf(
     const parent = anchor.parentNode;
     if (!parent) return;
 
-    // Tear down existing branch nodes.
-    clearNodes(currentNodes);
+    teardownBranch();
 
     if (truthy) {
-      const node = renderTrue();
-      currentNodes.push(node);
-      insertBefore(parent, node, anchor);
+      renderBranch(renderTrue, parent);
     } else if (renderFalse) {
-      const node = renderFalse();
-      currentNodes.push(node);
-      insertBefore(parent, node, anchor);
+      renderBranch(renderFalse, parent);
     }
   });
 
-  return () => {
+  const disposeAll = (): void => {
+    if (disposed) return;
+    disposed = true;
     dispose();
-    clearNodes(currentNodes);
+    teardownBranch();
   };
+
+  // forward teardown to the surrounding scope (component or outer createFor/
+  // createIf) so a parent unmount disposes this effect and its live branch —
+  // the compiler emits createIf as a bare statement and discards the return.
+  pushDisposer(disposeAll);
+  return disposeAll;
 }
 
 // ---------------------------------------------------------------------------
@@ -175,7 +197,11 @@ export function createFor<T>(
     const disposers = stopCapturingDisposers(prev);
     const dispose = (): void => {
       for (const d of disposers) {
-        try { d(); } catch { /* swallow — dispose path must not throw */ }
+        try {
+          d();
+        } catch {
+          /* swallow — dispose path must not throw */
+        }
       }
     };
     return { key: k, node, dispose };
@@ -210,7 +236,11 @@ export function createFor<T>(
 
     // remove nodes whose keys are gone, disposing their captured effects.
     for (const e of prevByKey.values()) {
-      try { e.dispose(); } catch { /* ignore */ }
+      try {
+        e.dispose();
+      } catch {
+        /* ignore */
+      }
       if (e.node.parentNode === parent) parent.removeChild(e.node);
     }
 
@@ -233,7 +263,11 @@ export function createFor<T>(
     reconcile();
     const parent = anchor.parentNode;
     for (const e of entries) {
-      try { e.dispose(); } catch { /* ignore */ }
+      try {
+        e.dispose();
+      } catch {
+        /* ignore */
+      }
       if (parent && e.node.parentNode === parent) parent.removeChild(e.node);
     }
     entries = [];
@@ -318,17 +352,37 @@ export function createComponent(
     cb();
   }
 
-  // Attach a cleanup function to the node so callers can dispose effects
-  // and run onDestroy callbacks.
+  // attach a cleanup function to the node so callers can dispose effects and
+  // run onDestroy callbacks. the flag makes it idempotent because the cleanup
+  // is reachable from two paths (pushDisposer below + a createIf branch
+  // teardown that also calls node.__cleanup directly).
   const node = instance.el;
-  (node as DisposableNode).__cleanup = () => {
+  let cleaned = false;
+  const cleanup = (): void => {
+    if (cleaned) return;
+    cleaned = true;
     for (const cb of lifecycle.destroy) {
-      cb();
+      try {
+        cb();
+      } catch {
+        /* a faulty onDestroy must not abort teardown of the rest */
+      }
     }
     for (const dispose of disposers) {
-      dispose();
+      try {
+        dispose();
+      } catch {
+        /* dispose path must not throw */
+      }
     }
   };
+  (node as DisposableNode).__cleanup = cleanup;
+
+  // register with the surrounding capture scope (parent component, createFor
+  // item, createIf branch) so this child's effects + onDestroy are torn down
+  // when the parent unmounts — previously child components leaked on unmount
+  // because nothing forwarded their cleanup to the parent scope.
+  pushDisposer(cleanup);
 
   return node;
 }
