@@ -9,36 +9,41 @@
 </template>
 
 <script>
-import { createRouterView } from '@matthesketh/utopia-router'
+  import { createRouterView } from '@matthesketh/utopia-router';
 
-const RouterView = {
-  render() { return createRouterView() }
-}
+  const RouterView = {
+    render() {
+      return createRouterView();
+    },
+  };
 </script>
 
 <style>
-#app {
-  font-family: system-ui, -apple-system, sans-serif;
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 20px;
-}
+  #app {
+    font-family:
+      system-ui,
+      -apple-system,
+      sans-serif;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+  }
 
-nav {
-  display: flex;
-  gap: 16px;
-  padding: 16px 0;
-  border-bottom: 1px solid #eee;
-  margin-bottom: 24px;
-}
+  nav {
+    display: flex;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 24px;
+  }
 
-nav a {
-  color: #4a9eff;
-  text-decoration: none;
-  font-weight: 500;
-}
+  nav a {
+    color: #4a9eff;
+    text-decoration: none;
+    font-weight: 500;
+  }
 
-nav a:hover {
-  text-decoration: underline;
-}
+  nav a:hover {
+    text-decoration: underline;
+  }
 </style>

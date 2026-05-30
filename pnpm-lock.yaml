@@ -24,6 +24,12 @@ importers:
       '@eslint/js':
         specifier: 10.0.1
         version: 10.0.1(eslint@10.4.1)
+      '@matthesketh/eslint-plugin-utopia':
+        specifier: workspace:*
+        version: link:packages/eslint-plugin-utopia
+      '@matthesketh/prettier-plugin-utopia':
+        specifier: workspace:*
+        version: link:packages/prettier-plugin-utopia
       '@types/node':
         specifier: 25.9.1
         version: 25.9.1
@@ -97,6 +103,10 @@ importers:
       sass:
         specifier: ^1.77.0
         version: 1.100.0
+    devDependencies:
+      '@types/node':
+        specifier: 25.9.1
+        version: 25.9.1
 
   packages/content:
     dependencies:
@@ -198,6 +208,12 @@ importers:
       '@matthesketh/utopia-core':
         specifier: workspace:*
         version: link:../core
+
+  packages/prettier-plugin-utopia:
+    dependencies:
+      prettier:
+        specifier: ^3.0.0
+        version: 3.8.3
 
   packages/router:
     dependencies:
