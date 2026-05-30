@@ -81,7 +81,7 @@ export function createMCPHandler(
       try {
         allowed = await authorize(req);
       } catch {
-        allowed = false;
+        // the auth check threw — treat as not allowed (allowed stays false).
       }
       if (!allowed) {
         res.writeHead(401, { 'Content-Type': 'application/json' });

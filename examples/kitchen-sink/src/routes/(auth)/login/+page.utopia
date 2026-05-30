@@ -11,9 +11,7 @@
         <label>Password</label>
         <input type="password" u-model="password" placeholder="Enter password" />
 
-        <button @click="handleLogin">
-          {{ isLoading() ? 'Signing in...' : 'Sign In' }}
-        </button>
+        <button @click="handleLogin">{{ isLoading() ? 'Signing in...' : 'Sign In' }}</button>
 
         <div u-if="error()">
           <p class="error">{{ error() }}</p>
@@ -28,113 +26,113 @@
 </template>
 
 <script>
-import { signal } from '@matthesketh/utopia-core'
+  import { signal } from '@matthesketh/utopia-core';
 
-const email = signal('')
-const password = signal('')
-const isLoading = signal(false)
-const error = signal('')
-const success = signal(false)
+  const email = signal('');
+  const password = signal('');
+  const isLoading = signal(false);
+  const error = signal('');
+  const success = signal(false);
 
-async function handleLogin() {
-  error.set('')
-  success.set(false)
+  async function handleLogin() {
+    error.set('');
+    success.set(false);
 
-  if (!email() || !password()) {
-    error.set('Please fill in all fields.')
-    return
+    if (!email() || !password()) {
+      error.set('Please fill in all fields.');
+      return;
+    }
+
+    isLoading.set(true);
+
+    // Simulate API call
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    if (password().length < 6) {
+      error.set('Password must be at least 6 characters.');
+    } else {
+      success.set(true);
+    }
+
+    isLoading.set(false);
   }
-
-  isLoading.set(true)
-
-  // Simulate API call
-  await new Promise(resolve => setTimeout(resolve, 1000))
-
-  if (password().length < 6) {
-    error.set('Password must be at least 6 characters.')
-  } else {
-    success.set(true)
-  }
-
-  isLoading.set(false)
-}
 </script>
 
 <style scoped>
-.login {
-  display: flex;
-  justify-content: center;
-  padding-top: 40px;
-}
+  .login {
+    display: flex;
+    justify-content: center;
+    padding-top: 40px;
+  }
 
-.login-card {
-  width: 100%;
-  max-width: 400px;
-  background: #fff;
-  border: 1px solid #e5e5e5;
-  border-radius: 8px;
-  padding: 32px;
-}
+  .login-card {
+    width: 100%;
+    max-width: 400px;
+    background: #fff;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    padding: 32px;
+  }
 
-h1 {
-  font-size: 24px;
-  margin-bottom: 4px;
-}
+  h1 {
+    font-size: 24px;
+    margin-bottom: 4px;
+  }
 
-.subtitle {
-  font-size: 13px;
-  color: #999;
-  margin-bottom: 24px;
-}
+  .subtitle {
+    font-size: 13px;
+    color: #999;
+    margin-bottom: 24px;
+  }
 
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
+  .form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
 
-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: #333;
-}
+  label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+  }
 
-input {
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 14px;
-}
+  input {
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+  }
 
-button {
-  padding: 10px;
-  background: #4a9eff;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  margin-top: 8px;
-}
+  button {
+    padding: 10px;
+    background: #4a9eff;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    margin-top: 8px;
+  }
 
-button:hover {
-  background: #3a8eef;
-}
+  button:hover {
+    background: #3a8eef;
+  }
 
-.error {
-  color: #ef4444;
-  font-size: 13px;
-  padding: 8px 12px;
-  background: #fef2f2;
-  border-radius: 6px;
-}
+  .error {
+    color: #ef4444;
+    font-size: 13px;
+    padding: 8px 12px;
+    background: #fef2f2;
+    border-radius: 6px;
+  }
 
-.success {
-  color: #22c55e;
-  font-size: 13px;
-  padding: 8px 12px;
-  background: #f0fdf4;
-  border-radius: 6px;
-}
+  .success {
+    color: #22c55e;
+    font-size: 13px;
+    padding: 8px 12px;
+    background: #f0fdf4;
+    border-radius: 6px;
+  }
 </style>

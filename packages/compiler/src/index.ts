@@ -8,12 +8,14 @@
 export { parse, type SFCDescriptor, type SFCBlock, SFCParseError } from './parser';
 export {
   compileTemplate,
+  KNOWN_NAMED_ENTITIES,
   parseTemplate,
   type TemplateCompileOptions,
   type TemplateCompileResult,
 } from './template-compiler';
 export {
   compileStyle,
+  preprocessStyle,
   generateScopeId,
   type StyleCompileOptions,
   type StyleCompileResult,
@@ -22,7 +24,7 @@ export { checkA11y, type A11yWarning, type A11yOptions } from './a11y';
 
 import { parse } from './parser';
 import { compileTemplate, parseTemplate } from './template-compiler';
-import { compileStyle, generateScopeId } from './style-compiler';
+import { compileStyle, preprocessStyle } from './style-compiler';
 import { checkA11y, type A11yWarning, type A11yOptions } from './a11y';
 
 // ---- Public types ----------------------------------------------------------
@@ -79,8 +81,13 @@ export function compile(source: string, options: CompileOptions = {}): CompileRe
 
   if (descriptor.style) {
     const isScoped = 'scoped' in descriptor.style.attrs;
+    const lang =
+      typeof descriptor.style.attrs.lang === 'string' ? descriptor.style.attrs.lang : undefined;
+    // run scss/sass through the preprocessor before scoping; plain css passes
+    // through untouched.
+    const styleSource = preprocessStyle(descriptor.style.content, lang, filename);
     const styleResult = compileStyle({
-      source: descriptor.style.content,
+      source: styleSource,
       filename,
       scoped: isScoped,
       scopeId: options.scopeId,

@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { parse, SFCParseError } from './parser';
 import { compileTemplate, parseTemplate } from './template-compiler';
 import type { ElementNode, TemplateNode, TextNode } from './template-compiler';
-import { compileStyle, generateScopeId } from './style-compiler';
+import { compileStyle, generateScopeId, preprocessStyle } from './style-compiler';
 import { compile } from './index';
 
 // ===========================================================================

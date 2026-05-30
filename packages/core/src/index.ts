@@ -577,3 +577,10 @@ export function untrack<T>(fn: () => T): T {
 
 export { sharedSignal } from './shared';
 export type { SharedSignal, SharedSignalOptions } from './shared';
+
+// ---------------------------------------------------------------------------
+// Persisted signals (synced to localStorage / sessionStorage)
+// ---------------------------------------------------------------------------
+
+export { persistedSignal } from './persisted';
+export type { PersistedSignal, PersistedSignalOptions } from './persisted';

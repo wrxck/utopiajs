@@ -44,5 +44,16 @@
   },
   "dependencies": {
     "@matthesketh/utopia-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "25.9.1"
+  },
+  "peerDependencies": {
+    "sass": "^1.77.0"
+  },
+  "peerDependenciesMeta": {
+    "sass": {
+      "optional": true
+    }
   }
 }
