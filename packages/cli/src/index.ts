@@ -158,9 +158,11 @@ async function test(args: ParsedArgs): Promise<void> {
   (plugins as Plugin[]).push(utopiaTestPlugin());
   config.plugins = plugins;
 
+  // vite 8 and vitest 4 disagree on the type of the json option here; the
+  // runtime shape is fine, so cast to the expected parameter type.
   const vitest = await startVitest('test', args.rest, {
     ...config,
-  });
+  } as Parameters<typeof startVitest>[2]);
 
   await vitest?.close();
 }

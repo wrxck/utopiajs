@@ -50,5 +50,8 @@
   "dependencies": {
     "@matthesketh/utopia-core": "workspace:*",
     "@matthesketh/utopia-router": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "25.9.1"
   }
 }

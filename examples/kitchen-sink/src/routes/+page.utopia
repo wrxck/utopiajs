@@ -67,161 +67,169 @@
 </template>
 
 <script>
-import { signal, computed, effect, batch, untrack } from '@matthesketh/utopia-core'
+  import { signal, computed, effect, batch, untrack } from '@matthesketh/utopia-core';
 
-// Counter demo
-const count = signal(0)
-const doubled = computed(() => count() * 2)
+  // Counter demo
+  const count = signal(0);
+  const doubled = computed(() => count() * 2);
 
-function increment() { count.update(n => n + 1) }
-function decrement() { count.update(n => n - 1) }
-function reset() { count.set(0) }
-
-// Conditional rendering
-const isVisible = signal(true)
-function toggleVisible() { isVisible.update(v => !v) }
-
-// List rendering
-const items = signal(['Signals', 'Compiler', 'SSR'])
-const newItem = signal('')
-function addItem() {
-  const value = newItem().trim()
-  if (value) {
-    items.update(list => [...list, value])
-    newItem.set('')
+  function increment() {
+    count.update((n) => n + 1);
   }
-}
+  function decrement() {
+    count.update((n) => n - 1);
+  }
+  function reset() {
+    count.set(0);
+  }
 
-// Two-way binding
-const name = signal('')
+  // Conditional rendering
+  const isVisible = signal(true);
+  function toggleVisible() {
+    isVisible.update((v) => !v);
+  }
 
-// Batch updates
-const a = signal(1)
-const b = signal(2)
-const sum = computed(() => a() + b())
-function batchUpdate() {
-  batch(() => {
-    a.update(n => n + 10)
-    b.update(n => n + 20)
-  })
-}
+  // List rendering
+  const items = signal(['Signals', 'Compiler', 'SSR']);
+  const newItem = signal('');
+  function addItem() {
+    const value = newItem().trim();
+    if (value) {
+      items.update((list) => [...list, value]);
+      newItem.set('');
+    }
+  }
 
-// Effect demo — logs to console whenever count changes
-effect(() => {
-  const c = count()
-  const n = untrack(() => name())
-  console.log(`[effect] count=${c}, name="${n}" (name is untracked)`)
-})
+  // Two-way binding
+  const name = signal('');
+
+  // Batch updates
+  const a = signal(1);
+  const b = signal(2);
+  const sum = computed(() => a() + b());
+  function batchUpdate() {
+    batch(() => {
+      a.update((n) => n + 10);
+      b.update((n) => n + 20);
+    });
+  }
+
+  // Effect demo — logs to console whenever count changes
+  effect(() => {
+    const c = count();
+    const n = untrack(() => name());
+    console.log(`[effect] count=${c}, name="${n}" (name is untracked)`);
+  });
 </script>
 
 <style scoped>
-.home h1 {
-  font-size: 32px;
-  margin-bottom: 8px;
-}
+  .home h1 {
+    font-size: 32px;
+    margin-bottom: 8px;
+  }
 
-.subtitle {
-  color: #666;
-  margin-bottom: 32px;
-}
+  .subtitle {
+    color: #666;
+    margin-bottom: 32px;
+  }
 
-.demo-section {
-  margin-bottom: 32px;
-  padding: 24px;
-  background: #fff;
-  border: 1px solid #e5e5e5;
-  border-radius: 8px;
-}
+  .demo-section {
+    margin-bottom: 32px;
+    padding: 24px;
+    background: #fff;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+  }
 
-.demo-section h2 {
-  font-size: 18px;
-  margin-bottom: 16px;
-  color: #333;
-}
+  .demo-section h2 {
+    font-size: 18px;
+    margin-bottom: 16px;
+    color: #333;
+  }
 
-.counter-card {
-  text-align: center;
-}
+  .counter-card {
+    text-align: center;
+  }
 
-.counter-display {
-  margin-bottom: 16px;
-}
+  .counter-display {
+    margin-bottom: 16px;
+  }
 
-.count {
-  font-size: 48px;
-  font-weight: 700;
-  color: #4a9eff;
-}
+  .count {
+    font-size: 48px;
+    font-weight: 700;
+    color: #4a9eff;
+  }
 
-.doubled {
-  display: block;
-  font-size: 14px;
-  color: #999;
-  margin-top: 4px;
-}
+  .doubled {
+    display: block;
+    font-size: 14px;
+    color: #999;
+    margin-top: 4px;
+  }
 
-.counter-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-}
+  .counter-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+  }
 
-button {
-  padding: 8px 20px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: #fff;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.15s;
-}
+  button {
+    padding: 8px 20px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.15s;
+  }
 
-button:hover {
-  background: #4a9eff;
-  color: #fff;
-  border-color: #4a9eff;
-}
+  button:hover {
+    background: #4a9eff;
+    color: #fff;
+    border-color: #4a9eff;
+  }
 
-.visible-text {
-  margin-top: 12px;
-  padding: 12px;
-  background: #e8f4ff;
-  border-radius: 6px;
-  color: #1a6fbf;
-}
+  .visible-text {
+    margin-top: 12px;
+    padding: 12px;
+    background: #e8f4ff;
+    border-radius: 6px;
+    color: #1a6fbf;
+  }
 
-.input-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
+  .input-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
 
-input {
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 14px;
-  flex: 1;
-}
+  input {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    flex: 1;
+  }
 
-.item-list {
-  list-style: none;
-  padding: 0;
-}
+  .item-list {
+    list-style: none;
+    padding: 0;
+  }
 
-.item-list li {
-  padding: 8px 12px;
-  border-bottom: 1px solid #f0f0f0;
-  font-size: 14px;
-}
+  .item-list li {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+  }
 
-.feature-list {
-  padding-left: 20px;
-}
+  .feature-list {
+    padding-left: 20px;
+  }
 
-.feature-list li {
-  margin-bottom: 6px;
-  font-size: 14px;
-  color: #555;
-}
+  .feature-list li {
+    margin-bottom: 6px;
+    font-size: 14px;
+    color: #555;
+  }
 </style>

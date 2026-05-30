@@ -28,157 +28,161 @@
     <div class="task-list">
       <h2>Task List</h2>
       <ul>
-        <li u-for="task in tasks()">
-          {{ task.name }} — {{ task.done ? 'Done' : 'Pending' }}
-        </li>
+        <li u-for="task in tasks()">{{ task.name }} — {{ task.done ? 'Done' : 'Pending' }}</li>
       </ul>
     </div>
   </div>
 </template>
 
 <script>
-import { signal, computed, effect } from '@matthesketh/utopia-core'
+  import { signal, computed, effect } from '@matthesketh/utopia-core';
 
-interface Task {
-  name: string
-  done: boolean
-}
+  interface Task {
+    name: string;
+    done: boolean;
+  }
 
-const tasks = signal<Task[]>([
-  { name: 'Set up project', done: true },
-  { name: 'Build UI components', done: true },
-  { name: 'Integrate AI chat', done: false },
-  { name: 'Write tests', done: false },
-  { name: 'Deploy to production', done: false },
-])
+  const tasks = signal<Task[]>([
+    { name: 'Set up project', done: true },
+    { name: 'Build UI components', done: true },
+    { name: 'Integrate AI chat', done: false },
+    { name: 'Write tests', done: false },
+    { name: 'Deploy to production', done: false },
+  ]);
 
-const taskCount = computed(() => tasks().length)
-const doneCount = computed(() => tasks().filter(t => t.done).length)
-const completionRate = computed(() => {
-  const total = taskCount()
-  return total === 0 ? 0 : Math.round((doneCount() / total) * 100)
-})
+  const taskCount = computed(() => tasks().length);
+  const doneCount = computed(() => tasks().filter((t) => t.done).length);
+  const completionRate = computed(() => {
+    const total = taskCount();
+    return total === 0 ? 0 : Math.round((doneCount() / total) * 100);
+  });
 
-const statusText = computed(() => {
-  const rate = completionRate()
-  if (rate === 100) return 'All Done'
-  if (rate >= 50) return 'In Progress'
-  return 'Getting Started'
-})
+  const statusText = computed(() => {
+    const rate = completionRate();
+    if (rate === 100) return 'All Done';
+    if (rate >= 50) return 'In Progress';
+    return 'Getting Started';
+  });
 
-const statusClass = computed(() => {
-  const rate = completionRate()
-  if (rate === 100) return 'status-done'
-  if (rate >= 50) return 'status-progress'
-  return 'status-start'
-})
+  const statusClass = computed(() => {
+    const rate = completionRate();
+    if (rate === 100) return 'status-done';
+    if (rate >= 50) return 'status-progress';
+    return 'status-start';
+  });
 
-let counter = 0
-function addTask() {
-  counter++
-  tasks.update(list => [...list, { name: `Task #${list.length + counter}`, done: false }])
-}
+  let counter = 0;
+  function addTask() {
+    counter++;
+    tasks.update((list) => [...list, { name: `Task #${list.length + counter}`, done: false }]);
+  }
 
-function clearTasks() {
-  tasks.set([])
-}
+  function clearTasks() {
+    tasks.set([]);
+  }
 
-function completeOne() {
-  tasks.update(list => {
-    const pending = list.findIndex(t => !t.done)
-    if (pending === -1) return list
-    return list.map((t, i) => i === pending ? { ...t, done: true } : t)
-  })
-}
+  function completeOne() {
+    tasks.update((list) => {
+      const pending = list.findIndex((t) => !t.done);
+      if (pending === -1) return list;
+      return list.map((t, i) => (i === pending ? { ...t, done: true } : t));
+    });
+  }
 
-// Effect: log task changes
-effect(() => {
-  console.log(`[dashboard] ${doneCount()}/${taskCount()} tasks complete`)
-})
+  // Effect: log task changes
+  effect(() => {
+    console.log(`[dashboard] ${doneCount()}/${taskCount()} tasks complete`);
+  });
 </script>
 
 <style scoped>
-.dashboard h1 {
-  font-size: 28px;
-  margin-bottom: 8px;
-}
+  .dashboard h1 {
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin: 24px 0;
-}
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin: 24px 0;
+  }
 
-.card {
-  padding: 24px;
-  background: #fff;
-  border: 1px solid #e5e5e5;
-  border-radius: 8px;
-  text-align: center;
-}
+  .card {
+    padding: 24px;
+    background: #fff;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    text-align: center;
+  }
 
-.card h3 {
-  font-size: 14px;
-  color: #999;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 8px;
-}
+  .card h3 {
+    font-size: 14px;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
 
-.stat {
-  font-size: 36px;
-  font-weight: 700;
-  display: block;
-  margin-bottom: 16px;
-}
+  .stat {
+    font-size: 36px;
+    font-weight: 700;
+    display: block;
+    margin-bottom: 16px;
+  }
 
-.status-done { color: #22c55e; }
-.status-progress { color: #f59e0b; }
-.status-start { color: #4a9eff; }
+  .status-done {
+    color: #22c55e;
+  }
+  .status-progress {
+    color: #f59e0b;
+  }
+  .status-start {
+    color: #4a9eff;
+  }
 
-.actions {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-}
+  .actions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+  }
 
-button {
-  padding: 6px 16px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: #fff;
-  cursor: pointer;
-  font-size: 13px;
-}
+  button {
+    padding: 6px 16px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 13px;
+  }
 
-button:hover {
-  background: #4a9eff;
-  color: #fff;
-  border-color: #4a9eff;
-}
+  button:hover {
+    background: #4a9eff;
+    color: #fff;
+    border-color: #4a9eff;
+  }
 
-.task-list {
-  margin-top: 24px;
-  padding: 24px;
-  background: #fff;
-  border: 1px solid #e5e5e5;
-  border-radius: 8px;
-}
+  .task-list {
+    margin-top: 24px;
+    padding: 24px;
+    background: #fff;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+  }
 
-.task-list h2 {
-  font-size: 18px;
-  margin-bottom: 16px;
-}
+  .task-list h2 {
+    font-size: 18px;
+    margin-bottom: 16px;
+  }
 
-ul {
-  list-style: none;
-  padding: 0;
-}
+  ul {
+    list-style: none;
+    padding: 0;
+  }
 
-li {
-  padding: 10px 0;
-  border-bottom: 1px solid #f0f0f0;
-  font-size: 14px;
-}
+  li {
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+  }
 </style>
