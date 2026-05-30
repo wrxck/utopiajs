@@ -54,6 +54,11 @@ export { queueJob, nextTick } from './scheduler';
 export { hydrate } from './hydration';
 
 // ---------------------------------------------------------------------------
+// Lifecycle helpers (auto-cleanup side-effects)
+// ---------------------------------------------------------------------------
+export { useEventListener, useInterval, useTimeout } from './use';
+
+// ---------------------------------------------------------------------------
 // Reactivity primitives (re-exported from @matthesketh/utopia-core)
 // ---------------------------------------------------------------------------
 export { signal, computed, effect, batch, untrack } from '@matthesketh/utopia-core';

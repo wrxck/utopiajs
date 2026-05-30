@@ -373,6 +373,23 @@ export function mount(component: ComponentDefinition, _target: unknown) {
 export function onMount(_fn: () => void): void {}
 export function onDestroy(_fn: () => void): void {}
 
+// lifecycle helpers — no-op on server (no events/timers during ssr). each
+// returns a stop function so call sites that capture it stay valid.
+export function useEventListener(
+  _target: unknown,
+  _type: string,
+  _handler: unknown,
+  _options?: unknown,
+): () => void {
+  return () => {};
+}
+export function useInterval(_callback: () => void, _delayMs: number): () => void {
+  return () => {};
+}
+export function useTimeout(_callback: () => void, _delayMs: number): () => void {
+  return () => {};
+}
+
 // ---------------------------------------------------------------------------
 // Lifecycle capture — no-op on server
 // ---------------------------------------------------------------------------

@@ -44,5 +44,13 @@
   },
   "dependencies": {
     "@matthesketh/utopia-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "sass": "^1.77.0"
+  },
+  "peerDependenciesMeta": {
+    "sass": {
+      "optional": true
+    }
   }
 }
