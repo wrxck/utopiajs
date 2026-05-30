@@ -14,71 +14,71 @@
 </template>
 
 <script>
-import { signal, computed } from '@matthesketh/utopia-core'
+  import { signal, computed } from '@matthesketh/utopia-core';
 
-const count = signal(0)
-const doubled = computed(() => count() * 2)
+  const count = signal(0);
+  const doubled = computed(() => count() * 2);
 
-function increment() {
-  count.update(n => n + 1)
-}
+  function increment() {
+    count.update((n) => n + 1);
+  }
 
-function decrement() {
-  count.update(n => n - 1)
-}
+  function decrement() {
+    count.update((n) => n - 1);
+  }
 
-function reset() {
-  count.set(0)
-}
+  function reset() {
+    count.set(0);
+  }
 </script>
 
 <style scoped>
-h1 {
-  color: #333;
-}
+  h1 {
+    color: #333;
+  }
 
-.counter {
-  margin-top: 24px;
-  padding: 20px;
-  border-radius: 8px;
-  background: #f8f9fa;
-}
+  .counter {
+    margin-top: 24px;
+    padding: 20px;
+    border-radius: 8px;
+    background: #f8f9fa;
+  }
 
-button {
-  margin-right: 8px;
-  padding: 8px 16px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  background: white;
-  cursor: pointer;
-  font-size: 14px;
-}
+  button {
+    margin-right: 8px;
+    padding: 8px 16px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    font-size: 14px;
+  }
 
-button:hover {
-  background: #4a9eff;
-  color: white;
-  border-color: #4a9eff;
-}
+  button:hover {
+    background: #4a9eff;
+    color: white;
+    border-color: #4a9eff;
+  }
 </style>
 
 <test>
-import { describe, it, expect } from 'vitest'
-import { render, fireEvent, nextTick } from '@matthesketh/utopia-test'
+  import { describe, it, expect } from 'vitest';
+  import { render, fireEvent, nextTick } from '@matthesketh/utopia-test';
 
-describe('+page', () => {
-  it('renders the welcome heading', () => {
-    const { getByText, unmount } = render(self)
-    expect(getByText('Welcome to UtopiaJS')).toBeTruthy()
-    unmount()
-  })
+  describe('+page', () => {
+    it('renders the welcome heading', () => {
+      const { getByText, unmount } = render(self);
+      expect(getByText('Welcome to UtopiaJS')).toBeTruthy();
+      unmount();
+    });
 
-  it('increments the counter on click', async () => {
-    const { getByText, getBySelector, unmount } = render(self)
-    const btn = getByText('Increment')
-    fireEvent.click(btn)
-    await nextTick()
-    expect(getByText('Count: 1')).toBeTruthy()
-    unmount()
-  })
-})
+    it('increments the counter on click', async () => {
+      const { getByText, getBySelector, unmount } = render(self);
+      const btn = getByText('Increment');
+      fireEvent.click(btn);
+      await nextTick();
+      expect(getByText('Count: 1')).toBeTruthy();
+      unmount();
+    });
+  });
 </test>

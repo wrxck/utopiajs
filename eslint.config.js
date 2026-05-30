@@ -1,10 +1,12 @@
 import js from '@eslint/js';
+import utopia from '@matthesketh/eslint-plugin-utopia';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
 import globals from 'globals';
 
 export default [
   js.configs.recommended,
+  ...utopia.configs.recommended,
   {
     files: ['packages/*/src/**/*.ts'],
     languageOptions: {

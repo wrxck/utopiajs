@@ -13,7 +13,7 @@
 </template>
 
 <style scoped>
-ul {
-  line-height: 1.8;
-}
+  ul {
+    line-height: 1.8;
+  }
 </style>
