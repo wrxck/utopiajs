@@ -17,15 +17,17 @@
 // option).
 // ---------------------------------------------------------------------------
 
-// ---- Regex Constants --------------------------------------------------------
+import { dirname } from 'node:path';
 
-/** Matches a single whitespace character. */
+// ---- regex constants --------------------------------------------------------
+
+/** matches a single whitespace character. */
 export const WHITESPACE_RE = /\s/;
 
-/** Matches @keyframes at-rule headers (including vendor-prefixed variants). */
+/** matches @keyframes at-rule headers (including vendor-prefixed variants). */
 export const KEYFRAMES_RE = /^@(?:-\w+-)?keyframes\b/;
 
-/** Matches trailing pseudo-elements and pseudo-classes on a CSS selector. */
+/** matches trailing pseudo-elements and pseudo-classes on a CSS selector. */
 export const PSEUDO_SELECTOR_RE = /(?:::?[\w-]+(?:\([^)]*\))?)+$/;
 
 // ---- Types ------------------------------------------------------------------
@@ -51,8 +53,50 @@ export interface StyleCompileResult {
   scopeId: string | null;
 }
 
+/** preprocessor languages recognised on a `<style lang="…">` block. */
+const SASS_SYNTAXES = new Set(['scss', 'sass']);
+
 /**
- * Compile a `<style>` block, applying scoped transformations when required.
+ * run the raw `<style>` content through a css preprocessor when the block
+ * declares `lang="scss"` or `lang="sass"`, returning plain css ready for
+ * scoping. `lang="css"` (or no lang) is returned unchanged.
+ *
+ * sass is an optional dependency: it is loaded lazily and only when an
+ * scss/sass block is actually encountered, so apps that use plain css never
+ * need it installed. compilation is synchronous so the surrounding `compile()`
+ * stays synchronous.
+ */
+export function preprocessStyle(
+  source: string,
+  lang: string | undefined,
+  filename: string,
+): string {
+  if (!lang || lang === 'css') return source;
+
+  if (!SASS_SYNTAXES.has(lang)) {
+    throw new Error(`unsupported <style lang="${lang}"> — supported values are: css, scss, sass`);
+  }
+
+  let sass: typeof import('sass');
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    sass = require('sass');
+  } catch {
+    throw new Error(
+      `<style lang="${lang}"> requires the "sass" package. install it with: npm install -D sass`,
+    );
+  }
+
+  const result = sass.compileString(source, {
+    syntax: lang === 'sass' ? 'indented' : 'scss',
+    // resolve @use/@import partials relative to the component file.
+    loadPaths: [dirname(filename)],
+  });
+  return result.css;
+}
+
+/**
+ * compile a `<style>` block, applying scoped transformations when required.
  */
 export function compileStyle(options: StyleCompileOptions): StyleCompileResult {
   const { source, filename, scoped, scopeId: overrideScopeId } = options;

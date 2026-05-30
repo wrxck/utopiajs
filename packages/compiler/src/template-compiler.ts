@@ -1232,6 +1232,17 @@ const ENTITY_MAP: Record<string, string> = {
   '&divide;': '\u00F7',
 };
 
+/**
+ * Named HTML entities the compiler decodes. Numeric references (&#NN; / &#xNN;)
+ * are always decoded; any named entity NOT in this set is emitted verbatim, so
+ * tooling (the eslint plugin) can warn about them.
+ */
+export const KNOWN_NAMED_ENTITIES: ReadonlySet<string> = new Set(
+  Object.keys(ENTITY_MAP)
+    .filter((k) => /^&[a-zA-Z]/.test(k))
+    .map((k) => k.slice(1, -1)),
+);
+
 function decodeEntities(text: string): string {
   HTML_ENTITY_RE.lastIndex = 0;
   return text.replace(HTML_ENTITY_RE, (match, dec, hex, named) => {
