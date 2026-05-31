@@ -5,7 +5,7 @@
 import * as parser from './parser';
 import noUndecodedEntities from './rules/no-undecoded-entities';
 
-const meta = { name: '@matthesketh/eslint-plugin-utopia', version: '0.8.1' };
+const meta = { name: '@matthesketh/eslint-plugin-utopia', version: '0.8.2' };
 
 const rules = {
   'no-undecoded-entities': noUndecodedEntities,

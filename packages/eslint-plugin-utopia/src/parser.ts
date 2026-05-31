@@ -9,7 +9,7 @@
 import { parse as parseSfc } from '@matthesketh/utopia-compiler';
 import * as tsParser from '@typescript-eslint/parser';
 
-export const meta = { name: '@matthesketh/eslint-plugin-utopia', version: '0.8.1' };
+export const meta = { name: '@matthesketh/eslint-plugin-utopia', version: '0.8.2' };
 
 function blankExcept(code: string, start: number, end: number): string {
   const blank = (s: string): string => s.replace(/[^\n]/g, ' ');
