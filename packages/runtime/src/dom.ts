@@ -580,6 +580,31 @@ export function setAttr(el: Element, name: string, value: unknown): void {
     return;
   }
 
+  // --- form control value --------------------------------------------------
+  // once a user has typed in a control, the live value is the PROPERTY — the
+  // attribute detaches and patching it alone leaves stale text on screen
+  // (e.g. an autosuggest pick that never appears in the input). set the
+  // property when it differs (the equality guard preserves the caret while
+  // the user is typing a controlled input) and mirror the attribute so fresh
+  // nodes and server-rendered markup stay in step.
+  if (
+    name === 'value' &&
+    (el instanceof HTMLInputElement ||
+      el instanceof HTMLTextAreaElement ||
+      el instanceof HTMLSelectElement)
+  ) {
+    const next = value == null || value === false ? '' : String(value);
+    if (el.value !== next) {
+      el.value = next;
+    }
+    if (value == null || value === false) {
+      el.removeAttribute('value');
+    } else if (!(el instanceof HTMLSelectElement)) {
+      el.setAttribute('value', next);
+    }
+    return;
+  }
+
   // --- generic attributes --------------------------------------------------
   const lower = name.toLowerCase();
 

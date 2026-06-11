@@ -125,6 +125,34 @@ describe('DOM helpers', () => {
       expect(el.getAttribute('id')).toBe('my-id');
     });
 
+    it('updates the live value property of a typed-in input', () => {
+      // after user input the value attribute detaches from the property; a
+      // bound :value patch must still reach the screen (autosuggest picks,
+      // programmatic form fills).
+      const input = createElement('input') as HTMLInputElement;
+      input.value = 'cre';
+      setAttr(input, 'value', 'Creatine monohydrate');
+      expect(input.value).toBe('Creatine monohydrate');
+      expect(input.getAttribute('value')).toBe('Creatine monohydrate');
+    });
+
+    it('leaves the caret-preserving path alone when value is unchanged', () => {
+      const input = createElement('input') as HTMLInputElement;
+      input.value = 'same';
+      const spy = vi.spyOn(input, 'value', 'set');
+      setAttr(input, 'value', 'same');
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    });
+
+    it('clears a form value bound to null', () => {
+      const input = createElement('input') as HTMLInputElement;
+      input.value = 'stale';
+      setAttr(input, 'value', null);
+      expect(input.value).toBe('');
+      expect(input.hasAttribute('value')).toBe(false);
+    });
+
     it('removes attribute when value is null', () => {
       setAttr(el, 'id', 'my-id');
       setAttr(el, 'id', null);
