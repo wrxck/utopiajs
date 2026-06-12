@@ -19,6 +19,7 @@ import {
   removeNode,
   appendChild,
   createComment,
+  mergeClass,
 } from './dom';
 
 import { createIf, createFor, createComponent } from './directives';
@@ -1798,5 +1799,18 @@ describe('hydrate — lifecycle and disposer capture', () => {
     container.textContent = 'hello';
     hydrate(comp, container);
     expect(mounted).toBe(true);
+  });
+});
+
+describe('mergeClass', () => {
+  it('joins static and dynamic strings', () => {
+    expect(mergeClass('chip', 'on')).toBe('chip on');
+    expect(mergeClass('chip', '')).toBe('chip');
+    expect(mergeClass('chip', null)).toBe('chip');
+  });
+
+  it('joins truthy object keys', () => {
+    expect(mergeClass('dot', { on: true, miss: false })).toBe('dot on');
+    expect(mergeClass('', { on: true })).toBe('on');
   });
 });

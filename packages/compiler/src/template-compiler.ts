@@ -644,8 +644,15 @@ class CodeGenerator {
       this.emit(`setAttr(${elVar}, '${escapeStr(this.scopeId)}', '')`);
     }
 
+    // A static class alongside a :class binding merges into the binding's
+    // effect (setAttr replaces className, so emitting both would lose the
+    // static part as soon as the effect runs).
+    const classBind = node.directives.find((d) => d.kind === 'bind' && d.arg === 'class');
+    const mergedClassAttr = classBind ? node.attrs.find((a) => a.name === 'class') : undefined;
+
     // Static attributes
     for (const attr of node.attrs) {
+      if (attr === mergedClassAttr) continue;
       this.helpers.add('setAttr');
       if (attr.value === null) {
         this.emit(`setAttr(${elVar}, '${escapeStr(attr.name)}', '')`);
@@ -658,7 +665,7 @@ class CodeGenerator {
     for (const dir of node.directives) {
       if (dir.kind === 'if' || dir.kind === 'else' || dir.kind === 'else-if' || dir.kind === 'for')
         continue;
-      this.genDirective(elVar, dir, scope);
+      this.genDirective(elVar, dir, scope, mergedClassAttr?.value ?? null);
     }
 
     // Children — handles u-if/u-else pairing, deferred createFor/createIf calls.
@@ -692,13 +699,18 @@ class CodeGenerator {
 
   // ---- Directives ---------------------------------------------------------
 
-  private genDirective(elVar: string, dir: Directive, scope: LocalScope): void {
+  private genDirective(
+    elVar: string,
+    dir: Directive,
+    scope: LocalScope,
+    staticClass: string | null = null,
+  ): void {
     switch (dir.kind) {
       case 'on':
         this.genOn(elVar, dir, scope);
         break;
       case 'bind':
-        this.genBind(elVar, dir, scope);
+        this.genBind(elVar, dir, scope, staticClass);
         break;
       case 'model':
         this.genModel(elVar, dir, scope);
@@ -775,11 +787,23 @@ class CodeGenerator {
     this.emit(`addEventListener(${elVar}, '${escapeStr(event)}', ${handlerExpr}${optionsStr})`);
   }
 
-  private genBind(elVar: string, dir: Directive, scope: LocalScope): void {
+  private genBind(
+    elVar: string,
+    dir: Directive,
+    scope: LocalScope,
+    staticClass: string | null = null,
+  ): void {
     this.helpers.add('setAttr');
     this.helpers.add('createEffect');
     const attrName = dir.arg ?? 'value';
     const expr = this.resolveExpression(dir.expression, scope);
+    if (attrName === 'class' && staticClass != null) {
+      this.helpers.add('mergeClass');
+      this.emit(
+        `createEffect(() => setAttr(${elVar}, 'class', mergeClass('${escapeStr(staticClass)}', ${expr})))`,
+      );
+      return;
+    }
     this.emit(`createEffect(() => setAttr(${elVar}, '${escapeStr(attrName)}', ${expr}))`);
   }
 

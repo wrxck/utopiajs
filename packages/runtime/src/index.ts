@@ -16,6 +16,7 @@ export {
   setSafeHtml,
   sanitizeHtml,
   setAttr,
+  mergeClass,
   addEventListener,
   insertBefore,
   removeNode,
