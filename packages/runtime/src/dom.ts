@@ -503,6 +503,24 @@ export function setSafeHtml(el: Element, getter: () => unknown): void {
  * - **data-* attributes**: set via `el.dataset`
  * - Everything else: plain `setAttribute` / `removeAttribute`.
  */
+// merge a template's static class with its :class binding. compiled output
+// calls this so `class="chip" :class="on ? 'on' : ''"` keeps both - setAttr
+// replaces the whole className, so without the merge the static part is lost
+// the moment the binding's effect runs.
+export function mergeClass(staticClass: string, value: unknown): string {
+  let dynamic = '';
+  if (typeof value === 'string') {
+    dynamic = value;
+  } else if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    dynamic = Object.keys(obj)
+      .filter((k) => obj[k])
+      .join(' ');
+  }
+  if (!dynamic) return staticClass;
+  return staticClass ? `${staticClass} ${dynamic}` : dynamic;
+}
+
 export function setAttr(el: Element, name: string, value: unknown): void {
   // --- class ---------------------------------------------------------------
   if (name === 'class') {

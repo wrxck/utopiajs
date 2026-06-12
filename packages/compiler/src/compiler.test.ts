@@ -1079,3 +1079,24 @@ describe('u-html directive — sanitization', () => {
     expect(result.helpers.has('setHtml')).toBe(true);
   });
 });
+
+describe('static class + :class merge', () => {
+  it('merges the static class into the binding effect', () => {
+    const out = compileTemplate(`<button class="chip" :class="on() ? 'on' : ''">x</button>`);
+    expect(out.code).toContain("mergeClass('chip'");
+    // the static class must not also be set on its own (the binding would
+    // immediately clobber it).
+    expect(out.code).not.toContain("setAttr(_el0, 'class', 'chip')");
+  });
+
+  it('a lone :class binding stays untouched', () => {
+    const out = compileTemplate(`<button :class="cls()">x</button>`);
+    expect(out.code).not.toContain('mergeClass');
+  });
+
+  it('a lone static class stays untouched', () => {
+    const out = compileTemplate(`<button class="chip">x</button>`);
+    expect(out.code).toContain("setAttr(_el0, 'class', 'chip')");
+    expect(out.code).not.toContain('mergeClass');
+  });
+});
