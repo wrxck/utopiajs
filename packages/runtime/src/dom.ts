@@ -614,6 +614,16 @@ export function setAttr(el: Element, name: string, value: unknown): void {
     const next = value == null || value === false ? '' : String(value);
     if (el.value !== next) {
       el.value = next;
+      // a select bound before its u-for options mount cannot take the value
+      // yet - the browser silently shows the first option while the binding's
+      // effect never re-fires. retry once the options exist so the displayed
+      // selection always matches the bound signal.
+      if (el instanceof HTMLSelectElement && el.value !== next) {
+        const want = next;
+        requestAnimationFrame(() => {
+          if (el.isConnected && el.value !== want) el.value = want;
+        });
+      }
     }
     if (value == null || value === false) {
       el.removeAttribute('value');

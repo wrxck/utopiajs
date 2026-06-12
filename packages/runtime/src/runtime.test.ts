@@ -1814,3 +1814,28 @@ describe('mergeClass', () => {
     expect(mergeClass('', { on: true })).toBe('on');
   });
 });
+
+describe('select value before options mount', () => {
+  it('re-applies the bound value once options exist', async () => {
+    const raf = (cb) => setTimeout(cb, 0);
+    const orig = globalThis.requestAnimationFrame;
+    globalThis.requestAnimationFrame = raf;
+    try {
+      const sel = document.createElement('select');
+      document.body.appendChild(sel);
+      setAttr(sel, 'value', 'b');
+      // no options yet - the browser cannot hold the value.
+      for (const v of ['a', 'b']) {
+        const o = document.createElement('option');
+        o.value = v;
+        o.textContent = v;
+        sel.appendChild(o);
+      }
+      await new Promise((r) => setTimeout(r, 1));
+      expect(sel.value).toBe('b');
+      sel.remove();
+    } finally {
+      globalThis.requestAnimationFrame = orig;
+    }
+  });
+});
