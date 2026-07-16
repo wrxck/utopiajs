@@ -72,12 +72,13 @@ const ROUTE_FILE_RE = /\+(?:page|layout|error|server)\.\w+$/;
 const cssCache = new Map<string, string>();
 
 /**
- * Reverse index mapping an external stylesheet's absolute path to the set of
- * `.utopia` files that pull it in through `<style src>`. Populated during
- * `transform` and consulted in `handleHotUpdate` so that editing the shared
- * stylesheet hot-updates every component that references it.
+ * Reverse index mapping an external file's absolute path (a `<style src>`
+ * stylesheet or a `<include src>` template fragment) to the set of `.utopia`
+ * files that pull it in. Populated during `transform` and consulted in
+ * `handleHotUpdate` so that editing a shared external file hot-updates every
+ * component that references it.
  */
-const styleSrcOwners = new Map<string, Set<string>>();
+const externalDepOwners = new Map<string, Set<string>>();
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -174,28 +175,128 @@ function inlineStyleSrc(code: string, id: string): { code: string; dep: string }
   return { code: rewritten, dep };
 }
 
+// ---------------------------------------------------------------------------
+// External template fragments (`<include src>`) inlining
+// ---------------------------------------------------------------------------
+
+/** Matches `<include src="…" />` and `<include src="…"></include>` (empty). */
+const INCLUDE_RE = /<include\b([^>]*?)\s*\/>|<include\b([^>]*?)\s*>\s*<\/include>/g;
+
+/** Pull the `src` value out of an include tag's raw attribute string. */
+function includeSrc(attrs: string): string | null {
+  const m = attrs.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)')/);
+  return m ? (m[1] ?? m[2] ?? null) : null;
+}
+
 /**
- * Compile a `.utopia` source, first inlining any `<style src>` external
- * stylesheet. Returns the compile result plus the external stylesheet path
- * (when one was pulled in) so the caller can register it for HMR / watching.
+ * Recursively replace every `<include src>` in a template string with the
+ * referenced fragment's contents. Fragments may themselves contain includes,
+ * resolved relative to the fragment's own directory. A cycle throws.
+ *
+ * @param text - Template markup to process.
+ * @param baseDir - Directory that relative `src` values resolve against.
+ * @param deps - Accumulates every fragment path pulled in (for watch / HMR).
+ * @param chain - The include chain guarding against cycles.
+ */
+function inlineIncludeText(
+  text: string,
+  baseDir: string,
+  deps: Set<string>,
+  chain: string[],
+): string {
+  return text.replace(INCLUDE_RE, (whole, a1, a2) => {
+    const src = includeSrc(String(a1 ?? a2 ?? ''));
+    if (!src) return whole; // an <include> without a src — leave for the compiler
+    const abs = path.isAbsolute(src) ? src : path.resolve(baseDir, src);
+    if (chain.includes(abs)) {
+      throw new Error(
+        `[utopia] circular <include src="${src}"> (chain: ${[...chain, abs].join(' -> ')}).`,
+      );
+    }
+    let fragment: string;
+    try {
+      fragment = fs.readFileSync(abs, 'utf8');
+    } catch {
+      throw new Error(`[utopia] <include src="${src}"> could not be read (resolved to ${abs}).`);
+    }
+    deps.add(abs);
+    return inlineIncludeText(fragment, path.dirname(abs), deps, [...chain, abs]);
+  });
+}
+
+/**
+ * If the component's `<template>` block contains `<include src>` directives,
+ * splice each referenced fragment in place *before* compilation. Because the
+ * fragment is compiled as part of the parent's single render function — against
+ * the parent's script scope, with no component boundary — its rendering and
+ * reactivity are byte-for-byte identical to writing the markup inline. This is
+ * what lets a component pull repeated or bulky markup out into a shared
+ * `.uhtml` fragment with no change in behaviour.
+ *
+ * @returns The rewritten source and the fragment paths it pulled in, or `null`
+ *   when the template has no includes.
+ */
+function inlineTemplateIncludes(code: string, id: string): { code: string; deps: string[] } | null {
+  let descriptor: ReturnType<typeof parse>;
+  try {
+    descriptor = parse(code, id);
+  } catch {
+    return null;
+  }
+
+  const tpl = descriptor.template;
+  if (!tpl || !/<include\b/.test(tpl.content)) return null;
+
+  const deps = new Set<string>();
+  const newContent = inlineIncludeText(tpl.content, path.dirname(id), deps, [id]);
+  if (deps.size === 0) return null;
+
+  const attrs = Object.entries(tpl.attrs)
+    .map(([name, value]) => (value === true ? name : `${name}="${value as string}"`))
+    .join(' ');
+  const openTag = attrs ? `<template ${attrs}>` : '<template>';
+  const rewritten =
+    code.slice(0, tpl.start) + `${openTag}${newContent}</template>` + code.slice(tpl.end);
+  return { code: rewritten, deps: [...deps] };
+}
+
+/**
+ * Compile a `.utopia` source, first inlining any `<include src>` template
+ * fragments and any `<style src>` external stylesheet. Returns the compile
+ * result plus every external file path pulled in, so the caller can register
+ * them for HMR / watching.
  */
 function compileUtopiaSource(
   code: string,
   id: string,
-): { result: ReturnType<typeof compile>; dep?: string } {
-  const inlined = inlineStyleSrc(code, id);
-  const source = inlined?.code ?? code;
-  return { result: compile(source, { filename: id }), dep: inlined?.dep };
+): { result: ReturnType<typeof compile>; deps: string[] } {
+  const deps: string[] = [];
+  let source = code;
+
+  const includes = inlineTemplateIncludes(source, id);
+  if (includes) {
+    source = includes.code;
+    deps.push(...includes.deps);
+  }
+
+  const style = inlineStyleSrc(source, id);
+  if (style) {
+    source = style.code;
+    deps.push(style.dep);
+  }
+
+  return { result: compile(source, { filename: id }), deps };
 }
 
 /**
- * Record that `utopiaId` pulls in the external stylesheet at `dep`.
+ * Record that `utopiaId` pulls in the external file at `dep` (stylesheet or
+ * template fragment).
  */
-function registerStyleDep(dep: string, utopiaId: string): void {
-  let set = styleSrcOwners.get(dep);
+function registerExternalDep(dep: string, utopiaId: string): void {
+  let set = externalDepOwners.get(dep);
   if (!set) {
     set = new Set<string>();
-    styleSrcOwners.set(dep, set);
+    externalDepOwners.set(dep, set);
   }
   set.add(utopiaId);
 }
@@ -351,11 +452,12 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
       if (!id.endsWith(UTOPIA_EXT)) return undefined;
       if (!filter(id)) return undefined;
 
-      // Inline any `<style src>` external stylesheet before compiling, and
-      // register it so Vite watches it and HMR can find the owning component.
-      const { result, dep } = compileUtopiaSource(code, id);
-      if (dep) {
-        registerStyleDep(dep, id);
+      // Inline any `<include src>` template fragments and `<style src>`
+      // stylesheet before compiling, and register each external file so Vite
+      // watches it and HMR can find the owning component.
+      const { result, deps } = compileUtopiaSource(code, id);
+      for (const dep of deps) {
+        registerExternalDep(dep, id);
         this.addWatchFile(dep);
       }
 
@@ -408,11 +510,13 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
         }
       }
 
-      // When an external stylesheet pulled in via `<style src>` changes,
-      // recompile every component that references it and hot-update just their
-      // virtual CSS modules — a style-only update, no component re-render.
-      const owners = styleSrcOwners.get(file);
+      // When an external file pulled in via `<style src>` or `<include src>`
+      // changes, recompile every component that references it. A stylesheet
+      // edit hot-updates just the virtual CSS module (style-only, no
+      // re-render); a template fragment edit re-renders the owning component.
+      const owners = externalDepOwners.get(file);
       if (owners && owners.size > 0) {
+        const isStyleDep = /\.(css|scss|sass)$/i.test(file);
         const affected: ModuleNode[] = [];
         for (const utopiaId of owners) {
           let utopiaCode: string;
@@ -440,6 +544,15 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
           if (cssModule) {
             hmrServer.moduleGraph.invalidateModule(cssModule);
             affected.push(cssModule);
+          }
+
+          // A template fragment change alters the render output, so the
+          // component module itself must re-run — not just its stylesheet.
+          if (!isStyleDep) {
+            for (const mod of hmrServer.moduleGraph.getModulesByFile(utopiaId) ?? []) {
+              hmrServer.moduleGraph.invalidateModule(mod);
+              affected.push(mod);
+            }
           }
         }
         if (affected.length > 0) return affected;
@@ -489,8 +602,8 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
           try {
             const compiled = compileUtopiaSource(source, file);
             result = compiled.result;
-            if (compiled.dep) {
-              registerStyleDep(compiled.dep, file);
+            for (const dep of compiled.deps) {
+              registerExternalDep(dep, file);
             }
           } catch {
             // Compile error — fall through to full update so the user
@@ -531,9 +644,9 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
         // style changes.
         if (styleChanged) {
           try {
-            const { result, dep } = compileUtopiaSource(source, file);
-            if (dep) {
-              registerStyleDep(dep, file);
+            const { result, deps } = compileUtopiaSource(source, file);
+            for (const dep of deps) {
+              registerExternalDep(dep, file);
             }
             if (result.css) {
               cssCache.set(file, result.css);

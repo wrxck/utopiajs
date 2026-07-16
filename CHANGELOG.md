@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `@matthesketh/utopia-vite-plugin` (0.11.0) — **compile-time template fragments
+  via `<include src>`**. `<include src="./part.uhtml" />` inside a `<template>`
+  splices the referenced fragment in place *before* compilation, so it is
+  compiled into the parent's own render function against the parent's script
+  scope — no component boundary. Rendering and reactivity are byte-for-byte
+  identical to writing the markup inline (a test asserts this), which is what
+  makes it safe to pull repeated or bulky markup out of a `.utopia` file, or
+  share a fragment across pages, with zero behaviour change — unlike a child
+  component, which introduces its own render/effect scope and remount. Includes
+  nest (resolved relative to each fragment), a cycle throws, a missing file
+  fails the build, and editing a fragment hot-updates every component that pulls
+  it in.
 - `@matthesketh/utopia-vite-plugin` (0.10.0) — **external component stylesheets
   via `<style src>`**. A component may now keep its CSS in a sibling file and
   pull it in with `<style src="./thing.css" scoped>`; the plugin reads the file

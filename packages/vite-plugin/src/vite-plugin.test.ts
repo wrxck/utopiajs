@@ -163,3 +163,97 @@ describe('<style src> external stylesheet', () => {
     expect(() => (plugin.transform as Function).call(ctx(), code, id)).toThrow(/could not be read/);
   });
 });
+
+// =========================================================================
+// <include src> — compile-time template fragments
+// =========================================================================
+
+describe('<include src> template fragments', () => {
+  const SCRIPT = `\n<script>\nexport function title() {\n  return 'hi';\n}\n</script>`;
+
+  function fixtureDir(): string {
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'utopia-include-'));
+  }
+
+  function ctx(): { addWatchFile: (f: string) => void; watched: string[] } {
+    const watched: string[] = [];
+    return { addWatchFile: (f: string) => watched.push(f), watched };
+  }
+
+  it('inlines a fragment with byte-identical output to the same markup written inline', () => {
+    const dir = fixtureDir();
+    const frag = '<span class="t">{{ title() }}</span>';
+    fs.writeFileSync(path.join(dir, 'frag.uhtml'), frag);
+    const id = path.join(dir, 'Card.utopia');
+
+    const includeSrc = `<template><div class="wrap"><include src="./frag.uhtml" /></div></template>${SCRIPT}`;
+    const inlineSrc = `<template><div class="wrap">${frag}</div></template>${SCRIPT}`;
+
+    const plugin = getPlugin();
+    const c = ctx();
+    const out = (plugin.transform as Function).call(c, includeSrc, id) as { code: string };
+
+    // the fragment is compiled into the parent's own render function.
+    expect(out.code).toBe(compile(inlineSrc, { filename: id }).code);
+    // and the fragment file is watched for HMR.
+    expect(c.watched).toContain(path.join(dir, 'frag.uhtml'));
+  });
+
+  it('supports the paired <include src="..."></include> form', () => {
+    const dir = fixtureDir();
+    fs.writeFileSync(path.join(dir, 'frag.uhtml'), '<b>x</b>');
+    const id = path.join(dir, 'Card.utopia');
+    const src = `<template><div><include src="./frag.uhtml"></include></div></template>${SCRIPT}`;
+    const inlineSrc = `<template><div><b>x</b></div></template>${SCRIPT}`;
+    const plugin = getPlugin();
+    const out = (plugin.transform as Function).call(ctx(), src, id) as { code: string };
+    expect(out.code).toBe(compile(inlineSrc, { filename: id }).code);
+  });
+
+  it('resolves nested includes relative to each fragment', () => {
+    const dir = fixtureDir();
+    fs.mkdirSync(path.join(dir, 'parts'));
+    fs.writeFileSync(path.join(dir, 'parts', 'inner.uhtml'), '<i>deep</i>');
+    fs.writeFileSync(
+      path.join(dir, 'outer.uhtml'),
+      '<div class="o"><include src="./parts/inner.uhtml" /></div>',
+    );
+    const id = path.join(dir, 'Card.utopia');
+    const src = `<template><section><include src="./outer.uhtml" /></section></template>${SCRIPT}`;
+    const inlineSrc = `<template><section><div class="o"><i>deep</i></div></section></template>${SCRIPT}`;
+    const plugin = getPlugin();
+    const c = ctx();
+    const out = (plugin.transform as Function).call(c, src, id) as { code: string };
+    expect(out.code).toBe(compile(inlineSrc, { filename: id }).code);
+    expect(c.watched).toContain(path.join(dir, 'outer.uhtml'));
+    expect(c.watched).toContain(path.join(dir, 'parts', 'inner.uhtml'));
+  });
+
+  it('throws on a circular include', () => {
+    const dir = fixtureDir();
+    fs.writeFileSync(path.join(dir, 'a.uhtml'), '<div><include src="./b.uhtml" /></div>');
+    fs.writeFileSync(path.join(dir, 'b.uhtml'), '<div><include src="./a.uhtml" /></div>');
+    const id = path.join(dir, 'Card.utopia');
+    const src = `<template><include src="./a.uhtml" /></template>${SCRIPT}`;
+    const plugin = getPlugin();
+    expect(() => (plugin.transform as Function).call(ctx(), src, id)).toThrow(/circular/);
+  });
+
+  it('throws a clear error when a fragment cannot be read', () => {
+    const id = path.join(os.tmpdir(), 'Missing.utopia');
+    const src = `<template><include src="./nope.uhtml" /></template>${SCRIPT}`;
+    const plugin = getPlugin();
+    expect(() => (plugin.transform as Function).call(ctx(), src, id)).toThrow(/could not be read/);
+  });
+
+  it('leaves components without includes untouched', () => {
+    const dir = fixtureDir();
+    const id = path.join(dir, 'Plain.utopia');
+    const src = `<template><div>plain</div></template>${SCRIPT}`;
+    const plugin = getPlugin();
+    const c = ctx();
+    const out = (plugin.transform as Function).call(c, src, id) as { code: string };
+    expect(out.code).toBe(compile(src, { filename: id }).code);
+    expect(c.watched).toHaveLength(0);
+  });
+});
