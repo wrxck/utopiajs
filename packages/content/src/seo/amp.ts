@@ -1,6 +1,6 @@
-import type { SeoConfig, SeoEntry } from './types';
-import { generateMetaTags, generateJsonLd } from './meta';
-import { sanitiseHtml } from './prerender';
+import { generateJsonLd, generateMetaTags } from '@/seo/meta';
+import { sanitiseHtml } from '@/seo/prerender';
+import type { SeoConfig, SeoEntry } from '@/seo/types';
 
 const AMP_BOILERPLATE = `<style amp-boilerplate>body{-webkit-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-moz-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-ms-animation:-amp-start 8s steps(1,end) 0s 1 normal both;animation:-amp-start 8s steps(1,end) 0s 1 normal both}@-webkit-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-moz-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-ms-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-o-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}</style><noscript><style amp-boilerplate>body{-webkit-animation:none;-moz-animation:none;-ms-animation:none;animation:none}</style></noscript>`;
 

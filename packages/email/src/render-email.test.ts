@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderEmail } from './render-email';
+import { renderEmail } from '@/render-email';
 import {
   createElement,
   createTextNode,

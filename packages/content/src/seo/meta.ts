@@ -1,4 +1,4 @@
-import type { SeoConfig, SeoEntry } from './types';
+import type { SeoConfig, SeoEntry } from '@/seo/types';
 
 function escapeHtml(str: string): string {
   return str

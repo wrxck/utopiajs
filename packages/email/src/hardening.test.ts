@@ -4,11 +4,11 @@
 import { describe, it, expect } from 'vitest';
 import { renderToString } from '@matthesketh/utopia-server';
 
-import { inlineCSS } from './css-inliner';
-import { createMailer } from './mailer';
-import { EmailButton } from './components/email-button';
-import { EmailImage } from './components/email-image';
-import type { EmailAdapter, EmailMessage } from './types';
+import { inlineCSS } from '@/css-inliner';
+import { createMailer } from '@/mailer';
+import { EmailButton } from '@/components/email-button';
+import { EmailImage } from '@/components/email-image';
+import type { EmailAdapter, EmailMessage } from '@/types';
 
 describe('email components drop dangerous URL schemes', () => {
   it('strips javascript: from an EmailButton href', () => {

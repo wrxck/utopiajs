@@ -20,19 +20,19 @@ import {
   appendChild,
   createComment,
   mergeClass,
-} from './dom';
+} from '@/dom';
 
-import { createIf, createFor, createComponent } from './directives';
+import { createIf, createFor, createComponent } from '@/directives';
 import {
   createComponentInstance,
   mount,
   startCapturingDisposers,
   stopCapturingDisposers,
-} from './component';
-import type { ComponentDefinition } from './component';
-import { queueJob, nextTick } from './scheduler';
-import { hydrate } from './hydration';
-import { createEffect } from './index';
+} from '@/component';
+import type { ComponentDefinition } from '@/component';
+import { queueJob, nextTick } from '@/scheduler';
+import { hydrate } from '@/hydration';
+import { createEffect } from '@/index';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1338,7 +1338,7 @@ describe('Effect disposal on unmount', () => {
 // Error Boundaries
 // ===========================================================================
 
-import { createErrorBoundary } from './error-boundary';
+import { createErrorBoundary } from '@/error-boundary';
 
 describe('createErrorBoundary', () => {
   it('renders the try function when it succeeds', () => {
@@ -1413,7 +1413,7 @@ describe('createErrorBoundary', () => {
 // Lazy Components
 // ===========================================================================
 
-import { defineLazy } from './lazy';
+import { defineLazy } from '@/lazy';
 
 describe('defineLazy', () => {
   it('renders the fallback initially', () => {
@@ -1496,7 +1496,7 @@ describe('defineLazy', () => {
 // Transitions
 // ===========================================================================
 
-import { createTransition, performEnter, performLeave } from './transition';
+import { createTransition, performEnter, performLeave } from '@/transition';
 
 describe('createTransition', () => {
   it('returns transition hooks object', () => {
@@ -1553,7 +1553,7 @@ describe('createTransition', () => {
 // Security — Regression tests
 // ===========================================================================
 
-import { useHead } from './head';
+import { useHead } from '@/head';
 
 describe('Security — defineLazy error handling', () => {
   it('shows error message when loader rejects', async () => {

@@ -4,16 +4,16 @@
 
 import type {
   AIAdapter,
-  ChatRequest,
-  ChatResponse,
   ChatChunk,
   ChatMessage,
+  ChatRequest,
+  ChatResponse,
   EmbeddingRequest,
   EmbeddingResponse,
   OllamaConfig,
   ToolCall,
   ToolDefinition,
-} from '../types';
+} from '@/types';
 
 // ---------------------------------------------------------------------------
 // Internal Ollama API types (no SDK — native fetch)

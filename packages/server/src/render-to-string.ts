@@ -2,9 +2,9 @@
 // @matthesketh/utopia-server — renderToString
 // ============================================================================
 
-import type { VNode, VElement } from './vnode';
-import type { ComponentDefinition, HeadConfig } from './ssr-runtime';
-import { createComponent, flushStyles, flushHead } from './ssr-runtime';
+import type { VNode, VElement } from '@/vnode';
+import type { ComponentDefinition, HeadConfig } from '@/ssr-runtime';
+import { createComponent, flushStyles, flushHead } from '@/ssr-runtime';
 import {
   VOID_ELEMENTS,
   escapeHtml,
@@ -12,7 +12,7 @@ import {
   escapeComment,
   validateTag,
   validateAttr,
-} from './html-utils';
+} from '@/html-utils';
 
 const MAX_VNODE_DEPTH = 1000;
 

@@ -2,8 +2,9 @@
 // EmailCard — Content card with background and border
 // ============================================================================
 
-import { createElement, appendChild, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
-import type { EmailComponentContext } from '../types';
+import { appendChild, createElement, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
+
+import type { EmailComponentContext } from '@/types';
 
 export const EmailCard = {
   setup: (props: Record<string, unknown>) => ({

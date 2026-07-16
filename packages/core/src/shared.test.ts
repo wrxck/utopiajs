@@ -3,8 +3,8 @@
 // ============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { effect } from './index';
-import { sharedSignal, type SharedSignal } from './shared';
+import { effect } from '@/index';
+import { sharedSignal, type SharedSignal } from '@/shared';
 
 // ---------------------------------------------------------------------------
 // BroadcastChannel mock

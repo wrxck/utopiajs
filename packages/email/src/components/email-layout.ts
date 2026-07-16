@@ -2,8 +2,9 @@
 // EmailLayout — Responsive table wrapper for email content
 // ============================================================================
 
-import { createElement, appendChild, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
-import type { EmailComponentContext } from '../types';
+import { appendChild, createElement, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
+
+import type { EmailComponentContext } from '@/types';
 
 export const EmailLayout = {
   setup: (props: Record<string, unknown>) => ({

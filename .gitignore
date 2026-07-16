@@ -11,3 +11,6 @@ coverage/
 package-lock.json
 .claude/
 utopia-docs/
+
+# local pack artifacts
+*.tgz

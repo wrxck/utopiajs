@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { signal } from '@matthesketh/utopia-core';
-import type { VElement, VText, VComment, VNode } from './vnode';
+import type { VElement, VText, VComment, VNode } from '@/vnode';
 import {
   createElement,
   createTextNode,
@@ -34,10 +34,10 @@ import {
   startCapturingDisposers,
   stopCapturingDisposers,
   useHead,
-} from './ssr-runtime';
-import { renderToString, serializeVNode, serializeHead } from './render-to-string';
-import { renderToStream } from './render-to-stream';
-import { createServerRouter } from './server-router';
+} from '@/ssr-runtime';
+import { renderToString, serializeVNode, serializeHead } from '@/render-to-string';
+import { renderToStream } from '@/render-to-stream';
+import { createServerRouter } from '@/server-router';
 
 // =========================================================================
 // VNode creation
@@ -761,7 +761,7 @@ describe('SSR useHead', () => {
 // API routes
 // =========================================================================
 
-import { buildApiRoutes, handleApiRequest } from './api-handler';
+import { buildApiRoutes, handleApiRequest } from '@/api-handler';
 
 describe('API routes', () => {
   it('buildApiRoutes creates route table from manifest', () => {
@@ -848,7 +848,7 @@ describe('API routes', () => {
 // SSR error boundaries
 // =========================================================================
 
-import { createErrorBoundary } from './ssr-runtime';
+import { createErrorBoundary } from '@/ssr-runtime';
 
 describe('SSR createErrorBoundary', () => {
   it('renders try function when it succeeds', () => {
@@ -882,7 +882,7 @@ describe('SSR createErrorBoundary', () => {
 // SSR lazy components
 // =========================================================================
 
-import { defineLazy } from './ssr-runtime';
+import { defineLazy } from '@/ssr-runtime';
 
 describe('SSR defineLazy', () => {
   it('returns a component that renders the fallback', () => {

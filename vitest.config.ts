@@ -1,7 +1,26 @@
 import { defineConfig } from 'vitest/config'
 import path from 'path'
 
+// resolves `@/x` to the importing file's OWN package src (packages/<name>/src/x),
+// mirroring the per-package tsconfig `paths` so the test runner matches the build.
+const localAlias = {
+  name: 'utopia-local-alias',
+  enforce: 'pre' as const,
+  async resolveId(source: string, importer: string | undefined, options: unknown) {
+    if (!source.startsWith('@/') || !importer) return null
+    const m = importer.replace(/\\/g, '/').match(/^(.*\/packages\/[^/]+\/src)\//)
+    if (!m) return null
+    const target = path.resolve(m[1], source.slice(2))
+    const resolved = await (this as { resolve: Function }).resolve(target, importer, {
+      skipSelf: true,
+      ...(options as object),
+    })
+    return resolved ?? null
+  },
+}
+
 export default defineConfig({
+  plugins: [localAlias],
   resolve: {
     alias: {
       '@matthesketh/utopia-compiler': path.resolve(__dirname, 'packages/compiler/src/index.ts'),

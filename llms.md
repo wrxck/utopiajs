@@ -188,6 +188,7 @@ theme.close()  // tear down the channel
 | Else-if | `u-else-if="expr"` | `<div u-else-if="other()">Other</div>` |
 | Else | `u-else` | `<div u-else>Fallback</div>` |
 | List rendering | `u-for="item in list()"` | `<li u-for="item in items()">{{ item }}</li>` |
+| Visibility toggle | `u-show="expr"` | `<video u-show="scanning()"></video>` |
 | Two-way binding | `u-model="signal"` | `<input u-model="name" />` |
 
 Long-form alternatives: `u-on:click` for `@click`, `u-bind:src` for `:src`.
@@ -195,6 +196,8 @@ Long-form alternatives: `u-on:click` for `@click`, `u-bind:src` for `:src`.
 Event modifiers: `@click.prevent="handler"`.
 
 **Important:** `u-else-if` and `u-else` must immediately follow a `u-if` or `u-else-if` sibling element.
+
+**`u-if` vs `u-show`:** `u-if` adds/removes the element from the DOM (its subtree is destroyed when false, recreated when true). `u-show` keeps the element mounted and only toggles `display`. Reach for `u-show` when the element is expensive to recreate or holds native state that must survive a hide/show — a `<video>` with a live `MediaStream`, a `<canvas>`, input focus, scroll position. Prefer `u-if` when the branch is rarely shown or heavy to keep mounted.
 
 ## Component Lifecycle
 

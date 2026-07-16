@@ -17,7 +17,7 @@ import {
   EmailImage,
   EmailColumns,
   EmailSpacer,
-} from './components/index';
+} from '@/components/index';
 
 describe('Email Components', () => {
   describe('EmailLayout', () => {

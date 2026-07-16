@@ -8,7 +8,7 @@
 // ============================================================================
 
 import { signal, computed, batch, untrack } from '@matthesketh/utopia-core';
-import type { VElement, VText, VComment, VNode } from './vnode';
+import type { VElement, VText, VComment, VNode } from '@/vnode';
 
 const UPPER_CASE_RE = /([A-Z])/g;
 
@@ -197,6 +197,20 @@ export function setAttr(el: VElement, name: string, value: unknown): void {
   }
 
   el.attrs[name] = out;
+}
+
+// ---------------------------------------------------------------------------
+// Reactive visibility (u-show)
+// ---------------------------------------------------------------------------
+
+// server render is a single pass, so we only need the initial state: when the
+// element starts hidden, bake `display: none` into its style attr so the markup
+// matches what the client shows before hydration. when visible we leave the
+// element untouched (its natural display applies).
+export function setShow(el: VElement, getter: () => unknown): void {
+  if (getter()) return;
+  const style = el.attrs['style'];
+  el.attrs['style'] = style ? `${style}; display: none` : 'display: none';
 }
 
 // ---------------------------------------------------------------------------

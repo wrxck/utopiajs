@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { describe, it, expect, vi } from 'vitest';
-import { signal, computed, effect, batch, untrack, type ReadonlySignal } from './index';
+import { signal, computed, effect, batch, untrack, createRoot, type ReadonlySignal } from '@/index';
 
 // ---------------------------------------------------------------------------
 // signal — basic read / write
@@ -980,5 +980,113 @@ describe('flushPendingEffects — infinite loop guard', () => {
     }
 
     expect(threw).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computed().dispose()
+// ---------------------------------------------------------------------------
+
+describe('computed().dispose()', () => {
+  it('unsubscribes from its source so the source no longer retains it', () => {
+    const src = signal(1);
+    const derived = computed(() => src() * 2);
+    expect(derived()).toBe(2);
+
+    let runs = 0;
+    const stop = effect(() => {
+      derived();
+      runs++;
+    });
+    expect(runs).toBe(1);
+
+    derived.dispose!();
+    // after dispose the computed is frozen and no longer tracks src.
+    src.set(5);
+    expect(derived()).toBe(2); // frozen at last value
+    expect(runs).toBe(1); // downstream effect did not re-run via the computed
+    stop();
+  });
+
+  it('is idempotent', () => {
+    const derived = computed(() => 1);
+    derived();
+    expect(() => {
+      derived.dispose!();
+      derived.dispose!();
+    }).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createRoot()
+// ---------------------------------------------------------------------------
+
+describe('createRoot()', () => {
+  it('disposes every effect created within when its dispose is called', () => {
+    const s = signal(0);
+    let runs = 0;
+    let dispose!: () => void;
+    createRoot((d) => {
+      dispose = d;
+      effect(() => {
+        s();
+        runs++;
+      });
+    });
+    expect(runs).toBe(1);
+    s.set(1);
+    expect(runs).toBe(2);
+
+    dispose();
+    s.set(2);
+    expect(runs).toBe(2); // effect torn down
+  });
+
+  it('disposes computeds created within (no leak against the source)', () => {
+    const src = signal(1);
+    let derived!: ReadonlySignal<number>;
+    let dispose!: () => void;
+    createRoot((d) => {
+      dispose = d;
+      derived = computed(() => src() * 10);
+    });
+    expect(derived()).toBe(10);
+
+    dispose();
+    src.set(2);
+    expect(derived()).toBe(10); // frozen — root disposed it
+  });
+
+  it('returns the callback result and restores the previous root after nesting', () => {
+    const outerSeen: number[] = [];
+    const result = createRoot((disposeOuter) => {
+      const s = signal(0);
+      effect(() => outerSeen.push(s()));
+      createRoot((disposeInner) => {
+        // inner root captures only its own effect
+        effect(() => void s());
+        disposeInner();
+      });
+      // outer effect still live after inner root disposed
+      s.set(1);
+      disposeOuter();
+      return 'ok';
+    });
+    expect(result).toBe('ok');
+    expect(outerSeen).toEqual([0, 1]);
+  });
+
+  it('does not register effects created outside any root', () => {
+    // a bare effect still works and is independently disposable.
+    const s = signal(0);
+    let runs = 0;
+    const stop = effect(() => {
+      s();
+      runs++;
+    });
+    s.set(1);
+    expect(runs).toBe(2);
+    stop();
   });
 });

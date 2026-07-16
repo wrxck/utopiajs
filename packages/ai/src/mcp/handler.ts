@@ -3,8 +3,9 @@
 // ============================================================================
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { MCPServer } from './server';
-import type { JsonRpcRequest } from './types';
+
+import type { MCPServer } from '@/mcp/server';
+import type { JsonRpcRequest } from '@/mcp/types';
 
 export interface MCPHandlerOptions {
   corsOrigin?: string;

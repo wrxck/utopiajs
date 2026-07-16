@@ -6,6 +6,102 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `@matthesketh/utopia-vite-plugin` (0.10.0) — **external component stylesheets
+  via `<style src>`**. A component may now keep its CSS in a sibling file and
+  pull it in with `<style src="./thing.css" scoped>`; the plugin reads the file
+  and splices it into the block before compilation, so the filename-seeded scope
+  id makes it scoped byte-for-byte identically to the same rules written in
+  place. Editing the external stylesheet hot-updates every component that imports
+  it (style-only, no re-render), the file is registered as a watched build input,
+  and a missing file fails the build with a clear error. Lets large components
+  shed their `<style>` block without any change to the runtime or the emitted
+  CSS.
+- `@matthesketh/utopia-compiler` (0.9.0) — opt-in **per-instance components with
+  props**. A component whose `<script>` calls `defineProps()` is compiled into a
+  `setup(props)` factory (script + render nested inside, user imports hoisted to
+  module scope) and exported as `{ setup, render }`; components that do not call
+  `defineProps()` keep the exact module-scope output, so existing components
+  compile byte-for-byte identically. Props are passed as values — reactivity is
+  achieved the idiomatic way, by passing a signal uncalled (`:foo="sig"`) and
+  reading it with `foo()` in the child. `defineProps()` takes no arguments and no
+  type parameter (type the result with a cast: `const { x } = defineProps() as T`).
+- `@matthesketh/utopia-runtime` (0.9.0) — **`provide()` / `inject()` context**.
+  `provide(key, value)` during a component's `setup()` makes a value available to
+  that component and all descendants; `inject(key, fallback?)` reads the nearest
+  ancestor's value (or the fallback). Keys are any stable value (typically a
+  module-level symbol). Lets you share state down a subtree without prop-drilling
+  or module-level singletons. Each `createComponent` (and root `mount`) pushes an
+  owner around `setup` + `render`, so children created during render link to their
+  parent for the upward `inject()` walk.
+- **`u-model` now works for every control kind.** The compiler emits a single
+  `applyModel(el, signal, opts)` call that inspects the element at runtime and
+  wires the correct property + event for text inputs, `<textarea>`, `<select>`,
+  checkboxes (boolean), radios (selected value), and number/range inputs.
+  Modifiers `u-model.number` (coerce to number, also implied by `type=number`),
+  `.trim`, and `.lazy` (sync on `change` instead of `input`) are supported.
+- **`u-show` directive.** Toggles an element's visibility in place (via `display`)
+  instead of adding/removing it from the DOM like `u-if`. The element — and any
+  costly native state it holds (a live `<video>` `MediaStream`, a `<canvas>`'s
+  pixels, input focus, scroll position) — stays mounted across the toggle, so it
+  is the right primitive for anything expensive to recreate. The element's own
+  display is stashed so showing restores exactly what the author set (inline value
+  or stylesheet default). Compiles to a `setShow(el, () => expr)` runtime helper;
+  SSR bakes `display: none` into the initial markup when hidden. Motivated by a
+  barcode-scanner feed that went black every time a `u-if` sibling re-rendered.
+- **Array `:class` / `:style` bindings.** `:class` and `:style` now accept arrays
+  (including nested arrays and a mix of strings/objects) in addition to the
+  string and object forms they already supported — e.g. `:class="['chip', { on:
+  active() }]"`. Exposed as `normalizeClass()` / `normalizeStyle()` runtime
+  helpers.
+- **Component `@event` handlers.** `<Child @select="handler" />` now compiles to
+  an `onSelect` callback prop the child can invoke (previously `@event` on a
+  component was silently dropped). Hyphenated names are camelCased
+  (`@select-item` → `onSelectItem`); inline expressions are wrapped so `$event`
+  is the payload the child passes.
+- `@matthesketh/utopia-core` (0.9.0) — **`createRoot(fn)`** owns every `effect`
+  and `computed` created during its synchronous execution and hands back a
+  `dispose` that tears them all down at once; roots nest. **`computed().dispose()`**
+  unsubscribes a derived signal from its sources (freezing it at its last value)
+  so a long-lived source no longer retains it.
+
+### Fixed
+
+- `@matthesketh/utopia-runtime` (0.9.0) — effect disposers created during a
+  per-instance `setup()` (via `createEffect`/`use*`) are now captured and torn
+  down when the instance unmounts. Previously the disposer window only wrapped
+  `render`, so setup-phase effects leaked. The lifecycle window stays scoped to
+  `setup`, so child components mounted during `render` never clobber it.
+- `@matthesketh/utopia-runtime` (0.9.0) — `createForm().handleSubmit(fn)` now
+  reads each field's value directly from the form's field map rather than via
+  `this.data()`, so a destructured `const { handleSubmit } = createForm(...)`
+  no longer throws on submit.
+- `@matthesketh/utopia-runtime` + `@matthesketh/utopia-compiler` — `u-else-if`
+  chains now generate and run correctly: each branch's nested `createIf` is
+  emitted inside its own branch closure, and `createIf` retries on a microtask
+  when its anchor is not yet connected (the case for a branch returned into an
+  outer `createIf`).
+- `@matthesketh/utopia-router` (0.9.0) — route pages that use `defineProps`
+  (i.e. compile to `{ setup, render }`) now render correctly: the router calls
+  `setup(props)` and renders with the resulting context instead of calling
+  `render(props)` directly (which crashed). Route rendering is also wrapped so
+  the page's effects, computeds (e.g. from `getQueryParam`/`getRouteParam`),
+  `onDestroy` hooks, and child-component teardown all run on navigation instead
+  of leaking against the long-lived router signals. `provide()` during a route
+  page's setup now resolves for its descendants.
+
+### Tooling
+
+- Added `eslint-plugin-simple-import-sort` to the lint config so `npm run lint`
+  / `lint:fix` / `format` organise imports into stable groups (side-effect, node
+  builtins, external, `@/` alias, then relative).
+- All library-internal imports across the packages now use the `@/` alias
+  (`@/component`) instead of relative paths, resolved per-package via tsconfig
+  `paths` and a matching resolver in the vitest config. The published bundles are
+  unaffected — tsup inlines the alias, so no `@/` specifiers appear in any
+  `dist` `.js` or `.d.ts`.
+
 ## [0.8.1] - 2026-05-29
 
 Follow-up hardening on top of 0.8.0.

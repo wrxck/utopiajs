@@ -2,18 +2,18 @@
 // @matthesketh/utopia-ai — Anthropic Adapter
 // ============================================================================
 
+import type Anthropic from '@anthropic-ai/sdk';
+
 import type {
   AIAdapter,
-  ChatRequest,
-  ChatResponse,
+  AnthropicConfig,
   ChatChunk,
   ChatMessage,
-  AnthropicConfig,
+  ChatRequest,
+  ChatResponse,
   ToolCall,
   ToolDefinition,
-} from '../types';
-
-import type Anthropic from '@anthropic-ai/sdk';
+} from '@/types';
 
 /**
  * Create an Anthropic adapter.

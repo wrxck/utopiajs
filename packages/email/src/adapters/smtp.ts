@@ -2,7 +2,7 @@
 // @matthesketh/utopia-email — SMTP Adapter (nodemailer)
 // ============================================================================
 
-import type { EmailAdapter, EmailMessage, EmailResult, SmtpConfig } from '../types';
+import type { EmailAdapter, EmailMessage, EmailResult, SmtpConfig } from '@/types';
 
 /**
  * Create an SMTP email adapter using nodemailer.

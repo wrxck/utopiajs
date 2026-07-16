@@ -2,7 +2,7 @@
 // EmailDivider — Horizontal rule
 // ============================================================================
 
-import { createElement, appendChild, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
+import { appendChild, createElement, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
 
 export const EmailDivider = {
   setup: (props: Record<string, unknown>) => ({

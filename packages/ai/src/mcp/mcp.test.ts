@@ -2,13 +2,15 @@
 // @matthesketh/utopia-ai — MCP Handler & Client Tests
 // ============================================================================
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { EventEmitter } from 'events';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { createMCPHandler } from './handler';
-import { createMCPClient } from './client';
-import { createMCPServer } from './server';
-import type { MCPServer } from './server';
+
+import { EventEmitter } from 'events';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { createMCPClient } from '@/mcp/client';
+import { createMCPHandler } from '@/mcp/handler';
+import type { MCPServer } from '@/mcp/server';
+import { createMCPServer } from '@/mcp/server';
 
 // ---------------------------------------------------------------------------
 // Test helpers

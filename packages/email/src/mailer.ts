@@ -2,8 +2,8 @@
 // @matthesketh/utopia-email — Mailer abstraction
 // ============================================================================
 
-import { renderEmail } from './render-email';
-import type { EmailAdapter, EmailResult, MailerSendOptions } from './types';
+import { renderEmail } from '@/render-email';
+import type { EmailAdapter, EmailResult, MailerSendOptions } from '@/types';
 
 export interface Mailer {
   send(options: MailerSendOptions): Promise<EmailResult>;

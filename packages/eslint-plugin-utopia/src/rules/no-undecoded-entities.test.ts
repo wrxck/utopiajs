@@ -1,7 +1,7 @@
 import { RuleTester } from 'eslint';
 
-import * as parser from '../parser';
-import rule from './no-undecoded-entities';
+import * as parser from '@/parser';
+import rule from '@/rules/no-undecoded-entities';
 
 const ruleTester = new RuleTester({
   languageOptions: {

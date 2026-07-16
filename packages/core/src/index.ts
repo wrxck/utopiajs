@@ -73,6 +73,13 @@ export interface ReadonlySignal<T> {
   readonly value: T;
   /** Read the current value WITHOUT tracking dependency. */
   peek(): T;
+  /**
+   * Dispose a derived signal (`computed`), unsubscribing it from its sources so
+   * a long-lived source no longer retains it. Present on `computed` results;
+   * a no-op concept for plain `signal`s. After disposal the value is frozen at
+   * its last computed result.
+   */
+  dispose?(): void;
 }
 
 /** A writable reactive signal. */
@@ -107,6 +114,20 @@ let subscriberStack: (Subscriber | null)[] = [];
 
 /** The currently active subscriber (top of stack), or null. */
 let currentSubscriber: Subscriber | null = null;
+
+/**
+ * The currently active reactive root (set by `createRoot`), or null. effects
+ * and computeds created while a root is active register their disposer here so
+ * the whole group can be torn down at once.
+ */
+let currentRoot: { disposers: (() => void)[] } | null = null;
+
+/** Register a disposer with the active reactive root, if any. */
+function registerWithRoot(dispose: () => void): void {
+  if (currentRoot !== null) {
+    currentRoot.disposers.push(dispose);
+  }
+}
 
 /** Batch depth counter. When > 0, effect execution is deferred. */
 let batchDepth = 0;
@@ -256,6 +277,9 @@ class ComputedNode<T> implements Subscriber {
    */
   _computing: boolean = false;
 
+  /** Whether this computed has been disposed (frozen, unsubscribed). */
+  _disposed: boolean = false;
+
   constructor(fn: () => T) {
     this._fn = fn;
     // The computed owns a SignalNode so that downstream effects/computeds
@@ -279,7 +303,10 @@ class ComputedNode<T> implements Subscriber {
 
   /** Recompute (if dirty) and return the value. */
   _read(): T {
-    if (this._dirty && !this._computing) {
+    // a disposed computed is frozen at its last value — skip recompute (its
+    // dependency subscriptions are gone) but still let downstream track the
+    // internal node.
+    if (this._dirty && !this._computing && !this._disposed) {
       this._recompute();
     }
     // Track via the internal signal node so downstream subscribers are
@@ -289,10 +316,17 @@ class ComputedNode<T> implements Subscriber {
 
   /** Read without tracking. */
   _peek(): T {
-    if (this._dirty && !this._computing) {
+    if (this._dirty && !this._computing && !this._disposed) {
       this._recompute();
     }
     return this._signalNode._peek();
+  }
+
+  /** Dispose permanently — unsubscribe from sources and freeze the value. */
+  _dispose(): void {
+    if (this._disposed) return;
+    this._disposed = true;
+    this._cleanup();
   }
 
   /** Unsubscribe from all current dependencies. */
@@ -359,6 +393,11 @@ export function computed<T>(fn: () => T): ReadonlySignal<T> {
   });
 
   (read as any).peek = (): T => node._peek();
+  (read as any).dispose = (): void => node._dispose();
+
+  // if created inside a createRoot, tie this computed's teardown to the root so
+  // a long-lived source signal no longer retains it after the root is disposed.
+  registerWithRoot(() => node._dispose());
 
   return read;
 }
@@ -484,7 +523,55 @@ export function effect(fn: () => void | (() => void)): () => void {
   // Run synchronously on creation to establish initial subscriptions.
   node._run();
 
-  return () => node._dispose();
+  const dispose = (): void => node._dispose();
+  // if created inside a createRoot, tie this effect's teardown to the root.
+  registerWithRoot(dispose);
+  return dispose;
+}
+
+// ---------------------------------------------------------------------------
+// createRoot()
+// ---------------------------------------------------------------------------
+
+/**
+ * Run `fn` inside a reactive root that owns every `effect` and `computed`
+ * created during its synchronous execution. `fn` receives a `dispose` function
+ * that tears them all down at once — use it to scope a subtree of reactivity
+ * (e.g. a route page) so it can be cleaned up on navigation/unmount.
+ *
+ * ```ts
+ * const stop = createRoot((dispose) => {
+ *   effect(() => render(state()));
+ *   return dispose;
+ * });
+ * stop(); // disposes the effect above
+ * ```
+ *
+ * Roots nest: an inner root captures only what it creates, and disposing an
+ * outer root does not implicitly dispose a sibling.
+ */
+export function createRoot<T>(fn: (dispose: () => void) => T): T {
+  const root = { disposers: [] as (() => void)[] };
+  const prev = currentRoot;
+  currentRoot = root;
+  let disposed = false;
+  const dispose = (): void => {
+    if (disposed) return;
+    disposed = true;
+    const ds = root.disposers.splice(0);
+    for (let i = ds.length - 1; i >= 0; i--) {
+      try {
+        ds[i]();
+      } catch {
+        /* a faulty disposer must not abort the rest of teardown */
+      }
+    }
+  };
+  try {
+    return fn(dispose);
+  } finally {
+    currentRoot = prev;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -575,12 +662,12 @@ export function untrack<T>(fn: () => T): T {
 // Shared signals (cross-tab sync via BroadcastChannel)
 // ---------------------------------------------------------------------------
 
-export { sharedSignal } from './shared';
-export type { SharedSignal, SharedSignalOptions } from './shared';
+export { sharedSignal } from '@/shared';
+export type { SharedSignal, SharedSignalOptions } from '@/shared';
 
 // ---------------------------------------------------------------------------
 // Persisted signals (synced to localStorage / sessionStorage)
 // ---------------------------------------------------------------------------
 
-export { persistedSignal } from './persisted';
-export type { PersistedSignal, PersistedSignalOptions } from './persisted';
+export { persistedSignal } from '@/persisted';
+export type { PersistedSignal, PersistedSignalOptions } from '@/persisted';

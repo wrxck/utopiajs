@@ -14,20 +14,28 @@ export {
   setText,
   setHtml,
   setSafeHtml,
+  setShow,
   sanitizeHtml,
   setAttr,
   mergeClass,
+  normalizeClass,
+  normalizeStyle,
   addEventListener,
   insertBefore,
   removeNode,
   appendChild,
   createComment,
-} from './dom';
+} from '@/dom';
+
+// ---------------------------------------------------------------------------
+// Two-way binding (u-model)
+// ---------------------------------------------------------------------------
+export { applyModel } from '@/model';
 
 // ---------------------------------------------------------------------------
 // Directives (used by compiled control-flow constructs)
 // ---------------------------------------------------------------------------
-export { createIf, createFor, createComponent } from './directives';
+export { createIf, createFor, createComponent } from '@/directives';
 
 // ---------------------------------------------------------------------------
 // Component lifecycle
@@ -38,37 +46,43 @@ export {
   pushDisposer,
   startCapturingDisposers,
   stopCapturingDisposers,
+  startCapturingLifecycle,
+  stopCapturingLifecycle,
+  pushOwner,
+  popOwner,
   onMount,
   onDestroy,
-} from './component';
+  provide,
+  inject,
+} from '@/component';
 
-export type { ComponentDefinition, ComponentInstance } from './component';
+export type { ComponentDefinition, ComponentInstance } from '@/component';
 
 // ---------------------------------------------------------------------------
 // Scheduler
 // ---------------------------------------------------------------------------
-export { queueJob, nextTick } from './scheduler';
+export { queueJob, nextTick } from '@/scheduler';
 
 // ---------------------------------------------------------------------------
 // Hydration
 // ---------------------------------------------------------------------------
-export { hydrate } from './hydration';
+export { hydrate } from '@/hydration';
 
 // ---------------------------------------------------------------------------
 // Lifecycle helpers (auto-cleanup side-effects)
 // ---------------------------------------------------------------------------
-export { useEventListener, useInterval, useTimeout } from './use';
+export { useEventListener, useInterval, useTimeout } from '@/use';
 
 // ---------------------------------------------------------------------------
 // Reactivity primitives (re-exported from @matthesketh/utopia-core)
 // ---------------------------------------------------------------------------
-export { signal, computed, effect, batch, untrack } from '@matthesketh/utopia-core';
+export { signal, computed, effect, batch, untrack, createRoot } from '@matthesketh/utopia-core';
 
 // ---------------------------------------------------------------------------
 // createEffect — wrapped effect() that captures disposers
 // ---------------------------------------------------------------------------
 import { effect as _coreEffect } from '@matthesketh/utopia-core';
-import { pushDisposer } from './component';
+import { pushDisposer } from '@/component';
 
 export function createEffect(fn: () => void | (() => void)): () => void {
   const dispose = _coreEffect(fn);
@@ -89,28 +103,28 @@ export {
   email,
   pattern,
   validate,
-} from './form';
+} from '@/form';
 
-export type { ValidationRule, FieldConfig, FormField, Form } from './form';
+export type { ValidationRule, FieldConfig, FormField, Form } from '@/form';
 
 // ---------------------------------------------------------------------------
 // Head management
 // ---------------------------------------------------------------------------
-export { useHead } from './head';
-export type { HeadConfig } from './head';
+export { useHead } from '@/head';
+export type { HeadConfig } from '@/head';
 
 // ---------------------------------------------------------------------------
 // Error boundaries
 // ---------------------------------------------------------------------------
-export { createErrorBoundary } from './error-boundary';
+export { createErrorBoundary } from '@/error-boundary';
 
 // ---------------------------------------------------------------------------
 // Lazy components
 // ---------------------------------------------------------------------------
-export { defineLazy } from './lazy';
+export { defineLazy } from '@/lazy';
 
 // ---------------------------------------------------------------------------
 // Transitions
 // ---------------------------------------------------------------------------
-export { createTransition, performEnter, performLeave } from './transition';
-export type { TransitionOptions, TransitionHooks } from './transition';
+export { createTransition, performEnter, performLeave } from '@/transition';
+export type { TransitionOptions, TransitionHooks } from '@/transition';

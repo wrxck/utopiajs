@@ -8,8 +8,8 @@
 
 import { effect } from '@matthesketh/utopia-core';
 
-import { pushDisposer } from './component';
-import { isHydrating, claimNode, unclaimNode, enterNode, exitNode } from './hydration';
+import { pushDisposer } from '@/component';
+import { isHydrating, claimNode, unclaimNode, enterNode, exitNode } from '@/hydration';
 
 // ---------------------------------------------------------------------------
 // SVG support
@@ -149,6 +149,32 @@ export function setHtml(el: Element, getter: () => unknown): void {
       if (el.innerHTML !== html) {
         el.innerHTML = html;
       }
+    }),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reactive visibility (u-show)
+// ---------------------------------------------------------------------------
+
+/**
+ * Toggle an element's visibility without unmounting it. Unlike `u-if`, the
+ * element (and any costly native state it carries — a live `MediaStream`, a
+ * `<canvas>`'s pixels, input focus, scroll position) stays in the DOM; only its
+ * `display` flips. This is the right primitive for anything that is expensive to
+ * recreate or must survive a hide/show cycle.
+ *
+ * The element's own display is stashed once so showing restores exactly what the
+ * author set — an inline value or (when there is none) the stylesheet default —
+ * rather than clobbering it with a hard-coded `block`.
+ */
+export function setShow(el: HTMLElement, getter: () => unknown): void {
+  // a statically-authored inline `display: none` is treated as "no inline
+  // display", so showing falls back to the stylesheet rule.
+  const original = el.style.display === 'none' ? '' : el.style.display;
+  pushDisposer(
+    effect(() => {
+      el.style.display = getter() ? original : 'none';
     }),
   );
 }
@@ -503,20 +529,69 @@ export function setSafeHtml(el: Element, getter: () => unknown): void {
  * - **data-* attributes**: set via `el.dataset`
  * - Everything else: plain `setAttribute` / `removeAttribute`.
  */
+/**
+ * Normalise a `:class` binding value into a className string. Accepts:
+ * - a string (passed through)
+ * - an object `{ active: true, hidden: false }` → keys with truthy values
+ * - an array of any of the above (including nested arrays) → flattened + joined
+ *
+ * This mirrors the value shapes most template authors reach for, so a `:class`
+ * binding can be written declaratively instead of building the string by hand.
+ */
+export function normalizeClass(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    let res = '';
+    for (const item of value) {
+      const part = normalizeClass(item);
+      if (part) res += (res ? ' ' : '') + part;
+    }
+    return res;
+  }
+  if (value && typeof value === 'object') {
+    let res = '';
+    const obj = value as Record<string, unknown>;
+    for (const key of Object.keys(obj)) {
+      if (obj[key]) res += (res ? ' ' : '') + key;
+    }
+    return res;
+  }
+  return '';
+}
+
+/**
+ * Normalise a `:style` binding value into a string or a flat property object.
+ * Accepts a string, an object `{ color: 'red', fontSize: '14px' }`, or an array
+ * of either (later entries win). Returns `undefined` for nullish input.
+ */
+export function normalizeStyle(value: unknown): string | Record<string, unknown> | undefined {
+  if (Array.isArray(value)) {
+    const merged: Record<string, unknown> = {};
+    for (const item of value) {
+      const norm = normalizeStyle(item);
+      if (!norm) continue;
+      if (typeof norm === 'string') {
+        for (const decl of norm.split(';')) {
+          const idx = decl.indexOf(':');
+          if (idx > 0) merged[decl.slice(0, idx).trim()] = decl.slice(idx + 1).trim();
+        }
+      } else {
+        Object.assign(merged, norm);
+      }
+    }
+    return merged;
+  }
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') return value as Record<string, unknown>;
+  return undefined;
+}
+
 // merge a template's static class with its :class binding. compiled output
 // calls this so `class="chip" :class="on ? 'on' : ''"` keeps both - setAttr
 // replaces the whole className, so without the merge the static part is lost
 // the moment the binding's effect runs.
 export function mergeClass(staticClass: string, value: unknown): string {
-  let dynamic = '';
-  if (typeof value === 'string') {
-    dynamic = value;
-  } else if (value && typeof value === 'object') {
-    const obj = value as Record<string, unknown>;
-    dynamic = Object.keys(obj)
-      .filter((k) => obj[k])
-      .join(' ');
-  }
+  const dynamic = normalizeClass(value);
   if (!dynamic) return staticClass;
   return staticClass ? `${staticClass} ${dynamic}` : dynamic;
 }
@@ -526,28 +601,16 @@ export function setAttr(el: Element, name: string, value: unknown): void {
   if (name === 'class') {
     if (value == null || value === false) {
       el.removeAttribute('class');
-    } else if (typeof value === 'string') {
-      // SVG elements have className as a read-only SVGAnimatedString —
-      // use setAttribute instead.
-      if (el instanceof SVGElement) {
-        el.setAttribute('class', value);
-      } else {
-        el.className = value;
-      }
-    } else if (typeof value === 'object' && value !== null) {
-      const classes: string[] = [];
-      const obj = value as Record<string, unknown>;
-      for (const key of Object.keys(obj)) {
-        if (obj[key]) {
-          classes.push(key);
-        }
-      }
-      const classStr = classes.join(' ');
-      if (el instanceof SVGElement) {
-        el.setAttribute('class', classStr);
-      } else {
-        el.className = classStr;
-      }
+      return;
+    }
+    // string | object | array (incl. nested) all collapse to a className string.
+    const classStr = normalizeClass(value);
+    // SVG elements have className as a read-only SVGAnimatedString —
+    // use setAttribute instead.
+    if (el instanceof SVGElement) {
+      el.setAttribute('class', classStr);
+    } else {
+      el.className = classStr;
     }
     return;
   }
@@ -555,16 +618,17 @@ export function setAttr(el: Element, name: string, value: unknown): void {
   // --- style ---------------------------------------------------------------
   if (name === 'style') {
     const htmlEl = el as HTMLElement;
-    if (value == null || value === false) {
+    // string | object | array (later entries win) → a string or property object.
+    const normalized = normalizeStyle(value);
+    if (normalized == null) {
       htmlEl.removeAttribute('style');
-    } else if (typeof value === 'string') {
-      htmlEl.style.cssText = value;
-    } else if (typeof value === 'object' && value !== null) {
+    } else if (typeof normalized === 'string') {
+      htmlEl.style.cssText = normalized;
+    } else {
       // Reset first to avoid stale properties
       htmlEl.style.cssText = '';
-      const styleObj = value as Record<string, unknown>;
-      for (const prop of Object.keys(styleObj)) {
-        const val = styleObj[prop];
+      for (const prop of Object.keys(normalized)) {
+        const val = normalized[prop];
         if (val != null) {
           // Support both camelCase and kebab-case property names
           htmlEl.style.setProperty(prop.replace(UPPER_CASE_RE, '-$1').toLowerCase(), String(val));

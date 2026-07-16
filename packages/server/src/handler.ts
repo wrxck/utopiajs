@@ -3,11 +3,11 @@
 // ============================================================================
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { STYLE_CLOSE_RE, escapeStyleContent } from './html-utils';
-import type { HeadConfig } from './ssr-runtime';
-import { serializeHead } from './render-to-string';
-import { buildApiRoutes, handleApiRequest } from './api-handler';
-import type { RequestEvent, RequestHandler } from './api-handler';
+import { STYLE_CLOSE_RE, escapeStyleContent } from '@/html-utils';
+import type { HeadConfig } from '@/ssr-runtime';
+import { serializeHead } from '@/render-to-string';
+import { buildApiRoutes, handleApiRequest } from '@/api-handler';
+import type { RequestEvent, RequestHandler } from '@/api-handler';
 
 export interface HandlerOptions {
   /** The HTML template with <!--ssr-outlet--> and <!--ssr-head--> markers. */

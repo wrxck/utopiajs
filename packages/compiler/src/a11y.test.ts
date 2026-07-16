@@ -3,9 +3,9 @@
 // ============================================================================
 
 import { describe, it, expect } from 'vitest';
-import { parseTemplate } from './template-compiler';
-import { checkA11y } from './a11y';
-import { compile } from './index';
+import { parseTemplate } from '@/template-compiler';
+import { checkA11y } from '@/a11y';
+import { compile } from '@/index';
 
 // Helper: parse and check in one call.
 function check(template: string, options?: { disable?: string[] }) {

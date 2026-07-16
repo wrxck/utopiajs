@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { inlineCSS } from './css-inliner';
+import { inlineCSS } from '@/css-inliner';
 
 describe('CSS Inliner', () => {
   it('returns html unchanged when css is empty', () => {

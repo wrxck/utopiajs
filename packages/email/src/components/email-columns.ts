@@ -2,8 +2,9 @@
 // EmailColumns — Table-based multi-column layout
 // ============================================================================
 
-import { createElement, appendChild, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
-import type { EmailComponentContext } from '../types';
+import { appendChild, createElement, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
+
+import type { EmailComponentContext } from '@/types';
 
 export const EmailColumns = {
   setup: (props: Record<string, unknown>) => ({

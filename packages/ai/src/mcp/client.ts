@@ -2,18 +2,18 @@
 // @matthesketh/utopia-ai — MCP Client
 // ============================================================================
 
+import type { ToolHandler } from '@/ai';
 import type {
-  MCPClientConfig,
-  MCPToolDefinition,
-  MCPToolResult,
-  MCPResourceDefinition,
-  MCPResourceContent,
-  MCPPromptDefinition,
-  MCPPromptResult,
   JsonRpcRequest,
   JsonRpcResponse,
-} from './types';
-import type { ToolHandler } from '../ai';
+  MCPClientConfig,
+  MCPPromptDefinition,
+  MCPPromptResult,
+  MCPResourceContent,
+  MCPResourceDefinition,
+  MCPToolDefinition,
+  MCPToolResult,
+} from '@/mcp/types';
 
 export interface MCPClient {
   /** Initialize the connection and get server capabilities. */

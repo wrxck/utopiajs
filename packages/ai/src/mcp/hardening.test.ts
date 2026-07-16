@@ -4,12 +4,12 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { createMCPServer } from './server';
-import { createMCPHandler } from './handler';
-import type { MCPHandlerOptions } from './handler';
-import { createMCPClient } from './client';
+import { createMCPClient } from '@/mcp/client';
+import type { MCPHandlerOptions } from '@/mcp/handler';
+import { createMCPHandler } from '@/mcp/handler';
+import { createMCPServer } from '@/mcp/server';
 
 interface Captured {
   statusCode: number;

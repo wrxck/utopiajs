@@ -9,7 +9,7 @@ import {
   resetHead,
   setHtmlLang,
   setHtmlDir,
-} from './head';
+} from '@/head';
 
 beforeEach(() => {
   resetHead();

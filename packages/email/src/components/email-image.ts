@@ -2,7 +2,7 @@
 // EmailImage — Image with explicit dimensions
 // ============================================================================
 
-import { createElement, appendChild, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
+import { appendChild, createElement, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
 
 export const EmailImage = {
   setup: (props: Record<string, unknown>) => ({

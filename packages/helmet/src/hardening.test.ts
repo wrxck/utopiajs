@@ -4,7 +4,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 
-import { setMeta, resetHead } from './head';
+import { setMeta, resetHead } from '@/head';
 
 describe('helmet builds safe attribute selectors', () => {
   afterEach(() => resetHead());

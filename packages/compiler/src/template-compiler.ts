@@ -132,6 +132,7 @@ export type DirectiveKind =
   | 'for'
   | 'model'
   | 'html'
+  | 'show'
   | 'transition';
 
 // ===========================================================================
@@ -524,6 +525,7 @@ function isDirectiveKind(s: string): s is DirectiveKind {
     s === 'for' ||
     s === 'model' ||
     s === 'html' ||
+    s === 'show' ||
     s === 'transition'
   );
 }
@@ -718,6 +720,9 @@ class CodeGenerator {
       case 'html':
         this.genHtml(elVar, dir, scope);
         break;
+      case 'show':
+        this.genShow(elVar, dir, scope);
+        break;
       case 'transition':
         this.genTransition(elVar, dir);
         break;
@@ -808,13 +813,18 @@ class CodeGenerator {
   }
 
   private genModel(elVar: string, dir: Directive, scope: LocalScope): void {
-    this.helpers.add('setAttr');
-    this.helpers.add('addEventListener');
-    this.helpers.add('createEffect');
+    this.helpers.add('applyModel');
 
     const signalRef = this.resolveExpression(dir.expression, scope);
-    this.emit(`createEffect(() => setAttr(${elVar}, 'value', ${signalRef}()))`);
-    this.emit(`addEventListener(${elVar}, 'input', (e) => ${signalRef}.set(e.target.value))`);
+    // applyModel inspects the element at runtime to wire the right property +
+    // event (text/checkbox/radio/select/number/range/textarea), so a single
+    // directive works for every control kind. modifiers tune the coercion.
+    const opts: string[] = [];
+    if (dir.modifiers.includes('number')) opts.push('number: true');
+    if (dir.modifiers.includes('trim')) opts.push('trim: true');
+    if (dir.modifiers.includes('lazy')) opts.push('lazy: true');
+    const optsStr = opts.length > 0 ? `, { ${opts.join(', ')} }` : '';
+    this.emit(`applyModel(${elVar}, ${signalRef}${optsStr})`);
   }
 
   // ---- u-html ---------------------------------------------------------------
@@ -828,6 +838,18 @@ class CodeGenerator {
       this.helpers.add('setSafeHtml');
       this.emit(`setSafeHtml(${elVar}, () => ${expr})`);
     }
+  }
+
+  // ---- u-show ---------------------------------------------------------------
+
+  // toggles visibility without unmounting: unlike u-if it keeps the element (and
+  // its live native state — a media stream, canvas, focus, scroll) in the dom and
+  // only flips `display`. the runtime helper stashes the element's own display so
+  // showing restores exactly what the author set.
+  private genShow(elVar: string, dir: Directive, scope: LocalScope): void {
+    this.helpers.add('setShow');
+    const expr = this.resolveExpression(dir.expression, scope);
+    this.emit(`setShow(${elVar}, () => ${expr})`);
   }
 
   // ---- u-transition ---------------------------------------------------------
@@ -874,19 +896,7 @@ class CodeGenerator {
       directives: node.directives.filter((d) => d.kind !== 'if' && d.kind !== 'else-if'),
     };
 
-    const trueFnVar = this.freshVar();
-    const savedCode = this.code;
-    this.code = [];
-    const innerVar = this.genElement(strippedNode, scope);
-    const innerLines = [...this.code];
-    this.code = savedCode;
-
-    this.emit(`const ${trueFnVar} = () => {`);
-    for (const line of innerLines) {
-      this.emit(`  ${line}`);
-    }
-    this.emit(`  return ${innerVar}`);
-    this.emit(`}`);
+    const trueFnVar = this.genBranchFn(() => this.genElement(strippedNode, scope));
 
     // Generate the else branch: could be an else-if chain, a plain u-else, or nothing.
     let elseArg = '';
@@ -895,51 +905,58 @@ class CodeGenerator {
       const firstElseIf = elseIfChain[0];
       const remainingElseIfs = elseIfChain.slice(1);
 
-      const falseFnVar = this.freshVar();
-      const savedCode2 = this.code;
-      this.code = [];
-      const nestedAnchor = this.genIf(
-        firstElseIf.node,
-        firstElseIf.dir,
-        scope,
-        remainingElseIfs.length > 0 ? remainingElseIfs : undefined,
-        elseNode,
+      const falseFnVar = this.genBranchFn(() =>
+        this.genIf(
+          firstElseIf.node,
+          firstElseIf.dir,
+          scope,
+          remainingElseIfs.length > 0 ? remainingElseIfs : undefined,
+          elseNode,
+        ),
       );
-      const nestedLines = [...this.code];
-      this.code = savedCode2;
-
-      this.emit(`const ${falseFnVar} = () => {`);
-      for (const line of nestedLines) {
-        this.emit(`  ${line}`);
-      }
-      this.emit(`  return ${nestedAnchor}`);
-      this.emit(`}`);
 
       elseArg = `, ${falseFnVar}`;
     } else if (elseNode) {
-      const falseFnVar = this.freshVar();
       const strippedElse: ElementNode = {
         ...elseNode,
         directives: elseNode.directives.filter((d) => d.kind !== 'else'),
       };
-      const savedCode2 = this.code;
-      this.code = [];
-      const elseInnerVar = this.genElement(strippedElse, scope);
-      const elseLines = [...this.code];
-      this.code = savedCode2;
-
-      this.emit(`const ${falseFnVar} = () => {`);
-      for (const line of elseLines) {
-        this.emit(`  ${line}`);
-      }
-      this.emit(`  return ${elseInnerVar}`);
-      this.emit(`}`);
+      const falseFnVar = this.genBranchFn(() => this.genElement(strippedElse, scope));
 
       elseArg = `, ${falseFnVar}`;
     }
 
     this.emitOrDefer(`createIf(${anchorVar}, () => Boolean(${condition}), ${trueFnVar}${elseArg})`);
     return anchorVar;
+  }
+
+  /**
+   * Generate a branch render function `() => Node`. Structural calls
+   * (createIf/createFor) produced while building the branch get their own
+   * deferred frame so they are flushed INSIDE this closure — after the branch's
+   * nodes exist — instead of leaking to the surrounding frame, which previously
+   * emitted an else-if's nested createIf at the wrong scope (a ReferenceError).
+   */
+  private genBranchFn(build: () => string): string {
+    const fnVar = this.freshVar();
+    const savedCode = this.code;
+    this.code = [];
+    this.deferredCallsStack.push([]);
+    const innerVar = build();
+    const deferred = this.deferredCallsStack.pop()!;
+    for (const line of deferred) {
+      this.emit(line);
+    }
+    const lines = [...this.code];
+    this.code = savedCode;
+
+    this.emit(`const ${fnVar} = () => {`);
+    for (const line of lines) {
+      this.emit(`  ${line}`);
+    }
+    this.emit(`  return ${innerVar}`);
+    this.emit(`}`);
+    return fnVar;
   }
 
   // ---- Structural: u-for --------------------------------------------------
@@ -1121,6 +1138,22 @@ class CodeGenerator {
     for (const d of node.directives) {
       if (d.kind === 'bind' && d.arg) {
         propEntries.push(`'${escapeStr(d.arg)}': ${this.resolveExpression(d.expression, scope)}`);
+      } else if (d.kind === 'on' && d.arg) {
+        // `<Foo @select="handler" />` becomes an `onSelect` callback prop the
+        // child invokes (e.g. `onSelect?.(payload)`). A bare reference/arrow is
+        // passed through; an inline expression is wrapped so `$event` refers to
+        // whatever the child passes.
+        const propName = eventPropName(d.arg);
+        const handler = this.resolveExpression(d.expression, scope);
+        const IS_HANDLER_REF = /^[\w$.]+$/;
+        const IS_ARROW_FN = /^\s*(?:\(.*?\)|[\w$]+)\s*=>/;
+        const value =
+          handler === "''"
+            ? 'undefined'
+            : IS_HANDLER_REF.test(handler) || IS_ARROW_FN.test(handler)
+              ? handler
+              : `($event) => { ${handler} }`;
+        propEntries.push(`'${escapeStr(propName)}': ${value}`);
       }
     }
 
@@ -1219,6 +1252,12 @@ class CodeGenerator {
  */
 function isComponentTag(tag: string): boolean {
   return COMPONENT_TAG_RE.test(tag);
+}
+
+/** `select` → `onSelect`, `select-item` → `onSelectItem` (component event prop). */
+function eventPropName(event: string): string {
+  const camel = event.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+  return 'on' + camel.charAt(0).toUpperCase() + camel.slice(1);
 }
 
 function escapeStr(s: string): string {

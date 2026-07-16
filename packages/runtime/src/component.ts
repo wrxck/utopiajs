@@ -77,6 +77,57 @@ export function onDestroy(fn: () => void): void {
 }
 
 // ---------------------------------------------------------------------------
+// Context (provide / inject)
+// ---------------------------------------------------------------------------
+
+interface ComponentOwner {
+  context: Map<unknown, unknown>;
+  parent: ComponentOwner | null;
+}
+
+// the component currently running its setup + render. createComponent pushes a
+// fresh owner around that work, so a child created during the parent's render
+// links to the parent and inject() can walk up the chain.
+let currentOwner: ComponentOwner | null = null;
+
+export function pushOwner(): ComponentOwner {
+  const owner: ComponentOwner = { context: new Map(), parent: currentOwner };
+  currentOwner = owner;
+  return owner;
+}
+
+export function popOwner(owner: ComponentOwner): void {
+  currentOwner = owner.parent;
+}
+
+/**
+ * Make a value available to this component and all of its descendants. Call
+ * during setup. `key` is any stable value — typically a module-level symbol.
+ */
+export function provide(key: unknown, value: unknown): void {
+  if (currentOwner) {
+    currentOwner.context.set(key, value);
+  } else {
+    console.warn('[utopia] provide() called outside of component setup');
+  }
+}
+
+/**
+ * Read a value provided by an ancestor. Returns `fallback` (default `undefined`)
+ * when no ancestor provided `key`. Call during setup.
+ */
+export function inject<T = unknown>(key: unknown, fallback?: T): T | undefined {
+  let owner = currentOwner;
+  while (owner) {
+    if (owner.context.has(key)) {
+      return owner.context.get(key) as T;
+    }
+    owner = owner.parent;
+  }
+  return fallback;
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -139,21 +190,31 @@ export function createComponentInstance(
         return;
       }
 
-      // 1. Run setup() to obtain the reactive context, capturing lifecycle hooks.
-      startCapturingLifecycle();
-      const ctx = definition.setup ? definition.setup(instance.props) : {};
-      const lifecycle = stopCapturingLifecycle();
-      destroyCallbacks = lifecycle.destroy;
-
-      // Merge slots into the render context.
-      const renderCtx: Record<string, unknown> = {
-        ...ctx,
-        $slots: instance.slots,
-      };
-
-      // 2. Render the template to a real DOM subtree, capturing effect disposers.
+      // 1. Run setup() to obtain the reactive context. capture disposers across
+      // both setup and render so a per-instance setup()'s effects are torn down
+      // on unmount; the lifecycle window stays scoped to setup. push an owner so
+      // provide()/inject() resolve against this component during setup + render.
+      const owner = pushOwner();
+      let renderCtx: Record<string, unknown>;
+      let lifecycle: { mount: (() => void)[]; destroy: (() => void)[] };
       const prev = startCapturingDisposers();
-      instance.el = definition.render(renderCtx);
+      try {
+        startCapturingLifecycle();
+        const ctx = definition.setup ? definition.setup(instance.props) : {};
+        lifecycle = stopCapturingLifecycle();
+        destroyCallbacks = lifecycle.destroy;
+
+        // Merge slots into the render context.
+        renderCtx = {
+          ...ctx,
+          $slots: instance.slots,
+        };
+
+        // 2. Render the template to a real DOM subtree.
+        instance.el = definition.render(renderCtx);
+      } finally {
+        popOwner(owner);
+      }
       disposers = stopCapturingDisposers(prev);
 
       // 3. Insert into the target.
