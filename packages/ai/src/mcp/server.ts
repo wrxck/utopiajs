@@ -3,14 +3,14 @@
 // ============================================================================
 
 import type {
+  JsonRpcRequest,
+  JsonRpcResponse,
+  MCPPromptHandler,
+  MCPResourceHandler,
   MCPServerConfig,
   MCPServerInfo,
   MCPToolHandler,
-  MCPResourceHandler,
-  MCPPromptHandler,
-  JsonRpcRequest,
-  JsonRpcResponse,
-} from './types';
+} from '@/mcp/types';
 
 export interface MCPServer {
   /** Handle a JSON-RPC request and return a response. */

@@ -2,7 +2,7 @@
 // @matthesketh/utopia-email — SendGrid Adapter
 // ============================================================================
 
-import type { EmailAdapter, EmailMessage, EmailResult, SendGridConfig } from '../types';
+import type { EmailAdapter, EmailMessage, EmailResult, SendGridConfig } from '@/types';
 
 /**
  * Create a SendGrid email adapter.

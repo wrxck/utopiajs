@@ -3,24 +3,24 @@
 // ============================================================================
 
 import type {
+  EmbedContentRequest,
+  GenerateContentRequest,
+  GoogleGenerativeAI as GoogleGenAIType,
+  ModelParams,
+} from '@google/generative-ai';
+
+import type {
   AIAdapter,
-  ChatRequest,
-  ChatResponse,
   ChatChunk,
   ChatMessage,
+  ChatRequest,
+  ChatResponse,
   EmbeddingRequest,
   EmbeddingResponse,
   GoogleConfig,
   ToolCall,
   ToolDefinition,
-} from '../types';
-
-import type {
-  GoogleGenerativeAI as GoogleGenAIType,
-  GenerateContentRequest,
-  ModelParams,
-  EmbedContentRequest,
-} from '@google/generative-ai';
+} from '@/types';
 
 /** Monotonic counter for generating unique tool call IDs. */
 let toolCallCounter = 0;

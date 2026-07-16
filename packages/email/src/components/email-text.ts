@@ -2,8 +2,9 @@
 // EmailText — Paragraph with safe typography
 // ============================================================================
 
-import { createElement, appendChild, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
-import type { EmailComponentContext } from '../types';
+import { appendChild, createElement, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
+
+import type { EmailComponentContext } from '@/types';
 
 export const EmailText = {
   setup: (props: Record<string, unknown>) => ({

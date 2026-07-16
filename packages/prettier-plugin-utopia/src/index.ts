@@ -16,7 +16,7 @@ import {
   type SupportLanguage,
 } from 'prettier';
 
-import { type BlockName, splitBlocks, type UtopiaBlock, type UtopiaRoot } from './split-blocks';
+import { type BlockName, splitBlocks, type UtopiaBlock, type UtopiaRoot } from '@/split-blocks';
 
 const { hardline, indent, join } = doc.builders;
 

@@ -18,8 +18,8 @@
 //  10. anchor-valid     — <a> should have an href
 // ============================================================================
 
-import type { TemplateNode, ElementNode, Attribute, Directive } from './template-compiler';
-import { NodeType } from './template-compiler';
+import type { TemplateNode, ElementNode, Attribute, Directive } from '@/template-compiler';
+import { NodeType } from '@/template-compiler';
 
 // ---- Regex Constants --------------------------------------------------------
 

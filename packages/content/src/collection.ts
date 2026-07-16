@@ -5,9 +5,9 @@ import type {
   ContentEntry,
   ContentAdapter,
   QueryOptions,
-} from './types';
-import { validateSchema, applyDefaults } from './schema';
-import { createFilesystemAdapter } from './adapters/filesystem';
+} from '@/types';
+import { validateSchema, applyDefaults } from '@/schema';
+import { createFilesystemAdapter } from '@/adapters/filesystem';
 
 /** Registry of defined collections */
 const collections = new Map<string, Collection>();

@@ -1,8 +1,8 @@
 import prettier from 'prettier';
 import { describe, expect, it } from 'vitest';
 
-import plugin from './index';
-import { splitBlocks } from './split-blocks';
+import plugin from '@/index';
+import { splitBlocks } from '@/split-blocks';
 
 function format(source: string): Promise<string> {
   return prettier.format(source, { parser: 'utopia', plugins: [plugin] });

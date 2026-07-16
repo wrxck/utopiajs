@@ -1,5 +1,5 @@
 import { effect } from '@matthesketh/utopia-core';
-import type { HeadConfig, MetaDescriptor, LinkDescriptor } from './types';
+import type { HeadConfig, MetaDescriptor, LinkDescriptor } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Internal tracking — managed elements are tagged so we can clean them up

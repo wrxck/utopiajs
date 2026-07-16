@@ -14,7 +14,7 @@ import {
   email,
   pattern,
   validate,
-} from './form';
+} from '@/form';
 
 // ---------------------------------------------------------------------------
 // Validation rules

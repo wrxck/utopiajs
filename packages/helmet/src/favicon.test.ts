@@ -5,7 +5,7 @@ import {
   generateMaskSvg,
   generateManifest,
   faviconLinks,
-} from './favicon';
+} from '@/favicon';
 
 // ---------------------------------------------------------------------------
 // generateFaviconSvg

@@ -4,7 +4,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-import type { ChatChunk } from './types';
+import type { ChatChunk } from '@/types';
 
 /**
  * upper bound on the unflushed sse buffer. a single `data:` line should never

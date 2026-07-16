@@ -13,8 +13,8 @@ import {
   stopCapturingLifecycle,
   startCapturingDisposers,
   stopCapturingDisposers,
-} from './component';
-import type { ComponentDefinition, ComponentInstance } from './component';
+} from '@/component';
+import type { ComponentDefinition, ComponentInstance } from '@/component';
 
 // ---------------------------------------------------------------------------
 // Hydration state — module-level so dom.ts helpers can check it

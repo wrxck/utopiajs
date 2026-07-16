@@ -3,9 +3,9 @@
 // ============================================================================
 
 import {
+  appendChild,
   createElement,
   createTextNode,
-  appendChild,
   setAttr,
 } from '@matthesketh/utopia-server/ssr-runtime';
 

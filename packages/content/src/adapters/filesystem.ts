@@ -1,10 +1,10 @@
-import { readdir, readFile, writeFile, unlink, mkdir, stat } from 'node:fs/promises';
-import { join, extname, basename, resolve, sep } from 'node:path';
 import { existsSync, realpathSync } from 'node:fs';
+import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
+import { basename, extname, join, resolve, sep } from 'node:path';
 
-import type { ContentAdapter, CollectionConfig, ContentEntry, ContentFormat } from '../types';
-import { parseFrontmatter, serializeFrontmatter } from '../frontmatter';
-import { renderMarkdown } from '../markdown';
+import { parseFrontmatter, serializeFrontmatter } from '@/frontmatter';
+import { renderMarkdown } from '@/markdown';
+import type { CollectionConfig, ContentAdapter, ContentEntry, ContentFormat } from '@/types';
 
 /** slug must start with alphanumeric, then allow alphanumeric, hyphens, underscores, and slashes. */
 export const VALID_SLUG_RE = /^[a-zA-Z0-9][a-zA-Z0-9_/-]*$/;

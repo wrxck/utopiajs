@@ -2,7 +2,7 @@
 // EmailSpacer — Vertical spacing
 // ============================================================================
 
-import { createElement, appendChild, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
+import { appendChild, createElement, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
 
 export const EmailSpacer = {
   setup: (props: Record<string, unknown>) => ({

@@ -3,9 +3,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-import { createComponentInstance } from './component';
-import type { ComponentDefinition } from './component';
-import { useEventListener, useInterval, useTimeout } from './use';
+import { createComponentInstance } from '@/component';
+import type { ComponentDefinition } from '@/component';
+import { useEventListener, useInterval, useTimeout } from '@/use';
 
 function mountWith(render: () => Node): { unmount: () => void } {
   const def: ComponentDefinition = { render };

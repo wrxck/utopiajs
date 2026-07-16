@@ -16,9 +16,9 @@
 // ============================================================================
 
 import { signal } from '@matthesketh/utopia-core';
-import { matchRoute } from './matcher';
-import { compilePattern } from './matcher';
-import type { Route, RouteConfig, RouteMatch, BeforeNavigateHook } from './types';
+import { matchRoute } from '@/matcher';
+import { compilePattern } from '@/matcher';
+import type { Route, RouteConfig, RouteMatch, BeforeNavigateHook } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Regex constants

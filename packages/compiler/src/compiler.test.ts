@@ -3,11 +3,11 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
-import { parse, SFCParseError } from './parser';
-import { compileTemplate, parseTemplate } from './template-compiler';
-import type { ElementNode, TemplateNode, TextNode } from './template-compiler';
-import { compileStyle, generateScopeId, preprocessStyle } from './style-compiler';
-import { compile } from './index';
+import { parse, SFCParseError } from '@/parser';
+import { compileTemplate, parseTemplate } from '@/template-compiler';
+import type { ElementNode, TemplateNode, TextNode } from '@/template-compiler';
+import { compileStyle, generateScopeId, preprocessStyle } from '@/style-compiler';
+import { compile } from '@/index';
 
 // ===========================================================================
 // 1. SFC Parser
@@ -424,14 +424,25 @@ describe('Template Compilation', () => {
 
   it('compiles u-model with two-way binding', () => {
     const result = compileTemplate('<input u-model="name" />');
-    // Bind direction: reactive attribute.
-    expect(result.code).toContain('setAttr(');
-    expect(result.code).toContain("'value'");
-    expect(result.code).toContain('name()');
-    // Event direction: set on input.
-    expect(result.code).toContain('addEventListener(');
-    expect(result.code).toContain("'input'");
-    expect(result.code).toContain('name.set(');
+    // both directions are handled by the runtime applyModel helper, which picks
+    // the right property + event for the control kind at runtime.
+    expect(result.code).toContain('applyModel(');
+    expect(result.code).toContain('applyModel(_el0, name)');
+    expect(result.helpers.has('applyModel')).toBe(true);
+    expect(result.code).not.toContain('_ctx.');
+  });
+
+  it('passes u-model modifiers (number/trim/lazy) to applyModel', () => {
+    const result = compileTemplate('<input type="number" u-model.number.lazy="age" />');
+    expect(result.code).toContain('applyModel(_el0, age, { number: true, lazy: true })');
+  });
+
+  it('compiles u-show to an in-place setShow visibility toggle', () => {
+    const result = compileTemplate('<div u-show="open">hi</div>');
+    expect(result.code).toContain('setShow(_el0, () => open)');
+    expect(result.helpers.has('setShow')).toBe(true);
+    // u-show keeps the element mounted — no structural createIf/anchor.
+    expect(result.code).not.toContain('createIf');
     expect(result.code).not.toContain('_ctx.');
   });
 
@@ -450,6 +461,16 @@ describe('Template Compilation', () => {
     expect(result.code).toContain('createComponent(MyComponent,');
     expect(result.code).toContain("'title': 'hello'");
     expect(result.code).not.toContain('_ctx.');
+  });
+
+  it('maps a component @event to an on<Event> callback prop', () => {
+    const ref = compileTemplate('<MyComponent @select="handleSelect" />');
+    // bare reference passed straight through.
+    expect(ref.code).toContain("'onSelect': handleSelect");
+
+    const inline = compileTemplate('<MyComponent @select-item="picked = $event" />');
+    // hyphenated event camelCased; inline expression wrapped with $event param.
+    expect(inline.code).toContain("'onSelectItem': ($event) => { picked = $event }");
   });
 
   it('applies scope ID to all elements when provided', () => {
@@ -1098,5 +1119,154 @@ describe('static class + :class merge', () => {
     const out = compileTemplate(`<button class="chip">x</button>`);
     expect(out.code).toContain("setAttr(_el0, 'class', 'chip')");
     expect(out.code).not.toContain('mergeClass');
+  });
+});
+
+// ===========================================================================
+// defineProps — opt-in per-instance components
+// ===========================================================================
+
+describe('defineProps / per-instance components', () => {
+  it('keeps the module-scope shape when defineProps is absent', () => {
+    const src = `
+<template><div>{{ count() }}</div></template>
+<script>
+import { signal } from '@matthesketh/utopia-runtime'
+const count = signal(0)
+</script>
+`;
+    const { code } = compile(src, { filename: 'Plain.utopia' });
+    expect(code).toContain('export default { render: __render }');
+    expect(code).not.toContain('function __setup');
+    // the script stays at module scope.
+    expect(code).toMatch(/const count = signal\(0\)/);
+  });
+
+  it('wraps the script in setup(__props) when defineProps is used', () => {
+    const src = `
+<template><strong>{{ label() }}</strong></template>
+<script>
+import { signal } from '@matthesketh/utopia-runtime'
+const { label } = defineProps()
+const local = signal(1)
+</script>
+`;
+    const { code } = compile(src, { filename: 'Greeting.utopia' });
+    // per-instance wrapper + the runtime contract export.
+    expect(code).toContain('function __setup(__uProps)');
+    expect(code).toContain('setup: __setup');
+    expect(code).toContain('render: (__ctx) => __ctx.__render(__ctx)');
+    expect(code).toContain('return { __render }');
+    // defineProps() resolves to the setup parameter.
+    expect(code).toContain('const { label } = __uProps');
+    expect(code).not.toMatch(/defineProps\s*\(/);
+  });
+
+  it('hoists user imports above the setup function', () => {
+    const src = `
+<template><span>{{ x() }}</span></template>
+<script>
+import { signal } from '@matthesketh/utopia-runtime'
+import { helper } from '@/lib/helper'
+const { x } = defineProps()
+</script>
+`;
+    const { code } = compile(src, { filename: 'Hoist.utopia' });
+    const importIdx = code.indexOf("import { helper } from '@/lib/helper'");
+    const setupIdx = code.indexOf('function __setup');
+    expect(importIdx).toBeGreaterThanOrEqual(0);
+    expect(setupIdx).toBeGreaterThan(importIdx);
+    // the import must not remain inside the setup body.
+    expect(code.slice(setupIdx)).not.toContain('import { helper }');
+  });
+
+  it('forwards component bindings as props (signal passed uncalled)', () => {
+    // a parent passing a signal by reference is how reactive props flow.
+    const { code } = compileTemplate(`<Panel :template="template" :date="day()" />`);
+    expect(code).toContain("createComponent(Panel, { 'template': template, 'date': day() }");
+  });
+
+  it('detection is stateless across interleaved compiles (no /g lastIndex bug)', () => {
+    const withProps = `<template><b>{{ a() }}</b></template>
+<script>const { a } = defineProps()</script>`;
+    const plain = `<template><i>x</i></template><script>const y = 1</script>`;
+    // compile the props component, then a plain one, then the props one again —
+    // a stateful detection regex would skip the second props compile.
+    expect(compile(withProps, { filename: 'A.utopia' }).code).toContain('function __setup');
+    expect(compile(plain, { filename: 'B.utopia' }).code).toContain(
+      'export default { render: __render }',
+    );
+    const third = compile(withProps, { filename: 'C.utopia' }).code;
+    expect(third).toContain('function __setup');
+    expect(third).toContain('const { a } = __uProps');
+  });
+
+  it('hoists an import that has a trailing line comment', () => {
+    const src = `<template><b>{{ n() }}</b></template>
+<script>
+import { signal } from '@matthesketh/utopia-runtime' // reactive
+const { n } = defineProps()
+</script>`;
+    const { code } = compile(src, { filename: 'Trail.utopia' });
+    const setupIdx = code.indexOf('function __setup');
+    // the import is hoisted out of the setup body (no illegal in-function import).
+    expect(code.slice(setupIdx)).not.toContain('import { signal }');
+  });
+
+  it('rejects a type parameter with a clear message (use a cast instead)', () => {
+    const src = `<template><b>{{ a() }}</b></template>
+<script>const { a } = defineProps<{ a: () => string }>()</script>`;
+    expect(() => compile(src, { filename: 'Typed.utopia' })).toThrow(
+      /defineProps<T>\(\) is not supported/,
+    );
+  });
+
+  it('throws a clear error when defineProps is given arguments', () => {
+    const src = `<template><b>x</b></template>
+<script>const p = defineProps({ a: 1 })</script>`;
+    expect(() => compile(src, { filename: 'Args.utopia' })).toThrow(/takes no arguments/);
+  });
+
+  it('does not opt in when defineProps only appears in a comment', () => {
+    const src = `<template><b>x</b></template>
+<script>
+// to make this per-instance, call defineProps()
+const z = 1
+</script>`;
+    const { code } = compile(src, { filename: 'Comment.utopia' });
+    expect(code).toContain('export default { render: __render }');
+    expect(code).not.toContain('function __setup');
+  });
+});
+
+// ===========================================================================
+// u-else-if chains — nested createIf must stay in scope
+// ===========================================================================
+
+describe('u-else-if codegen', () => {
+  it('emits a u-if / u-else-if / u-else chain as valid, in-scope code', () => {
+    const { code } = compileTemplate(
+      `<div><p u-if="a">A</p><p u-else-if="b">B</p><p u-else>C</p></div>`,
+    );
+    const helpers = (code.match(/import \{ ([^}]*) \}/)?.[1] ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const body = code.replace(/^import[^\n]*\n/, '');
+    // a buggy else-if emitted its nested createIf at the render top level,
+    // referencing a closure-local anchor → ReferenceError when __render runs.
+    const fn = new Function(...helpers, `${body}\nreturn __render({});`);
+    const stub = (): unknown => ({});
+    expect(() => fn(...helpers.map(() => stub))).not.toThrow();
+  });
+
+  it('places the nested else-if createIf inside a branch closure', () => {
+    const { code } = compileTemplate(`<p u-if="a">A</p><p u-else-if="b">B</p>`);
+    // both conditions are wired...
+    expect(code).toContain('Boolean(a)');
+    expect(code).toContain('Boolean(b)');
+    // ...and the else-if createIf is indented (inside the false-branch closure),
+    // never at the bare render-body indent.
+    expect(code).not.toMatch(/\n {2}createIf\([^\n]*Boolean\(b\)/);
   });
 });

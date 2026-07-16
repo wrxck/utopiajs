@@ -3,8 +3,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { parseSSEStream } from './streaming';
-import { ollamaAdapter } from './adapters/ollama';
+import { parseSSEStream } from '@/streaming';
+import { ollamaAdapter } from '@/adapters/ollama';
 
 function streamResponse(chunks: Uint8Array[]): Response {
   const stream = new ReadableStream<Uint8Array>({

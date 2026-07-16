@@ -14,7 +14,7 @@
 //
 // ============================================================================
 
-import type { Route, RouteMatch } from './types';
+import type { Route, RouteMatch } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Regex constants — all patterns extracted for auditability and reuse

@@ -2,8 +2,9 @@
 // EmailHeading — h1-h3 with safe inline styles
 // ============================================================================
 
-import { createElement, appendChild, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
-import type { EmailComponentContext } from '../types';
+import { appendChild, createElement, setAttr } from '@matthesketh/utopia-server/ssr-runtime';
+
+import type { EmailComponentContext } from '@/types';
 
 const HEADING_SIZES: Record<number, string> = {
   1: '28px',

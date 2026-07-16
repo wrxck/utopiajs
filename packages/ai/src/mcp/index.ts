@@ -2,31 +2,28 @@
 // @matthesketh/utopia-ai — MCP Public API
 // ============================================================================
 
-export { createMCPServer } from './server';
-export type { MCPServer } from './server';
-
-export { createMCPClient } from './client';
-export type { MCPClient } from './client';
-
-export { createMCPHandler } from './handler';
-
+export type { MCPClient } from '@/mcp/client';
+export { createMCPClient } from '@/mcp/client';
+export { createMCPHandler } from '@/mcp/handler';
+export type { MCPServer } from '@/mcp/server';
+export { createMCPServer } from '@/mcp/server';
 export type {
+  JsonRpcError,
+  JsonRpcNotification,
+  JsonRpcRequest,
+  JsonRpcResponse,
+  MCPClientConfig,
+  MCPContent,
+  MCPPromptArgument,
+  MCPPromptDefinition,
+  MCPPromptHandler,
+  MCPPromptResult,
+  MCPResourceContent,
+  MCPResourceDefinition,
+  MCPResourceHandler,
   MCPServerConfig,
   MCPServerInfo,
   MCPToolDefinition,
   MCPToolHandler,
   MCPToolResult,
-  MCPContent,
-  MCPResourceDefinition,
-  MCPResourceHandler,
-  MCPResourceContent,
-  MCPPromptDefinition,
-  MCPPromptArgument,
-  MCPPromptHandler,
-  MCPPromptResult,
-  MCPClientConfig,
-  JsonRpcRequest,
-  JsonRpcResponse,
-  JsonRpcError,
-  JsonRpcNotification,
-} from './types';
+} from '@/mcp/types';

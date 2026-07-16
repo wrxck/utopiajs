@@ -2,20 +2,20 @@
 // @matthesketh/utopia-ai — OpenAI Adapter
 // ============================================================================
 
+import type OpenAI from 'openai';
+
 import type {
   AIAdapter,
-  ChatRequest,
-  ChatResponse,
   ChatChunk,
   ChatMessage,
+  ChatRequest,
+  ChatResponse,
   EmbeddingRequest,
   EmbeddingResponse,
   OpenAIConfig,
   ToolCall,
   ToolDefinition,
-} from '../types';
-
-import type OpenAI from 'openai';
+} from '@/types';
 
 /**
  * Create an OpenAI adapter.

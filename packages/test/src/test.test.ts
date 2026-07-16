@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mount, render, fireEvent, nextTick } from './index';
+import { mount, render, fireEvent, nextTick } from '@/index';
 import { signal } from '@matthesketh/utopia-core';
 import type { ComponentDefinition } from '@matthesketh/utopia-runtime';
 import {
@@ -14,6 +14,10 @@ import {
   addEventListener,
   setAttr,
   createEffect,
+  createComponent,
+  createIf,
+  provide,
+  inject,
 } from '@matthesketh/utopia-runtime';
 
 // ---------------------------------------------------------------------------
@@ -365,5 +369,206 @@ describe('nextTick()', () => {
   it('resolves as a promise', async () => {
     const result = await nextTick();
     expect(result).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// per-instance components — the exact shape the compiler emits for defineProps
+// ---------------------------------------------------------------------------
+
+/**
+ * mirrors the compiler's defineProps output:
+ *   function __setup(__props) { ...script...; function __render(_ctx){...}; return { __render } }
+ *   export default { setup: __setup, render: (__ctx) => __ctx.__render(__ctx) }
+ */
+function makePerInstanceChild(): ComponentDefinition {
+  function __setup(__props: Record<string, unknown>) {
+    const { label } = __props as { label: () => string };
+    const count = signal(0);
+    function __render(): Node {
+      const span = createElement('span');
+      const t = createTextNode('');
+      createEffect(() => setText(t, `${label()}:${count()}`));
+      appendChild(span, t);
+      addEventListener(span, 'click', () => count.set(count() + 1));
+      return span;
+    }
+    return { __render, count };
+  }
+  return {
+    setup: __setup,
+    render: (__ctx: Record<string, unknown>) => (__ctx.__render as (c: unknown) => Node)(__ctx),
+  };
+}
+
+describe('createIf with a deferred-parent anchor', () => {
+  it('renders the branch once the anchor is connected later', async () => {
+    const cond = signal(true);
+    const anchor = document.createComment('if');
+    // do not connect the anchor yet — mimics an else-if branch whose anchor is
+    // only inserted after its factory returns.
+    const dispose = createIf(
+      anchor,
+      () => cond(),
+      () => {
+        const s = createElement('span');
+        appendChild(s, createTextNode('T'));
+        return s;
+      },
+    );
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    // nothing rendered while detached; connect, then flush the microtask retry.
+    host.appendChild(anchor);
+    await Promise.resolve();
+    expect(host.textContent).toBe('T');
+    dispose();
+    document.body.removeChild(host);
+  });
+});
+
+describe('defineProps emitted shape', () => {
+  it('setup receives props and a signal passed as a prop stays reactive', async () => {
+    const name = signal('a');
+    const node = createComponent(makePerInstanceChild(), { label: name });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    host.appendChild(node);
+
+    expect(host.textContent).toBe('a:0');
+    name.set('b');
+    await nextTick();
+    expect(host.textContent).toBe('b:0');
+    document.body.removeChild(host);
+  });
+
+  it('disposes effects created in setup() when the instance unmounts', async () => {
+    let runs = 0;
+    const tick = signal(0);
+    const def: ComponentDefinition = {
+      setup() {
+        // a setup-phase effect must be captured and torn down on unmount.
+        createEffect(() => {
+          tick();
+          runs++;
+        });
+        return { __render: () => createElement('div') };
+      },
+      render: (ctx: Record<string, unknown>) => (ctx.__render as () => Node)(),
+    };
+    const node = createComponent(def);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    host.appendChild(node);
+
+    expect(runs).toBe(1);
+    tick.set(1);
+    await nextTick();
+    expect(runs).toBe(2);
+
+    // unmount via the cleanup the runtime attaches to the node.
+    (node as unknown as { __cleanup: () => void }).__cleanup();
+    tick.set(2);
+    await nextTick();
+    expect(runs).toBe(2); // disposed → no further runs
+    document.body.removeChild(host);
+  });
+
+  it('each instance gets isolated internal state', async () => {
+    const def = makePerInstanceChild();
+    const shared = signal('x');
+    const a = createComponent(def, { label: shared }) as HTMLElement;
+    const b = createComponent(def, { label: shared }) as HTMLElement;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    host.appendChild(a);
+    host.appendChild(b);
+
+    // bump only the first instance's internal counter.
+    a.dispatchEvent(new Event('click'));
+    await nextTick();
+    expect(a.textContent).toBe('x:1');
+    expect(b.textContent).toBe('x:0');
+    document.body.removeChild(host);
+  });
+});
+
+describe('provide / inject context', () => {
+  const KEY = Symbol('theme');
+
+  it('a descendant injects a value provided by an ancestor', () => {
+    let seen: string | undefined;
+    const child: ComponentDefinition = {
+      setup() {
+        seen = inject<string>(KEY);
+        return {};
+      },
+      render: () => createElement('span'),
+    };
+    const parent: ComponentDefinition = {
+      setup() {
+        provide(KEY, 'dark');
+        return {};
+      },
+      // create the child during the parent's render so it links to the parent owner.
+      render: () => {
+        const root = createElement('div');
+        appendChild(root, createComponent(child));
+        return root;
+      },
+    };
+    const result = mount(parent);
+    expect(seen).toBe('dark');
+    result.unmount();
+  });
+
+  it('inject returns the fallback when nothing was provided', () => {
+    let seen: string | undefined;
+    const lone: ComponentDefinition = {
+      setup() {
+        seen = inject<string>(KEY, 'light');
+        return {};
+      },
+      render: () => createElement('span'),
+    };
+    const result = mount(lone);
+    expect(seen).toBe('light');
+    result.unmount();
+  });
+
+  it('a nearer ancestor shadows a farther one', () => {
+    let seen: string | undefined;
+    const grandchild: ComponentDefinition = {
+      setup() {
+        seen = inject<string>(KEY);
+        return {};
+      },
+      render: () => createElement('span'),
+    };
+    const middle: ComponentDefinition = {
+      setup() {
+        provide(KEY, 'inner');
+        return {};
+      },
+      render: () => {
+        const root = createElement('div');
+        appendChild(root, createComponent(grandchild));
+        return root;
+      },
+    };
+    const outer: ComponentDefinition = {
+      setup() {
+        provide(KEY, 'outer');
+        return {};
+      },
+      render: () => {
+        const root = createElement('div');
+        appendChild(root, createComponent(middle));
+        return root;
+      },
+    };
+    const result = mount(outer);
+    expect(seen).toBe('inner');
+    result.unmount();
   });
 });

@@ -1,5 +1,5 @@
-import type { SeoConfig, SeoEntry } from './types';
-import { generateMetaTags, generateJsonLd } from './meta';
+import { generateJsonLd, generateMetaTags } from '@/seo/meta';
+import type { SeoConfig, SeoEntry } from '@/seo/types';
 
 /** Extract <script> and <link rel="stylesheet"> tags from the built index.html */
 export function extractAssetTags(indexHtml: string): { scripts: string; styles: string } {

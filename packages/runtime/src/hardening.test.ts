@@ -6,11 +6,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { signal } from '@matthesketh/utopia-core';
 
-import { createComponentInstance, onDestroy } from './component';
-import type { ComponentDefinition } from './component';
-import { createComponent, createIf, createFor } from './directives';
-import { setAttr, setSafeHtml } from './dom';
-import { createEffect } from './index';
+import { createComponentInstance, onDestroy } from '@/component';
+import type { ComponentDefinition } from '@/component';
+import { createComponent, createIf, createFor } from '@/directives';
+import { setAttr, setSafeHtml } from '@/dom';
+import { createEffect } from '@/index';
 
 describe('setAttr URL-scheme + event-handler guards', () => {
   it('drops javascript: in href', () => {

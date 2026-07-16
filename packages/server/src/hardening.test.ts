@@ -6,10 +6,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import { describe, it, expect } from 'vitest';
 
-import { setAttr, createElement } from './ssr-runtime';
-import { createHandler } from './handler';
-import type { HandlerOptions } from './handler';
-import { buildApiRoutes, handleApiRequest } from './api-handler';
+import { setAttr, createElement } from '@/ssr-runtime';
+import { createHandler } from '@/handler';
+import type { HandlerOptions } from '@/handler';
+import { buildApiRoutes, handleApiRequest } from '@/api-handler';
 
 interface CapturedResponse {
   statusCode: number;

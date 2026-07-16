@@ -3,8 +3,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { compilePattern, matchRoute } from './matcher';
-import type { Route } from './types';
+import { compilePattern, matchRoute } from '@/matcher';
+import type { Route } from '@/types';
 
 function routeFor(pattern: string): Route[] {
   const { regex, params } = compilePattern(pattern);

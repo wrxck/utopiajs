@@ -2,6 +2,7 @@ import type { Plugin, UserConfig, ViteDevServer, ModuleNode, HmrContext } from '
 import { compile, parse, type SFCBlock } from '@matthesketh/utopia-compiler';
 import { createFilter, type FilterPattern } from 'vite';
 import path from 'node:path';
+import fs from 'node:fs';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,6 +71,14 @@ const ROUTE_FILE_RE = /\+(?:page|layout|error|server)\.\w+$/;
  */
 const cssCache = new Map<string, string>();
 
+/**
+ * Reverse index mapping an external stylesheet's absolute path to the set of
+ * `.utopia` files that pull it in through `<style src>`. Populated during
+ * `transform` and consulted in `handleHotUpdate` so that editing the shared
+ * stylesheet hot-updates every component that references it.
+ */
+const styleSrcOwners = new Map<string, Set<string>>();
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -105,6 +114,90 @@ function cssIdToUtopiaId(cssId: string): string {
   const raw = stripVirtualPrefix(cssId);
   // Remove the trailing `.css`
   return raw.slice(0, -CSS_SUFFIX.length);
+}
+
+// ---------------------------------------------------------------------------
+// External stylesheet (`<style src>`) inlining
+// ---------------------------------------------------------------------------
+
+/**
+ * If the component's `<style>` block references an external file via a `src`
+ * attribute, read that file and splice its content into the block *before*
+ * compilation, dropping the `src` attribute but preserving every other one
+ * (`scoped`, `lang`, …).
+ *
+ * The scope id is derived from the `.utopia` filename — not from the CSS
+ * text or its location — so an inlined external stylesheet is scoped
+ * byte-for-byte identically to the same rules written in place. This is what
+ * lets a component keep its CSS in a sibling `.css` file with no change in
+ * behaviour.
+ *
+ * @param code - The raw `.utopia` source.
+ * @param id - Absolute path to the `.utopia` file (used as the scope seed).
+ * @returns The rewritten source and the absolute path of the stylesheet it
+ *   pulled in, or `null` when the block has no `src`.
+ */
+function inlineStyleSrc(code: string, id: string): { code: string; dep: string } | null {
+  let descriptor: ReturnType<typeof parse>;
+  try {
+    descriptor = parse(code, id);
+  } catch {
+    // Let compile() surface the parse error with proper positioning.
+    return null;
+  }
+
+  const style = descriptor.style;
+  const src = style?.attrs.src;
+  if (!style || typeof src !== 'string' || src.length === 0) return null;
+
+  const dep = path.isAbsolute(src) ? src : path.resolve(path.dirname(id), src);
+
+  let external: string;
+  try {
+    external = fs.readFileSync(dep, 'utf8');
+  } catch {
+    throw new Error(
+      `[utopia] <style src="${src}"> in ${id} could not be read (resolved to ${dep}).`,
+    );
+  }
+
+  // Reconstruct the opening tag from the parsed attributes minus `src`, so
+  // scoping/preprocessor flags carry through unchanged.
+  const attrs = Object.entries(style.attrs)
+    .filter(([name]) => name !== 'src')
+    .map(([name, value]) => (value === true ? name : `${name}="${value as string}"`))
+    .join(' ');
+  const openTag = attrs ? `<style ${attrs}>` : '<style>';
+  const block = `${openTag}${external}${style.content}</style>`;
+
+  const rewritten = code.slice(0, style.start) + block + code.slice(style.end);
+  return { code: rewritten, dep };
+}
+
+/**
+ * Compile a `.utopia` source, first inlining any `<style src>` external
+ * stylesheet. Returns the compile result plus the external stylesheet path
+ * (when one was pulled in) so the caller can register it for HMR / watching.
+ */
+function compileUtopiaSource(
+  code: string,
+  id: string,
+): { result: ReturnType<typeof compile>; dep?: string } {
+  const inlined = inlineStyleSrc(code, id);
+  const source = inlined?.code ?? code;
+  return { result: compile(source, { filename: id }), dep: inlined?.dep };
+}
+
+/**
+ * Record that `utopiaId` pulls in the external stylesheet at `dep`.
+ */
+function registerStyleDep(dep: string, utopiaId: string): void {
+  let set = styleSrcOwners.get(dep);
+  if (!set) {
+    set = new Set<string>();
+    styleSrcOwners.set(dep, set);
+  }
+  set.add(utopiaId);
 }
 
 // ---------------------------------------------------------------------------
@@ -258,9 +351,13 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
       if (!id.endsWith(UTOPIA_EXT)) return undefined;
       if (!filter(id)) return undefined;
 
-      const result = compile(code, {
-        filename: id,
-      });
+      // Inline any `<style src>` external stylesheet before compiling, and
+      // register it so Vite watches it and HMR can find the owning component.
+      const { result, dep } = compileUtopiaSource(code, id);
+      if (dep) {
+        registerStyleDep(dep, id);
+        this.addWatchFile(dep);
+      }
 
       // Cache the extracted CSS for the virtual module.
       if (result.css) {
@@ -311,6 +408,43 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
         }
       }
 
+      // When an external stylesheet pulled in via `<style src>` changes,
+      // recompile every component that references it and hot-update just their
+      // virtual CSS modules — a style-only update, no component re-render.
+      const owners = styleSrcOwners.get(file);
+      if (owners && owners.size > 0) {
+        const affected: ModuleNode[] = [];
+        for (const utopiaId of owners) {
+          let utopiaCode: string;
+          try {
+            utopiaCode = fs.readFileSync(utopiaId, 'utf8');
+          } catch {
+            // Owning component was removed — drop it and carry on.
+            owners.delete(utopiaId);
+            continue;
+          }
+
+          try {
+            const { result } = compileUtopiaSource(utopiaCode, utopiaId);
+            if (result.css) {
+              cssCache.set(utopiaId, result.css);
+            } else {
+              cssCache.delete(utopiaId);
+            }
+          } catch {
+            // Compile/read error — skip; a later edit will resurface it.
+          }
+
+          const cssId = VIRTUAL_PREFIX + toCssId(utopiaId);
+          const cssModule = hmrServer.moduleGraph.getModuleById(cssId);
+          if (cssModule) {
+            hmrServer.moduleGraph.invalidateModule(cssModule);
+            affected.push(cssModule);
+          }
+        }
+        if (affected.length > 0) return affected;
+      }
+
       if (!file.endsWith(UTOPIA_EXT)) return undefined;
 
       return (async () => {
@@ -353,7 +487,11 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
           // Re-compile to refresh the CSS cache.
           let result: ReturnType<typeof compile>;
           try {
-            result = compile(source, { filename: file });
+            const compiled = compileUtopiaSource(source, file);
+            result = compiled.result;
+            if (compiled.dep) {
+              registerStyleDep(compiled.dep, file);
+            }
           } catch {
             // Compile error — fall through to full update so the user
             // sees the error in the browser overlay.
@@ -393,7 +531,10 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
         // style changes.
         if (styleChanged) {
           try {
-            const result = compile(source, { filename: file });
+            const { result, dep } = compileUtopiaSource(source, file);
+            if (dep) {
+              registerStyleDep(dep, file);
+            }
             if (result.css) {
               cssCache.set(file, result.css);
             } else {

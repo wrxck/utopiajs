@@ -6,13 +6,13 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export type { Route, RouteConfig, RouteMatch, RouterState, BeforeNavigateHook } from './types';
+export type { Route, RouteConfig, RouteMatch, RouterState, BeforeNavigateHook } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Route matching (build-time + runtime)
 // ---------------------------------------------------------------------------
 
-export { filePathToRoute, compilePattern, matchRoute, buildRouteTable } from './matcher';
+export { filePathToRoute, compilePattern, matchRoute, buildRouteTable } from '@/matcher';
 
 // ---------------------------------------------------------------------------
 // Client-side router
@@ -27,16 +27,16 @@ export {
   forward,
   beforeNavigate,
   destroy,
-} from './router';
+} from '@/router';
 
 // ---------------------------------------------------------------------------
 // Router components (render functions)
 // ---------------------------------------------------------------------------
 
-export { createRouterView, createLink, preloadRoute } from './components';
+export { createRouterView, createLink, preloadRoute } from '@/components';
 
 // ---------------------------------------------------------------------------
 // Query & route parameter utilities
 // ---------------------------------------------------------------------------
 
-export { queryParams, getQueryParam, setQueryParam, setQueryParams, getRouteParam } from './query';
+export { queryParams, getQueryParam, setQueryParam, setQueryParams, getRouteParam } from '@/query';

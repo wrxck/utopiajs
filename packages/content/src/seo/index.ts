@@ -1,7 +1,7 @@
-export type { SeoConfig, SeoOptions, SeoEntry, OgImageConfig } from './types';
-export { generateMetaTags, generateJsonLd } from './meta';
-export { generatePrerenderedPage, extractAssetTags } from './prerender';
-export { generateAmpPage } from './amp';
-export { generateOgSvg, svgToPng } from './og-image';
-export { generateSitemap } from './sitemap';
-export { generateRobots } from './robots';
+export { generateAmpPage } from '@/seo/amp';
+export { generateJsonLd, generateMetaTags } from '@/seo/meta';
+export { generateOgSvg, svgToPng } from '@/seo/og-image';
+export { extractAssetTags, generatePrerenderedPage } from '@/seo/prerender';
+export { generateRobots } from '@/seo/robots';
+export { generateSitemap } from '@/seo/sitemap';
+export type { OgImageConfig, SeoConfig, SeoEntry, SeoOptions } from '@/seo/types';

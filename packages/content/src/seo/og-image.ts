@@ -1,4 +1,4 @@
-import type { OgImageConfig } from './types';
+import type { OgImageConfig } from '@/seo/types';
 
 /**
  * DM Mono "M" glyph as an SVG path (no font rendering needed).

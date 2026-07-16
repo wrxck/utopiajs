@@ -7,11 +7,11 @@ import { join } from 'node:path';
 
 import { describe, it, expect, afterEach } from 'vitest';
 
-import { generateAmpPage } from './seo/amp';
-import { generateJsonLd } from './seo/meta';
-import { parseFrontmatter } from './frontmatter';
-import { createFilesystemAdapter, validateSlug } from './adapters/filesystem';
-import type { SeoConfig, SeoEntry } from './seo/types';
+import { generateAmpPage } from '@/seo/amp';
+import { generateJsonLd } from '@/seo/meta';
+import { parseFrontmatter } from '@/frontmatter';
+import { createFilesystemAdapter, validateSlug } from '@/adapters/filesystem';
+import type { SeoConfig, SeoEntry } from '@/seo/types';
 
 const config: SeoConfig = {
   siteUrl: 'https://example.test',

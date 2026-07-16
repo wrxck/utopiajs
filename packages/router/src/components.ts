@@ -8,9 +8,23 @@
 //
 // ============================================================================
 
-import { effect } from '@matthesketh/utopia-core';
-import { currentRoute, navigate } from './router';
-import type { RouteMatch } from './types';
+import { createRoot, effect } from '@matthesketh/utopia-core';
+import {
+  popOwner,
+  pushOwner,
+  startCapturingDisposers,
+  startCapturingLifecycle,
+  stopCapturingDisposers,
+  stopCapturingLifecycle,
+} from '@matthesketh/utopia-runtime';
+
+import { currentRoute, navigate } from '@/router';
+import type { RouteMatch } from '@/types';
+
+/** A DOM node with the runtime's optional teardown hook attached. */
+interface DisposableNode extends Node {
+  __cleanup?: () => void;
+}
 
 // ---------------------------------------------------------------------------
 // Pre-load cache — enables synchronous initial render
@@ -262,6 +276,11 @@ async function loadRouteComponent(match: RouteMatch): Promise<LoadResult | null>
     return {
       node,
       cleanup: () => {
+        // Dispose the page (and layout) effects + run onDestroy before removal.
+        (pageNode as DisposableNode).__cleanup?.();
+        if (node !== pageNode) {
+          (node as DisposableNode).__cleanup?.();
+        }
         // Remove the node from DOM when cleaning up.
         if (node.parentNode) {
           node.parentNode.removeChild(node);
@@ -283,6 +302,7 @@ async function loadRouteComponent(match: RouteMatch): Promise<LoadResult | null>
         return {
           node: errorNode,
           cleanup: () => {
+            (errorNode as DisposableNode).__cleanup?.();
             if (errorNode.parentNode) {
               errorNode.parentNode.removeChild(errorNode);
             }
@@ -316,30 +336,108 @@ interface ComponentLike {
   render?: (props: Record<string, unknown>) => Node;
 }
 
-function renderComponent(component: unknown, props: Record<string, unknown>): Node {
+interface SetupComponent extends ComponentLike {
+  setup?: (props: Record<string, unknown>) => Record<string, unknown>;
+}
+
+/**
+ * Invoke a component definition's render, calling `setup(props)` first for
+ * per-instance (`defineProps`) components so their render receives the setup
+ * context instead of the raw props (which would otherwise crash, since the
+ * compiled per-instance render reads `ctx.__render`).
+ */
+function invokeRender(component: unknown, props: Record<string, unknown>): Node {
   if (typeof component === 'function') {
     const result = component(props);
-    if (result instanceof Node) {
-      return result;
-    }
-    // If the component returns a string, wrap it in a text node.
-    if (typeof result === 'string') {
-      return document.createTextNode(result);
-    }
-    // If it has a render method (class-like component).
-    if (result && typeof result.render === 'function') {
-      return result.render();
+    if (result instanceof Node) return result;
+    if (typeof result === 'string') return document.createTextNode(result);
+    // a function that returned a definition object → render that.
+    if (result && typeof (result as ComponentLike).render === 'function') {
+      return invokeRender(result, props);
     }
   }
-  // Object with render method.
-  if (component && typeof (component as ComponentLike).render === 'function') {
-    return (component as ComponentLike).render!(props);
+
+  const def = component as SetupComponent | null;
+  if (def && typeof def.render === 'function') {
+    // per-instance component: run setup() to build the render context.
+    if (typeof def.setup === 'function') {
+      const ctx = def.setup(props);
+      return def.render({ ...ctx, $slots: {} } as Record<string, unknown>);
+    }
+    // module-scope component: render reads its script vars by closure; props
+    // (params/url/children) are passed through for components that use them.
+    return def.render(props);
   }
 
   // Fallback: empty div.
   const div = document.createElement('div');
   div.textContent = '[Component render error]';
   return div;
+}
+
+/**
+ * Render a route component into a DOM node, capturing the reactive effects,
+ * lifecycle hooks, and provide/inject owner created during `setup` + `render`.
+ * The captured teardown is attached as `node.__cleanup` so navigating away
+ * disposes the page's effects and runs its `onDestroy` hooks instead of leaking
+ * them — and so `inject()` resolves against an owner during the page's setup.
+ */
+function renderComponent(component: unknown, props: Record<string, unknown>): Node {
+  const owner = pushOwner();
+  startCapturingLifecycle();
+  const prev = startCapturingDisposers();
+  let node: Node | undefined;
+  let lifecycle: { mount: (() => void)[]; destroy: (() => void)[] };
+  let rootDispose: () => void = () => {};
+  try {
+    // createRoot owns any raw computed()/effect() the page creates (e.g. via
+    // getQueryParam) so they unsubscribe on navigation instead of leaking
+    // against the long-lived router signals. child-component cleanups and
+    // createEffect disposers are caught by the runtime capture above.
+    createRoot((dispose) => {
+      rootDispose = dispose;
+      node = invokeRender(component, props);
+    });
+  } finally {
+    lifecycle = stopCapturingLifecycle();
+    const disposers = stopCapturingDisposers(prev);
+    popOwner(owner);
+    // node stays undefined only if invokeRender threw — in which case the
+    // captured disposers are dropped with the failed render.
+    if (node !== undefined) {
+      let cleaned = false;
+      (node as DisposableNode).__cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        for (const cb of lifecycle.destroy) {
+          try {
+            cb();
+          } catch {
+            /* a faulty onDestroy must not abort the rest of teardown */
+          }
+        }
+        for (const d of disposers) {
+          try {
+            d();
+          } catch {
+            /* dispose path must not throw */
+          }
+        }
+        rootDispose();
+      };
+    } else {
+      // failed render — drop the root's captured reactivity immediately.
+      rootDispose();
+    }
+  }
+  // run onMount hooks now that the node exists (parity with createComponent,
+  // which also fires onMount before the parent inserts the returned node).
+  for (const cb of lifecycle.mount) {
+    cb();
+  }
+  // node is always assigned here — invokeRender returns a node (or a fallback)
+  // unless it threw, in which case createRoot rethrew and we never reach this.
+  return node as Node;
 }
 
 /**

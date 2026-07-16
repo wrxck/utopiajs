@@ -6,8 +6,8 @@
 // Shows an optional fallback during loading, then swaps in the real component.
 // ============================================================================
 
-import { pushDisposer, type ComponentDefinition } from './component';
-import { createComponent } from './directives';
+import { pushDisposer, type ComponentDefinition } from '@/component';
+import { createComponent } from '@/directives';
 
 /** Cache for loaded modules, keyed by loader function. */
 const moduleCache = new Map<() => Promise<{ default: ComponentDefinition }>, ComponentDefinition>();

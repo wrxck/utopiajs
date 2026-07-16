@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { persistedSignal } from './persisted';
+import { persistedSignal } from '@/persisted';
 
 // a minimal in-memory Storage implementation for deterministic tests.
 function memStorage(): Storage {

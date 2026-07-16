@@ -161,7 +161,13 @@ export function createForm<T extends Record<string, FieldConfig<any>>>(config: T
       });
 
       if (valid()) {
-        onSubmit(this.data());
+        // read straight from the field closures rather than `this.data()` so a
+        // destructured `const { handleSubmit } = createForm(...)` still works.
+        const result: Record<string, any> = {};
+        for (const [key, field] of fieldEntries) {
+          result[key] = field.value();
+        }
+        onSubmit(result as FormData<T>);
       }
     },
 

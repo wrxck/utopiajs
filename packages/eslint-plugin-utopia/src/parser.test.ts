@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseForESLint } from './parser';
+import { parseForESLint } from '@/parser';
 
 describe('parser', () => {
   it('parses the script block as typescript with source positions intact', () => {

@@ -14,7 +14,7 @@ import type {
   EmbeddingResponse,
   ToolDefinition,
   ToolCall,
-} from './types';
+} from '@/types';
 
 // ---------------------------------------------------------------------------
 // AI instance interface

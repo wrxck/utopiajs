@@ -8,12 +8,12 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { existsSync } from 'node:fs';
 
-import { validateSchema, applyDefaults } from './schema';
-import { parseFrontmatter, serializeFrontmatter } from './frontmatter';
-import { renderMarkdown } from './markdown';
-import { createFilesystemAdapter } from './adapters/filesystem';
-import { createVirtualAdapter } from './adapters/virtual';
-import { generateRssFeed, generateAtomFeed } from './feed';
+import { validateSchema, applyDefaults } from '@/schema';
+import { parseFrontmatter, serializeFrontmatter } from '@/frontmatter';
+import { renderMarkdown } from '@/markdown';
+import { createFilesystemAdapter } from '@/adapters/filesystem';
+import { createVirtualAdapter } from '@/adapters/virtual';
+import { generateRssFeed, generateAtomFeed } from '@/feed';
 import {
   createContent,
   defineCollection,
@@ -21,12 +21,12 @@ import {
   getEntry,
   listCollections,
   clearCollections,
-} from './collection';
-import { createContentMCPServer } from './mcp/index';
-import type { CollectionSchema } from './types';
-import type { FeedEntry, FeedOptions } from './feed';
-import { generatePrerenderedPage } from './seo/prerender';
-import type { SeoEntry, SeoConfig } from './seo/types';
+} from '@/collection';
+import { createContentMCPServer } from '@/mcp/index';
+import type { CollectionSchema } from '@/types';
+import type { FeedEntry, FeedOptions } from '@/feed';
+import { generatePrerenderedPage } from '@/seo/prerender';
+import type { SeoEntry, SeoConfig } from '@/seo/types';
 
 // ---------------------------------------------------------------------------
 // Schema validation
@@ -1207,7 +1207,7 @@ draft: true
 // Security — slug validation and safe metadata
 // ---------------------------------------------------------------------------
 
-import { validateSlug } from './adapters/filesystem';
+import { validateSlug } from '@/adapters/filesystem';
 
 describe('Security — slug validation', () => {
   it('rejects path traversal with ../', () => {

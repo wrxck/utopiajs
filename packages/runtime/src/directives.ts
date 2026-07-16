@@ -6,16 +6,18 @@
  */
 
 import { effect } from '@matthesketh/utopia-core';
-import { insertBefore, removeNode } from './dom';
+import { insertBefore, removeNode } from '@/dom';
 import {
   createComponentInstance,
   pushDisposer,
+  pushOwner,
+  popOwner,
   startCapturingDisposers,
   stopCapturingDisposers,
   startCapturingLifecycle,
   stopCapturingLifecycle,
-} from './component';
-import type { ComponentDefinition } from './component';
+} from '@/component';
+import type { ComponentDefinition } from '@/component';
 
 /** A DOM Node with optional cleanup/dispose callbacks attached by the runtime. */
 interface DisposableNode extends Node {
@@ -89,6 +91,34 @@ export function createIf(
     insertBefore(parent, node, anchor);
   };
 
+  // render the current branch. when this if is itself a branch returned into an
+  // OUTER createIf (an else-if chain, or a u-if used directly as a branch), our
+  // anchor is only inserted after the branch factory returns — so the first
+  // switch can run before the anchor is connected. rather than drop the branch,
+  // retry on a microtask once we have a parent.
+  let retryScheduled = false;
+  const applyBranch = (): void => {
+    const parent = anchor.parentNode;
+    if (!parent) {
+      if (!retryScheduled) {
+        retryScheduled = true;
+        queueMicrotask(() => {
+          retryScheduled = false;
+          if (!disposed && anchor.parentNode) applyBranch();
+        });
+      }
+      return;
+    }
+
+    teardownBranch();
+
+    if (lastConditionTruthy) {
+      renderBranch(renderTrue, parent);
+    } else if (renderFalse) {
+      renderBranch(renderFalse, parent);
+    }
+  };
+
   const dispose = effect(() => {
     const truthy = !!condition();
 
@@ -97,17 +127,7 @@ export function createIf(
       return;
     }
     lastConditionTruthy = truthy;
-
-    const parent = anchor.parentNode;
-    if (!parent) return;
-
-    teardownBranch();
-
-    if (truthy) {
-      renderBranch(renderTrue, parent);
-    } else if (renderFalse) {
-      renderBranch(renderFalse, parent);
-    }
+    applyBranch();
   });
 
   const disposeAll = (): void => {
@@ -327,20 +347,30 @@ export function createComponent(
 
   const def = resolved as ComponentDefinition;
 
-  // Run the render pipeline, capturing lifecycle hooks during setup.
-  startCapturingLifecycle();
-  const ctx = def.setup ? def.setup(instance.props) : {};
-  const lifecycle = stopCapturingLifecycle();
-
-  // Merge slots into the render context so templates can reference them.
-  const renderCtx: Record<string, unknown> = {
-    ...ctx,
-    $slots: instance.slots,
-  };
-
-  // Capture effect disposers created during render.
+  // capture disposers across BOTH setup and render so effects (createEffect /
+  // use*) created in a per-instance setup() are torn down on unmount, not just
+  // render-phase ones. lifecycle stays scoped to setup — children mount during
+  // render, after the lifecycle window closes, so its globals are never clobbered.
+  // an owner is pushed for the same window so provide()/inject() resolve against
+  // this component (and children created during render link to it as parent).
+  const owner = pushOwner();
   const prev = startCapturingDisposers();
-  instance.el = def.render(renderCtx);
+  let lifecycle: { mount: (() => void)[]; destroy: (() => void)[] };
+  try {
+    startCapturingLifecycle();
+    const ctx = def.setup ? def.setup(instance.props) : {};
+    lifecycle = stopCapturingLifecycle();
+
+    // Merge slots into the render context so templates can reference them.
+    const renderCtx: Record<string, unknown> = {
+      ...ctx,
+      $slots: instance.slots,
+    };
+
+    instance.el = def.render(renderCtx);
+  } finally {
+    popOwner(owner);
+  }
   const disposers = stopCapturingDisposers(prev);
 
   // Inject scoped styles if the definition carries them (deduplicated).

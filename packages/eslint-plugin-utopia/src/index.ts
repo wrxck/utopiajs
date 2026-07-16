@@ -2,8 +2,8 @@
 // single-file components. consumers spread `configs.recommended` into their
 // flat config; see the package readme for a worked example.
 
-import * as parser from './parser';
-import noUndecodedEntities from './rules/no-undecoded-entities';
+import * as parser from '@/parser';
+import noUndecodedEntities from '@/rules/no-undecoded-entities';
 
 const meta = { name: '@matthesketh/eslint-plugin-utopia', version: '0.8.2' };
 
