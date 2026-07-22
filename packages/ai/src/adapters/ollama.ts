@@ -15,6 +15,8 @@ import type {
   ToolDefinition,
 } from '../types';
 
+import { assertHttpBaseURL, nextToolCallId } from './shared';
+
 // ---------------------------------------------------------------------------
 // Internal Ollama API types (no SDK — native fetch)
 // ---------------------------------------------------------------------------
@@ -60,15 +62,9 @@ const MAX_STREAM_BUFFER = 1024 * 1024;
 /** normalise and validate the base url: only http(s) is permitted (no file:, etc.). */
 function resolveBaseURL(raw: string | undefined): string {
   const baseURL = (raw ?? 'http://localhost:11434').replace(TRAILING_SLASH_RE, '');
-  const protocol = new URL(baseURL).protocol;
-  if (protocol !== 'http:' && protocol !== 'https:') {
-    throw new Error(`Ollama baseURL must be http(s): ${baseURL}`);
-  }
+  assertHttpBaseURL(baseURL, 'Ollama');
   return baseURL;
 }
-
-/** monotonic counter for generating unique tool call IDs. */
-let ollamaToolCallCounter = 0;
 
 /**
  * Create an Ollama adapter for local models.
@@ -121,7 +117,7 @@ export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
       const data: OllamaChatResponse = await response.json();
 
       const toolCalls: ToolCall[] = (data.message?.tool_calls ?? []).map((tc: OllamaToolCall) => ({
-        id: `call_${++ollamaToolCallCounter}_${Date.now().toString(36)}`,
+        id: nextToolCallId(),
         name: tc.function.name,
         arguments: tc.function.arguments ?? {},
       }));
@@ -129,7 +125,7 @@ export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
       return {
         content: data.message?.content ?? '',
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-        finishReason: data.done_reason === 'length' ? 'length' : 'stop',
+        finishReason: mapDoneReason(data.done_reason),
         usage: {
           promptTokens: data.prompt_eval_count ?? 0,
           completionTokens: data.eval_count ?? 0,
@@ -178,38 +174,45 @@ export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
-        if (buffer.length > MAX_STREAM_BUFFER) {
-          throw new Error('Ollama stream exceeded maximum buffer size without a line delimiter');
-        }
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          let data: OllamaChatResponse;
-          try {
-            data = JSON.parse(line);
-          } catch {
-            continue;
+          buffer += decoder.decode(value, { stream: true });
+          if (buffer.length > MAX_STREAM_BUFFER) {
+            throw new Error('Ollama stream exceeded maximum buffer size without a line delimiter');
           }
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
 
-          yield {
-            delta: data.message?.content ?? '',
-            finishReason: data.done ? 'stop' : undefined,
-            usage: data.done
-              ? {
-                  promptTokens: data.prompt_eval_count ?? 0,
-                  completionTokens: data.eval_count ?? 0,
-                  totalTokens: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
-                }
-              : undefined,
-          };
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            let data: OllamaChatResponse;
+            try {
+              data = JSON.parse(line);
+            } catch {
+              continue;
+            }
+
+            yield {
+              delta: data.message?.content ?? '',
+              finishReason: data.done ? mapDoneReason(data.done_reason) : undefined,
+              usage: data.done
+                ? {
+                    promptTokens: data.prompt_eval_count ?? 0,
+                    completionTokens: data.eval_count ?? 0,
+                    totalTokens: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
+                  }
+                : undefined,
+            };
+          }
         }
+      } finally {
+        // release the underlying connection if the consumer stops early or an
+        // error (e.g. the buffer cap) aborts the loop — otherwise the reader
+        // (and its socket) leaks.
+        reader.cancel().catch(() => {});
       }
     },
 
@@ -232,7 +235,11 @@ export function ollamaAdapter(config: OllamaConfig = {}): AIAdapter {
         }
 
         const data = await response.json();
-        results.push(...(data.embeddings ?? [data.embedding]));
+        if (Array.isArray(data.embeddings)) {
+          results.push(...data.embeddings);
+        } else if (Array.isArray(data.embedding)) {
+          results.push(data.embedding);
+        }
       }
 
       return { embeddings: results };
@@ -253,6 +260,7 @@ function toOllamaMessages(messages: ChatMessage[]): OllamaMessage[] {
     if (Array.isArray(msg.content)) {
       const texts: string[] = [];
       const images: string[] = [];
+      const toolCalls: OllamaToolCall[] = [];
 
       for (const part of msg.content) {
         if (typeof part === 'string') {
@@ -263,6 +271,8 @@ function toOllamaMessages(messages: ChatMessage[]): OllamaMessage[] {
           images.push(part.source);
         } else if (part.type === 'tool_result') {
           texts.push(part.content);
+        } else if (part.type === 'tool_call') {
+          toolCalls.push({ function: { name: part.name, arguments: part.arguments } });
         }
       }
 
@@ -270,6 +280,7 @@ function toOllamaMessages(messages: ChatMessage[]): OllamaMessage[] {
         role: msg.role === 'tool' ? 'user' : msg.role,
         content: texts.join('\n'),
         ...(images.length > 0 ? { images } : {}),
+        ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
       };
     }
 
@@ -280,6 +291,10 @@ function toOllamaMessages(messages: ChatMessage[]): OllamaMessage[] {
 
     return { role: msg.role, content: '' };
   });
+}
+
+function mapDoneReason(reason: string | undefined): ChatResponse['finishReason'] {
+  return reason === 'length' ? 'length' : 'stop';
 }
 
 function toOllamaTool(tool: ToolDefinition): OllamaToolParam {

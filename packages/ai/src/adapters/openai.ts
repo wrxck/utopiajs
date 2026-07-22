@@ -17,6 +17,8 @@ import type {
 
 import type OpenAI from 'openai';
 
+import { assertHttpBaseURL, missingPeerDepError, tryParseJSON } from './shared';
+
 /**
  * Create an OpenAI adapter.
  *
@@ -44,16 +46,10 @@ export function openaiAdapter(config: OpenAIConfig): AIAdapter {
       const mod = await import('openai');
       OpenAICtor = mod.OpenAI ?? mod.default;
     } catch {
-      throw new Error(
-        '@matthesketh/utopia-ai: "openai" package is required for the OpenAI adapter. ' +
-          'Install it with: npm install openai',
-      );
+      throw missingPeerDepError('openai', 'OpenAI');
     }
 
-    // only http(s) base urls are permitted (no file:, etc.).
-    if (config.baseURL && !/^https?:$/.test(new URL(config.baseURL).protocol)) {
-      throw new Error(`OpenAI baseURL must be http(s): ${config.baseURL}`);
-    }
+    if (config.baseURL) assertHttpBaseURL(config.baseURL, 'OpenAI');
 
     client = new OpenAICtor({
       apiKey: config.apiKey,
@@ -335,13 +331,5 @@ function mapFinishReason(reason: string): ChatResponse['finishReason'] {
       return 'error';
     default:
       return 'stop';
-  }
-}
-
-function tryParseJSON(str: string): Record<string, unknown> | undefined {
-  try {
-    return JSON.parse(str);
-  } catch {
-    return undefined;
   }
 }

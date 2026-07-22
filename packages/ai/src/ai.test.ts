@@ -2,15 +2,12 @@
 // @matthesketh/utopia-ai — Tests
 // ============================================================================
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createAI } from './ai';
-import type { CreateAIOptions } from './ai';
 import { collectStream } from './streaming';
 import { createMCPServer } from './mcp/server';
 import type {
   AIAdapter,
-  AIHooks,
-  RetryConfig,
   ChatRequest,
   ChatResponse,
   ChatChunk,
@@ -115,7 +112,7 @@ describe('ai.run - tool calling loop', () => {
     let callCount = 0;
 
     const adapter: AIAdapter = {
-      async chat(request: ChatRequest): Promise<ChatResponse> {
+      async chat(_request: ChatRequest): Promise<ChatResponse> {
         callCount++;
         if (callCount === 1) {
           return {
@@ -720,10 +717,8 @@ describe('parseSSEStream', () => {
     const originalGetReader = stream.getReader.bind(stream);
     const reader = originalGetReader();
     const originalRead = reader.read.bind(reader);
-    const originalCancel = reader.cancel.bind(reader);
 
     let readerRequested = false;
-    const mockStream = new ReadableStream(); // dummy, won't be used
     const response = {
       body: {
         getReader() {
@@ -1008,6 +1003,79 @@ describe('edge cases', () => {
   });
 });
 
+describe('ai.run - tool result serialization', () => {
+  it('serializes a handler returning undefined to a string tool result', async () => {
+    let callCount = 0;
+    const chatSpy = vi.fn();
+
+    const adapter: AIAdapter = {
+      async chat(request: ChatRequest): Promise<ChatResponse> {
+        callCount++;
+        chatSpy(request);
+        if (callCount === 1) {
+          return {
+            content: '',
+            finishReason: 'tool_calls',
+            toolCalls: [{ id: 'call_1', name: 'fire_and_forget', arguments: {} }],
+          };
+        }
+        return { content: 'done', finishReason: 'stop' };
+      },
+    };
+
+    const ai = createAI(adapter);
+    await ai.run({
+      messages: [{ role: 'user', content: 'go' }],
+      tools: [
+        {
+          definition: {
+            name: 'fire_and_forget',
+            description: 'Returns nothing',
+            parameters: { type: 'object' },
+          },
+          handler: async () => undefined,
+        },
+      ],
+    });
+
+    const secondRequest = chatSpy.mock.calls[1][0] as ChatRequest;
+    const toolMessage = secondRequest.messages[2];
+    const result = (toolMessage.content as ToolResultContent[])[0];
+    // JSON.stringify(undefined) is undefined — the tool result content must
+    // still be a string, or provider adapters send invalid payloads.
+    expect(typeof result.content).toBe('string');
+  });
+});
+
+describe('ai.stream fallback (adapter without stream)', () => {
+  it('emits tool call deltas instead of silently dropping toolCalls', async () => {
+    const adapter: AIAdapter = {
+      async chat(): Promise<ChatResponse> {
+        return {
+          content: '',
+          finishReason: 'tool_calls',
+          toolCalls: [{ id: 'call_9', name: 'lookup', arguments: { q: 'x' } }],
+        };
+      },
+    };
+
+    const ai = createAI(adapter);
+    const chunks: ChatChunk[] = [];
+    for await (const chunk of ai.stream({ messages: [{ role: 'user', content: 'hi' }] })) {
+      chunks.push(chunk);
+    }
+
+    const toolChunk = chunks.find((c) => c.toolCallDelta);
+    expect(toolChunk).toBeDefined();
+    expect(toolChunk!.toolCallDelta).toMatchObject({
+      id: 'call_9',
+      name: 'lookup',
+      arguments: { q: 'x' },
+    });
+    expect(chunks[chunks.length - 1].finishReason).toBe('tool_calls');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Hooks & Middleware
 // ---------------------------------------------------------------------------
@@ -1071,6 +1139,238 @@ describe('hooks', () => {
     expect(onError).toHaveBeenCalledOnce();
     expect(onError.mock.calls[0][0].message).toBe('network timeout');
     expect(onError.mock.calls[0][1].method).toBe('chat');
+  });
+});
+
+describe('hooks in stream()', () => {
+  it('onBeforeChat modifies the streamed request and onError fires on stream failure', async () => {
+    const onError = vi.fn();
+    const seenModels: (string | undefined)[] = [];
+
+    const adapter: AIAdapter = {
+      async chat(): Promise<ChatResponse> {
+        return { content: '', finishReason: 'stop' };
+      },
+      // eslint-disable-next-line require-yield
+      async *stream(request: ChatRequest): AsyncIterable<ChatChunk> {
+        seenModels.push(request.model);
+        throw new Error('stream blew up');
+      },
+    };
+
+    const ai = createAI(adapter, {
+      hooks: {
+        onBeforeChat: (req) => ({ ...req, model: 'patched-model' }),
+        onError,
+      },
+    });
+
+    await expect(
+      (async () => {
+        for await (const chunk of ai.stream({ messages: [{ role: 'user', content: 'x' }] })) {
+          void chunk;
+        }
+      })(),
+    ).rejects.toThrow('stream blew up');
+
+    expect(seenModels).toEqual(['patched-model']);
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError.mock.calls[0][1].method).toBe('stream');
+  });
+});
+
+describe('hooks in run()', () => {
+  function toolLoopAdapter(): { adapter: AIAdapter; requests: ChatRequest[] } {
+    const requests: ChatRequest[] = [];
+    const adapter: AIAdapter = {
+      async chat(request: ChatRequest): Promise<ChatResponse> {
+        requests.push(request);
+        if (request.toolChoice === 'none') {
+          return { content: 'final after max rounds', finishReason: 'stop' };
+        }
+        return {
+          content: '',
+          finishReason: 'tool_calls',
+          toolCalls: [{ id: `c${requests.length}`, name: 'loop', arguments: {} }],
+        };
+      },
+    };
+    return { adapter, requests };
+  }
+
+  const loopTool = {
+    definition: { name: 'loop', description: 'loops', parameters: { type: 'object' } },
+    handler: async () => 'ok',
+  };
+
+  it('applies onBeforeChat and onAfterChat on every round including the final maxRounds call', async () => {
+    const { adapter, requests } = toolLoopAdapter();
+    const afterCalls: string[] = [];
+
+    const ai = createAI(adapter, {
+      hooks: {
+        onBeforeChat: (req) => ({ ...req, temperature: 0.123 }),
+        onAfterChat: (res) => {
+          afterCalls.push(res.content);
+          return { ...res, content: res.content + '!' };
+        },
+      },
+    });
+
+    const result = await ai.run({
+      messages: [{ role: 'user', content: 'go' }],
+      tools: [loopTool],
+      maxRounds: 2,
+    });
+
+    // 2 tool rounds + final toolChoice 'none' call
+    expect(requests).toHaveLength(3);
+    expect(requests.every((r) => r.temperature === 0.123)).toBe(true);
+    expect(requests[2].toolChoice).toBe('none');
+    expect(afterCalls).toHaveLength(3);
+    expect(result.content).toBe('final after max rounds!');
+  });
+
+  it('fires onError and rethrows when a round fails', async () => {
+    const onError = vi.fn();
+    const adapter: AIAdapter = {
+      async chat(): Promise<ChatResponse> {
+        throw new Error('round failed');
+      },
+    };
+
+    const ai = createAI(adapter, { hooks: { onError } });
+    await expect(ai.run({ messages: [{ role: 'user', content: 'x' }], tools: [] })).rejects.toThrow(
+      'round failed',
+    );
+    expect(onError.mock.calls[0][1].method).toBe('run');
+  });
+
+  it('fires onError and rethrows when the final maxRounds call fails', async () => {
+    const onError = vi.fn();
+    let calls = 0;
+    const adapter: AIAdapter = {
+      async chat(request: ChatRequest): Promise<ChatResponse> {
+        calls++;
+        if (request.toolChoice === 'none') {
+          throw new Error('final call failed');
+        }
+        return {
+          content: '',
+          finishReason: 'tool_calls',
+          toolCalls: [{ id: `c${calls}`, name: 'loop', arguments: {} }],
+        };
+      },
+    };
+
+    const ai = createAI(adapter, { hooks: { onError } });
+    await expect(
+      ai.run({ messages: [{ role: 'user', content: 'x' }], tools: [loopTool], maxRounds: 1 }),
+    ).rejects.toThrow('final call failed');
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError.mock.calls[0][1].method).toBe('run');
+  });
+
+  it('handles non-Error throws from adapters and tool handlers', async () => {
+    const onError = vi.fn();
+    const adapter: AIAdapter = {
+      async chat(): Promise<ChatResponse> {
+        throw 'a string rejection';
+      },
+    };
+
+    const ai = createAI(adapter, { hooks: { onError } });
+    await expect(ai.chat({ messages: [{ role: 'user', content: 'x' }] })).rejects.toBe(
+      'a string rejection',
+    );
+    expect(onError.mock.calls[0][0]).toBeInstanceOf(Error);
+    expect(onError.mock.calls[0][0].message).toBe('a string rejection');
+  });
+
+  it('wraps non-Error throws from run() rounds and stream() for onError', async () => {
+    const onError = vi.fn();
+    const adapter: AIAdapter = {
+      async chat(): Promise<ChatResponse> {
+        throw 'round string failure';
+      },
+      // eslint-disable-next-line require-yield
+      async *stream(): AsyncIterable<ChatChunk> {
+        throw 'stream string failure';
+      },
+    };
+
+    const ai = createAI(adapter, { hooks: { onError } });
+
+    await expect(ai.run({ messages: [], tools: [] })).rejects.toBe('round string failure');
+    expect(onError.mock.calls[0][0].message).toBe('round string failure');
+
+    await expect(
+      (async () => {
+        for await (const c of ai.stream({ messages: [] })) void c;
+      })(),
+    ).rejects.toBe('stream string failure');
+    expect(onError.mock.calls[1][0].message).toBe('stream string failure');
+  });
+
+  it('wraps non-Error throws from the final maxRounds call for onError', async () => {
+    const onError = vi.fn();
+    let calls = 0;
+    const adapter: AIAdapter = {
+      async chat(request: ChatRequest): Promise<ChatResponse> {
+        calls++;
+        if (request.toolChoice === 'none') {
+          throw 'final string failure';
+        }
+        return {
+          content: '',
+          finishReason: 'tool_calls',
+          toolCalls: [{ id: `c${calls}`, name: 'loop', arguments: {} }],
+        };
+      },
+    };
+
+    const ai = createAI(adapter, { hooks: { onError } });
+    await expect(ai.run({ messages: [], tools: [loopTool], maxRounds: 1 })).rejects.toBe(
+      'final string failure',
+    );
+    expect(onError.mock.calls[0][0].message).toBe('final string failure');
+  });
+
+  it('records a string tool error result when the handler throws a non-Error', async () => {
+    let callCount = 0;
+    const chatSpy = vi.fn();
+    const adapter: AIAdapter = {
+      async chat(request: ChatRequest): Promise<ChatResponse> {
+        callCount++;
+        chatSpy(request);
+        if (callCount === 1) {
+          return {
+            content: '',
+            finishReason: 'tool_calls',
+            toolCalls: [{ id: 'c1', name: 'boom', arguments: {} }],
+          };
+        }
+        return { content: 'done', finishReason: 'stop' };
+      },
+    };
+
+    const ai = createAI(adapter);
+    await ai.run({
+      messages: [{ role: 'user', content: 'x' }],
+      tools: [
+        {
+          definition: { name: 'boom', description: 'b', parameters: { type: 'object' } },
+          handler: () => {
+            throw 'string failure';
+          },
+        },
+      ],
+    });
+
+    const secondRequest = chatSpy.mock.calls[1][0] as ChatRequest;
+    const result = (secondRequest.messages[2].content as ToolResultContent[])[0];
+    expect(result.isError).toBe(true);
+    expect(result.content).toBe('string failure');
   });
 });
 

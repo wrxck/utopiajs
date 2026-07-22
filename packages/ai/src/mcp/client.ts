@@ -182,12 +182,12 @@ export function createMCPClient(config: MCPClientConfig): MCPClient {
           },
           handler: async (args: Record<string, unknown>) => {
             const result = await this.callTool(tool.name, args);
-            if (result.isError) {
-              throw new Error(
-                result.content.map((c) => c.text ?? '').join('\n') || 'Tool call failed',
-              );
+            // guard against malformed servers that omit the content array
+            const text = (result?.content ?? []).map((c) => c.text ?? '').join('\n');
+            if (result?.isError) {
+              throw new Error(text || 'Tool call failed');
             }
-            return result.content.map((c) => c.text ?? '').join('\n');
+            return text;
           },
         }),
       );
