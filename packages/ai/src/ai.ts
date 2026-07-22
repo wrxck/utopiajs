@@ -221,7 +221,9 @@ export function createAI(adapter: AIAdapter, options?: CreateAIOptions): AI {
               {
                 type: 'tool_result',
                 id: call.id,
-                content: typeof result === 'string' ? result : JSON.stringify(result),
+                // JSON.stringify(undefined) is undefined, not a string — fall
+                // back to '' so adapters always receive a string tool result.
+                content: typeof result === 'string' ? result : (JSON.stringify(result) ?? ''),
                 isError,
               },
             ],
@@ -310,6 +312,13 @@ function sleep(ms: number): Promise<void> {
 
 async function* chatToStream(adapter: AIAdapter, request: ChatRequest): AsyncIterable<ChatChunk> {
   const response = await adapter.chat(request);
+  // surface tool calls as deltas so the fallback does not silently drop them
+  for (const [index, call] of (response.toolCalls ?? []).entries()) {
+    yield {
+      delta: '',
+      toolCallDelta: { index, id: call.id, name: call.name, arguments: call.arguments },
+    };
+  }
   yield {
     delta: response.content,
     finishReason: response.finishReason,
