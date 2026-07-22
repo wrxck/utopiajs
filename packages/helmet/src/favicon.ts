@@ -1,8 +1,42 @@
-import type { LinkDescriptor, FaviconConfig } from './types';
+import type { LinkDescriptor } from './types';
 
 // ---------------------------------------------------------------------------
 // SVG favicon generation
 // ---------------------------------------------------------------------------
+
+/** Matches characters that must be entity-escaped in SVG/XML text content. */
+const XML_SPECIAL_RE = /[&<>]/g;
+
+const XML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+};
+
+/**
+ * Escape XML-special characters so the glyph cannot break the generated SVG
+ * document (e.g. an "A&B" brand mark).
+ */
+function escapeXml(value: string): string {
+  return value.replace(XML_SPECIAL_RE, (c) => XML_ESCAPES[c]);
+}
+
+/**
+ * Render the centered `<text>` element shared by all favicon variants.
+ *
+ * @param fill - Inline fill color, or undefined when fill comes from CSS
+ */
+function centeredTextElement(
+  char: string,
+  fontFamily: string,
+  fontSize: number,
+  size: number,
+  fill?: string,
+): string {
+  const half = size / 2;
+  const fillAttr = fill ? ` fill="${fill}"` : '';
+  return `<text x="${half}" y="${half}" font-family="${fontFamily}" font-size="${fontSize}" font-weight="400" text-anchor="middle" dominant-baseline="central"${fillAttr}>${escapeXml(char)}</text>`;
+}
 
 /**
  * Generate an SVG favicon string with a centered character on a rounded
@@ -48,8 +82,6 @@ export function generateFaviconSvg(
     fontSize = 62,
   } = options;
 
-  const half = size / 2;
-
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}">`,
     `<style>`,
@@ -61,7 +93,7 @@ export function generateFaviconSvg(
     `  }`,
     `</style>`,
     `<rect width="${size}" height="${size}" rx="${radius}" ry="${radius}" />`,
-    `<text x="${half}" y="${half}" font-family="${fontFamily}" font-size="${fontSize}" font-weight="400" text-anchor="middle" dominant-baseline="central">${char}</text>`,
+    centeredTextElement(char, fontFamily, fontSize, size),
     `</svg>`,
   ].join('');
 }
@@ -94,12 +126,10 @@ export function generateStaticSvg(
     fontSize = 62,
   } = options;
 
-  const half = size / 2;
-
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}">`,
     `<rect width="${size}" height="${size}" rx="${radius}" ry="${radius}" fill="${bg}" />`,
-    `<text x="${half}" y="${half}" font-family="${fontFamily}" font-size="${fontSize}" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="${fg}">${char}</text>`,
+    centeredTextElement(char, fontFamily, fontSize, size, fg),
     `</svg>`,
   ].join('');
 }
@@ -122,11 +152,9 @@ export function generateMaskSvg(
 ): string {
   const { fontFamily = "'DM Mono', monospace", size = 100, fontSize = 62 } = options;
 
-  const half = size / 2;
-
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}">`,
-    `<text x="${half}" y="${half}" font-family="${fontFamily}" font-size="${fontSize}" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#000000">${char}</text>`,
+    centeredTextElement(char, fontFamily, fontSize, size, '#000000'),
     `</svg>`,
   ].join('');
 }

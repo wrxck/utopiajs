@@ -94,6 +94,83 @@ describe('setMeta', () => {
     const el = document.head.querySelector('meta[name="robots"]');
     expect(el!.hasAttribute('data-utopia-helmet')).toBe(true);
   });
+
+  it('creates a meta tag with an explicitly empty content', () => {
+    // Regression: the create path dropped content="" (truthiness check)
+    // while the update path honored it (!== undefined) — inconsistent.
+    setMeta({ name: 'description', content: '' });
+    const el = document.head.querySelector('meta[name="description"]');
+    expect(el).not.toBeNull();
+    expect(el!.getAttribute('content')).toBe('');
+  });
+
+  it('updates an existing charset meta tag', () => {
+    setMeta({ charset: 'utf-8' });
+    setMeta({ charset: 'iso-8859-1' });
+    const els = document.head.querySelectorAll('meta[charset]');
+    expect(els.length).toBe(1);
+    expect(els[0].getAttribute('charset')).toBe('iso-8859-1');
+  });
+
+  it('updates an existing http-equiv meta tag', () => {
+    setMeta({ httpEquiv: 'refresh', content: '30' });
+    setMeta({ httpEquiv: 'refresh', content: '60' });
+    const els = document.head.querySelectorAll('meta[http-equiv="refresh"]');
+    expect(els.length).toBe(1);
+    expect(els[0].getAttribute('content')).toBe('60');
+  });
+
+  it('adopts a pre-existing unmanaged meta tag and manages it thereafter', () => {
+    const ssrMeta = document.createElement('meta');
+    ssrMeta.setAttribute('name', 'description');
+    ssrMeta.setAttribute('content', 'server-rendered');
+    document.head.appendChild(ssrMeta);
+
+    setMeta({ name: 'description', content: 'client-updated' });
+
+    // The existing element was updated in place, not duplicated…
+    const els = document.head.querySelectorAll('meta[name="description"]');
+    expect(els.length).toBe(1);
+    expect(els[0]).toBe(ssrMeta);
+    expect(els[0].getAttribute('content')).toBe('client-updated');
+    // …and is now managed, so resetHead removes it.
+    expect(els[0].hasAttribute('data-utopia-helmet')).toBe(true);
+    resetHead();
+    expect(document.head.querySelector('meta[name="description"]')).toBeNull();
+  });
+
+  it('creates a new tag for a descriptor with no identity fields', () => {
+    // A content-only descriptor has nothing to match against — it is created.
+    setMeta({ content: 'standalone' });
+    const el = document.head.querySelector('meta[content="standalone"]');
+    expect(el).not.toBeNull();
+    expect(el!.hasAttribute('data-utopia-helmet')).toBe(true);
+  });
+
+  it('creates a fresh element when the existing-tag lookup throws', () => {
+    // Defensive path: a hostile selector engine error must not break setMeta.
+    const spy = vi.spyOn(document.head, 'querySelector').mockImplementation(() => {
+      throw new SyntaxError('bad selector');
+    });
+    expect(() => setMeta({ name: 'robots', content: 'noindex' })).not.toThrow();
+    spy.mockRestore();
+    expect(document.head.querySelector('meta[name="robots"]')).not.toBeNull();
+  });
+
+  it('falls back to manual escaping when CSS.escape is unavailable', () => {
+    vi.stubGlobal('CSS', undefined);
+    try {
+      // A quote in the identity would otherwise produce an invalid selector.
+      expect(() => setMeta({ name: 'a"b', content: 'v1' })).not.toThrow();
+      // A bracket still breaks the selector — querySelector throws, and the
+      // catch path must recover by creating a new element.
+      expect(() => setMeta({ name: 'a[b', content: 'v2' })).not.toThrow();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(document.head.querySelector('meta[content="v1"]')).not.toBeNull();
+    expect(document.head.querySelector('meta[content="v2"]')).not.toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -139,6 +216,104 @@ describe('setLink', () => {
     setLink({ rel: 'icon', href: '/test.svg' });
     const el = document.head.querySelector('link[rel="icon"]');
     expect(el!.hasAttribute('data-utopia-helmet')).toBe(true);
+  });
+
+  it('updates the canonical link in place instead of duplicating it', () => {
+    // Regression: links without sizes/type were keyed by rel+href, so a
+    // canonical URL change appended a second <link rel="canonical">.
+    setLink({ rel: 'canonical', href: 'https://example.com/a' });
+    setLink({ rel: 'canonical', href: 'https://example.com/b' });
+    const els = document.head.querySelectorAll('link[rel="canonical"]');
+    expect(els.length).toBe(1);
+    expect(els[0].getAttribute('href')).toBe('https://example.com/b');
+  });
+
+  it('updates the manifest link in place instead of duplicating it', () => {
+    setLink({ rel: 'manifest', href: '/old.webmanifest' });
+    setLink({ rel: 'manifest', href: '/new.webmanifest' });
+    const els = document.head.querySelectorAll('link[rel="manifest"]');
+    expect(els.length).toBe(1);
+    expect(els[0].getAttribute('href')).toBe('/new.webmanifest');
+  });
+
+  it('creates a link with all optional attributes', () => {
+    setLink({
+      rel: 'preload',
+      href: '/font.woff2',
+      as: 'font',
+      type: 'font/woff2',
+      crossorigin: 'anonymous',
+      media: 'screen',
+      title: 'Font',
+      color: '#123456',
+    });
+    const el = document.head.querySelector('link[rel="preload"]')!;
+    expect(el.getAttribute('as')).toBe('font');
+    expect(el.getAttribute('type')).toBe('font/woff2');
+    expect(el.getAttribute('crossorigin')).toBe('anonymous');
+    expect(el.getAttribute('media')).toBe('screen');
+    expect(el.getAttribute('title')).toBe('Font');
+    expect(el.getAttribute('color')).toBe('#123456');
+  });
+
+  it('updates all optional attributes on an existing link (matched by rel+type)', () => {
+    setLink({ rel: 'preload', href: '/a.woff2', type: 'font/woff2' });
+    setLink({
+      rel: 'preload',
+      href: '/b.woff2',
+      type: 'font/woff2',
+      as: 'font',
+      crossorigin: 'use-credentials',
+      media: 'print',
+      title: 'Updated',
+      color: '#654321',
+    });
+    const els = document.head.querySelectorAll('link[rel="preload"]');
+    expect(els.length).toBe(1);
+    const el = els[0];
+    expect(el.getAttribute('href')).toBe('/b.woff2');
+    expect(el.getAttribute('as')).toBe('font');
+    expect(el.getAttribute('crossorigin')).toBe('use-credentials');
+    expect(el.getAttribute('media')).toBe('print');
+    expect(el.getAttribute('title')).toBe('Updated');
+    expect(el.getAttribute('color')).toBe('#654321');
+  });
+
+  it('adopts a pre-existing unmanaged link tag and manages it thereafter', () => {
+    const ssrLink = document.createElement('link');
+    ssrLink.setAttribute('rel', 'canonical');
+    ssrLink.setAttribute('href', 'https://example.com/ssr');
+    document.head.appendChild(ssrLink);
+
+    setLink({ rel: 'canonical', href: 'https://example.com/client' });
+
+    const els = document.head.querySelectorAll('link[rel="canonical"]');
+    expect(els.length).toBe(1);
+    expect(els[0]).toBe(ssrLink);
+    expect(els[0].getAttribute('href')).toBe('https://example.com/client');
+    expect(els[0].hasAttribute('data-utopia-helmet')).toBe(true);
+
+    resetHead();
+    expect(document.head.querySelector('link[rel="canonical"]')).toBeNull();
+  });
+
+  it('recovers when the link selector cannot be built (CSS.escape unavailable)', () => {
+    vi.stubGlobal('CSS', undefined);
+    try {
+      expect(() => setLink({ rel: 'a[b', href: '/x' })).not.toThrow();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(document.head.querySelector('link[href="/x"]')).not.toBeNull();
+  });
+
+  it('creates a fresh element when the existing-tag lookup throws', () => {
+    const spy = vi.spyOn(document.head, 'querySelector').mockImplementation(() => {
+      throw new SyntaxError('bad selector');
+    });
+    expect(() => setLink({ rel: 'icon', href: '/i.svg' })).not.toThrow();
+    spy.mockRestore();
+    expect(document.head.querySelector('link[rel="icon"]')).not.toBeNull();
   });
 });
 
@@ -218,6 +393,14 @@ describe('setHead', () => {
   it('applies htmlDir', () => {
     setHead({ htmlDir: 'rtl' });
     expect(document.documentElement.getAttribute('dir')).toBe('rtl');
+  });
+
+  it('is a no-op for an empty config', () => {
+    document.title = 'Untouched';
+    setHead({});
+    expect(document.title).toBe('Untouched');
+    expect(document.head.querySelectorAll('[data-utopia-helmet]').length).toBe(0);
+    expect(document.documentElement.getAttribute('lang')).toBeNull();
   });
 });
 

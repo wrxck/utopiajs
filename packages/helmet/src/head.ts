@@ -17,10 +17,7 @@ function clearManaged(): void {
 }
 
 /** Create an element, tag it as managed, and append to <head>. */
-function appendManaged<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  attrs: Record<string, string>,
-): HTMLElementTagNameMap[K] {
+function appendManaged(tag: 'meta' | 'link', attrs: Record<string, string>): HTMLElement {
   const el = document.createElement(tag);
   el.setAttribute(MANAGED_ATTR, '');
   for (const [key, value] of Object.entries(attrs)) {
@@ -34,14 +31,6 @@ function appendManaged<K extends keyof HTMLElementTagNameMap>(
 // ---------------------------------------------------------------------------
 // Meta tag identity — determines which existing tag to update vs create
 // ---------------------------------------------------------------------------
-
-function metaKey(desc: MetaDescriptor): string {
-  if (desc.charset) return 'charset';
-  if (desc.httpEquiv) return `http-equiv:${desc.httpEquiv}`;
-  if (desc.property) return `property:${desc.property}`;
-  if (desc.name) return `name:${desc.name}`;
-  return '';
-}
 
 /**
  * escape a value for safe interpolation into a css attribute selector. uses the
@@ -69,13 +58,22 @@ function findExistingMeta(desc: MetaDescriptor): Element | null {
   return null;
 }
 
+/**
+ * rel values that may appear at most once per document. These are matched by
+ * rel alone, so calling setLink() with a new href updates the existing tag
+ * in place instead of appending a duplicate (two canonicals is invalid).
+ */
+const SINGLETON_RELS = new Set(['canonical', 'manifest']);
+
 function findExistingLink(desc: LinkDescriptor): Element | null {
   const rel = cssEscape(desc.rel);
-  const selector = desc.sizes
-    ? `link[rel="${rel}"][sizes="${cssEscape(desc.sizes)}"]`
-    : desc.type
-      ? `link[rel="${rel}"][type="${cssEscape(desc.type)}"]`
-      : `link[rel="${rel}"][href="${cssEscape(desc.href)}"]`;
+  const selector = SINGLETON_RELS.has(desc.rel)
+    ? `link[rel="${rel}"]`
+    : desc.sizes
+      ? `link[rel="${rel}"][sizes="${cssEscape(desc.sizes)}"]`
+      : desc.type
+        ? `link[rel="${rel}"][type="${cssEscape(desc.type)}"]`
+        : `link[rel="${rel}"][href="${cssEscape(desc.href)}"]`;
   try {
     return document.head.querySelector(selector);
   } catch {
@@ -109,7 +107,9 @@ export function setMeta(desc: MetaDescriptor): void {
   if (desc.name) attrs.name = desc.name;
   if (desc.property) attrs.property = desc.property;
   if (desc.httpEquiv) attrs['http-equiv'] = desc.httpEquiv;
-  if (desc.content) attrs.content = desc.content;
+  // Preserve an explicitly empty content ('' is meaningful; the update path
+  // above also keys on `!== undefined`).
+  if (desc.content !== undefined) attrs.content = desc.content;
   if (desc.charset) attrs.charset = desc.charset;
   appendManaged('meta', attrs);
 }
