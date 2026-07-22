@@ -14,8 +14,6 @@ const SCRATCH = '/tmp/claude-0/-home-user-utopiajs/4e9c47cd-38d7-56cd-a2c6-8bdda
 const VIRTUAL_ID = 'virtual:utopia-content';
 const RESOLVED_ID = '\0virtual:utopia-content';
 
- 
-
 function hook<T>(plugin: Plugin, name: keyof Plugin): T {
   const h = plugin[name] as any;
   return (typeof h === 'object' && h !== null && 'handler' in h ? h.handler : h) as T;
