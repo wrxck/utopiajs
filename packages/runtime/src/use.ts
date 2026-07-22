@@ -8,6 +8,8 @@
 // automatically on unmount instead of by hand-written onDestroy code.
 // ============================================================================
 
+/* global EventListenerOrEventListenerObject, AddEventListenerOptions */
+
 import { pushDisposer } from './component';
 
 /** anything that exposes addEventListener/removeEventListener. */

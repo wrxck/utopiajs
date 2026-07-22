@@ -6,9 +6,7 @@
 // disposes any partially-created effects and renders a fallback UI.
 // ============================================================================
 
-import { signal } from '@matthesketh/utopia-core';
 import { startCapturingDisposers, stopCapturingDisposers } from './component';
-import { removeNode } from './dom';
 
 /**
  * Create an error boundary that catches errors during rendering.
@@ -25,7 +23,7 @@ export function createErrorBoundary(tryFn: () => Node, catchFn: (error: Error) =
     const disposers = stopCapturingDisposers(prev);
 
     // Attach cleanup to the node for disposal on unmount.
-    (node as any).__cleanup = () => {
+    (node as Node & { __cleanup?: () => void }).__cleanup = () => {
       for (const dispose of disposers) {
         dispose();
       }

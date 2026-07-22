@@ -7,13 +7,7 @@
 // with signal tracking and event listeners attached.
 // ============================================================================
 
-import {
-  createComponentInstance,
-  startCapturingLifecycle,
-  stopCapturingLifecycle,
-  startCapturingDisposers,
-  stopCapturingDisposers,
-} from './component';
+import { createComponentInstance, runSetupAndRender } from './component';
 import type { ComponentDefinition, ComponentInstance } from './component';
 
 // ---------------------------------------------------------------------------
@@ -24,7 +18,7 @@ import type { ComponentDefinition, ComponentInstance } from './component';
 export let isHydrating = false;
 
 /** The current DOM node cursor during hydration. */
-export let hydrateNode: Node | null = null;
+let hydrateNode: Node | null = null;
 
 /**
  * Stack for saving/restoring cursor position when entering/exiting
@@ -105,32 +99,47 @@ export function hydrate(
   try {
     const instance = createComponentInstance(component);
 
-    // Run setup with lifecycle hook capture.
-    startCapturingLifecycle();
-    const ctx = component.setup ? component.setup(instance.props) : {};
-    const lifecycle = stopCapturingLifecycle();
-
-    const renderCtx: Record<string, any> = {
-      ...ctx,
-      $slots: instance.slots,
-    };
-
-    // Render with disposer capture.
-    const prev = startCapturingDisposers();
-    instance.el = component.render(renderCtx);
-    const disposers = stopCapturingDisposers(prev);
+    // Run setup() + render() inside one disposer-capture scope (mirrors
+    // ComponentInstance.mount) so setup- and render-created effects are all
+    // disposed when the hydrated instance unmounts.
+    const result = runSetupAndRender(component, instance.props, instance.slots);
+    instance.el = result.el;
+    let { disposers } = result;
 
     // Inject styles (same as normal mount).
+    let styleElement: HTMLStyleElement | null = null;
     if (component.styles) {
-      const style = document.createElement('style');
-      style.textContent = component.styles;
-      document.head.appendChild(style);
+      styleElement = document.createElement('style');
+      styleElement.textContent = component.styles;
+      document.head.appendChild(styleElement);
     }
 
     // Run onMount callbacks after DOM claiming.
-    for (const cb of lifecycle.mount) {
+    for (const cb of result.mountCallbacks) {
       cb();
     }
+
+    // The instance was never mount()ed, so its internal unmount knows nothing
+    // about the disposers/lifecycle captured here — wrap it so unmounting a
+    // hydrated instance runs onDestroy, disposes effects, and removes styles
+    // instead of leaking them.
+    let destroyCallbacks = result.destroyCallbacks;
+    const baseUnmount = instance.unmount;
+    instance.unmount = (): void => {
+      for (const cb of destroyCallbacks) {
+        cb();
+      }
+      destroyCallbacks = [];
+      for (const dispose of disposers) {
+        dispose();
+      }
+      disposers = [];
+      if (styleElement && styleElement.parentNode) {
+        styleElement.parentNode.removeChild(styleElement);
+      }
+      styleElement = null;
+      baseUnmount();
+    };
 
     return instance;
   } finally {

@@ -3,7 +3,15 @@
 // ============================================================================
 
 import { describe, it, expect, vi } from 'vitest';
-import { signal, computed, effect, batch, untrack, type ReadonlySignal } from './index';
+import {
+  signal,
+  computed,
+  effect,
+  batch,
+  untrack,
+  onEffectError,
+  type ReadonlySignal,
+} from './index';
 
 // ---------------------------------------------------------------------------
 // signal — basic read / write
@@ -175,6 +183,17 @@ describe('computed', () => {
 
     a.set(5);
     expect(c()).toBe(60);
+  });
+
+  it('peek() during its own recomputation returns the previous value without recursing', () => {
+    // a computed that peeks itself while computing must not re-enter
+    // _recompute — the in-progress guard returns the last settled value.
+    let c!: ReadonlySignal<number>;
+    const dep = signal(1);
+    c = computed(() => dep() + ((c ? c.peek() : 0) ?? 0));
+    expect(c()).toBe(1); // first compute: self-peek yields undefined → ?? 0
+    dep.set(2);
+    expect(c()).toBe(3); // second compute: self-peek yields the previous 1
   });
 
   it('peek() reads without tracking', () => {
@@ -577,7 +596,6 @@ describe('nested effects', () => {
     const outer = signal(1);
     const inner = signal(10);
     const log: string[] = [];
-    let innerDispose: (() => void) | undefined;
 
     effect(() => {
       const val = outer();
@@ -951,6 +969,101 @@ describe('circular dependencies', () => {
 // flushPendingEffects — infinite loop guard
 // ---------------------------------------------------------------------------
 
+describe('onEffectError', () => {
+  it('routes effect errors to the registered handler instead of console.error', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const handler = vi.fn();
+    const restore = onEffectError(handler);
+
+    const s = signal(0);
+    const dispose = effect(() => {
+      if (s() > 0) throw new Error('effect boom');
+    });
+    s.set(1);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect((handler.mock.calls[0][0] as Error).message).toBe('effect boom');
+    expect(consoleSpy).not.toHaveBeenCalled();
+
+    dispose();
+    restore();
+    consoleSpy.mockRestore();
+  });
+
+  it('routes cleanup errors to the registered handler', () => {
+    const handler = vi.fn();
+    const restore = onEffectError(handler);
+
+    const s = signal(0);
+    const dispose = effect(() => {
+      s();
+      return () => {
+        throw new Error('cleanup boom');
+      };
+    });
+    s.set(1); // re-run → previous cleanup throws
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect((handler.mock.calls[0][0] as Error).message).toBe('cleanup boom');
+
+    dispose(); // final cleanup throws again — also routed
+    expect(handler).toHaveBeenCalledTimes(2);
+    restore();
+  });
+
+  it('restore() reinstates the previous handler', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const outer = vi.fn();
+    const inner = vi.fn();
+
+    const restoreOuter = onEffectError(outer);
+    const restoreInner = onEffectError(inner);
+    restoreInner(); // back to outer
+
+    const s = signal(0);
+    const dispose = effect(() => {
+      if (s() > 0) throw new Error('x');
+    });
+    s.set(1);
+
+    expect(inner).not.toHaveBeenCalled();
+    expect(outer).toHaveBeenCalledTimes(1);
+
+    restoreOuter();
+    s.set(2);
+    expect(outer).toHaveBeenCalledTimes(1); // handler gone — falls back to console
+    expect(consoleSpy).toHaveBeenCalled();
+
+    dispose();
+    consoleSpy.mockRestore();
+  });
+});
+
+describe('effect disposal during a flush', () => {
+  it('skips a queued effect that an earlier effect disposed in the same flush', () => {
+    const s = signal(0);
+    let bRuns = 0;
+
+    // A is created first so it is notified (and flushed) before B.
+    const disposeA = effect(() => {
+      if (s() > 0) disposeB();
+    });
+    const disposeB = effect(() => {
+      s();
+      bRuns++;
+    });
+    expect(bRuns).toBe(1);
+
+    batch(() => s.set(1)); // both queued; A runs first and disposes B
+
+    expect(bRuns).toBe(1); // B never ran again
+
+    s.set(2);
+    expect(bRuns).toBe(1); // stays disposed
+    disposeA();
+  });
+});
+
 describe('flushPendingEffects — infinite loop guard', () => {
   it('throws when a cycle of effects creates an infinite re-queue loop', () => {
     // Create N > MAX_FLUSH_ITERATIONS effects in a cycle so that creating each
@@ -980,5 +1093,72 @@ describe('flushPendingEffects — infinite loop guard', () => {
     }
 
     expect(threw).toBe(true);
+  });
+
+  it('leaves innocently-queued effects re-runnable after a flush guard abort', () => {
+    // an unrelated effect that happens to be queued BEHIND a runaway cascade
+    // must not become a permanent zombie: before the fix its _queued flag was
+    // never reset when the guard aborted the flush, so every future
+    // notification was silently ignored.
+    const N = 110;
+    const gate = signal(false);
+    const sigs = Array.from({ length: N }, () => signal(0));
+    const innocentDep = signal(0);
+    const disposers: Array<() => void> = [];
+
+    for (let i = 0; i < N; i++) {
+      const idx = i;
+      const next = (i + 1) % N;
+      disposers.push(
+        effect(() => {
+          if (!gate()) return;
+          sigs[idx]();
+          sigs[next].set(sigs[idx].peek() + 1);
+        }),
+      );
+    }
+
+    let innocentRuns = 0;
+    disposers.push(
+      effect(() => {
+        innocentDep();
+        innocentRuns++;
+      }),
+    );
+    expect(innocentRuns).toBe(1);
+
+    // queue the doomed cascade first, the innocent effect last.
+    expect(() =>
+      batch(() => {
+        gate.set(true);
+        innocentDep.set(1);
+      }),
+    ).toThrow(/Maximum effect flush iterations exceeded/);
+
+    // the innocent effect never got to run during the aborted flush — but a
+    // fresh signal change must still be able to re-trigger it.
+    const before = innocentRuns;
+    innocentDep.set(2);
+    expect(innocentRuns).toBe(before + 1);
+
+    disposers.forEach((d) => d());
+  });
+
+  it('aborts a deeply-nested write cascade (long effect chain)', () => {
+    // a linear chain of effects, each writing the next signal, nests one
+    // flush per hop — exceeding the flush depth guard on a chain longer
+    // than the allowed depth.
+    const N = 150;
+    const sigs = Array.from({ length: N + 1 }, () => signal(0));
+    const disposers = sigs.slice(0, N).map((_, i) =>
+      effect(() => {
+        sigs[i]();
+        sigs[i + 1].set(sigs[i].peek() + 1);
+      }),
+    );
+
+    expect(() => sigs[0].set(1)).toThrow(/Maximum effect flush iterations exceeded/);
+
+    disposers.forEach((d) => d());
   });
 });

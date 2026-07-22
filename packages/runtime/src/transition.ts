@@ -41,6 +41,45 @@ export interface TransitionHooks {
  * @returns TransitionHooks that can be used by createIf/createFor
  *          to coordinate enter/leave animations.
  */
+/**
+ * Run one transition phase (enter or leave): swap the `-from` class for the
+ * `-to` class, then remove the phase classes and call `done` exactly once —
+ * on `transitionend`, or after `duration` + 50ms as a safety net when
+ * `transitionend` never fires (e.g. no CSS transition defined). Without a
+ * configured duration there is no safety timeout.
+ */
+function runPhase(
+  el: Element,
+  name: string,
+  phase: 'enter' | 'leave',
+  duration: number | undefined,
+  done: () => void,
+): void {
+  // Force reflow so the browser picks up the initial state.
+  void (el as HTMLElement).offsetHeight;
+
+  el.classList.remove(`${name}-${phase}-from`);
+  el.classList.add(`${name}-${phase}-to`);
+
+  let called = false;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const onEnd = () => {
+    if (called) return;
+    called = true;
+    el.classList.remove(`${name}-${phase}-active`, `${name}-${phase}-to`);
+    el.removeEventListener('transitionend', onEnd);
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    done();
+  };
+
+  el.addEventListener('transitionend', onEnd);
+
+  if (duration) {
+    timeoutId = setTimeout(onEnd, duration + 50);
+  }
+}
+
 export function createTransition(el: Element, opts: TransitionOptions): TransitionHooks {
   const name = opts.name;
 
@@ -50,31 +89,7 @@ export function createTransition(el: Element, opts: TransitionOptions): Transiti
     },
 
     enter(el: Element, done: () => void) {
-      // Force reflow so the browser picks up the initial state.
-      void (el as HTMLElement).offsetHeight;
-
-      el.classList.remove(`${name}-enter-from`);
-      el.classList.add(`${name}-enter-to`);
-
-      let called = false;
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-      const onEnd = () => {
-        if (called) return;
-        called = true;
-        el.classList.remove(`${name}-enter-active`, `${name}-enter-to`);
-        el.removeEventListener('transitionend', onEnd);
-        if (timeoutId !== undefined) clearTimeout(timeoutId);
-        done();
-      };
-
-      el.addEventListener('transitionend', onEnd);
-
-      // Safety timeout: if transitionend doesn't fire (e.g. no CSS transition
-      // defined), clean up after the specified duration or a default.
-      if (opts.duration) {
-        timeoutId = setTimeout(onEnd, opts.duration + 50);
-      }
+      runPhase(el, name, 'enter', opts.duration, done);
     },
 
     beforeLeave(el: Element) {
@@ -82,28 +97,7 @@ export function createTransition(el: Element, opts: TransitionOptions): Transiti
     },
 
     leave(el: Element, done: () => void) {
-      void (el as HTMLElement).offsetHeight;
-
-      el.classList.remove(`${name}-leave-from`);
-      el.classList.add(`${name}-leave-to`);
-
-      let called = false;
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-      const onEnd = () => {
-        if (called) return;
-        called = true;
-        el.classList.remove(`${name}-leave-active`, `${name}-leave-to`);
-        el.removeEventListener('transitionend', onEnd);
-        if (timeoutId !== undefined) clearTimeout(timeoutId);
-        done();
-      };
-
-      el.addEventListener('transitionend', onEnd);
-
-      if (opts.duration) {
-        timeoutId = setTimeout(onEnd, opts.duration + 50);
-      }
+      runPhase(el, name, 'leave', opts.duration, done);
     },
   };
 }

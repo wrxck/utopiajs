@@ -10,10 +10,9 @@ import { insertBefore, removeNode } from './dom';
 import {
   createComponentInstance,
   pushDisposer,
+  runSetupAndRender,
   startCapturingDisposers,
   stopCapturingDisposers,
-  startCapturingLifecycle,
-  stopCapturingLifecycle,
 } from './component';
 import type { ComponentDefinition } from './component';
 
@@ -327,21 +326,15 @@ export function createComponent(
 
   const def = resolved as ComponentDefinition;
 
-  // Run the render pipeline, capturing lifecycle hooks during setup.
-  startCapturingLifecycle();
-  const ctx = def.setup ? def.setup(instance.props) : {};
-  const lifecycle = stopCapturingLifecycle();
-
-  // Merge slots into the render context so templates can reference them.
-  const renderCtx: Record<string, unknown> = {
-    ...ctx,
-    $slots: instance.slots,
-  };
-
-  // Capture effect disposers created during render.
-  const prev = startCapturingDisposers();
-  instance.el = def.render(renderCtx);
-  const disposers = stopCapturingDisposers(prev);
+  // Run setup() + render() inside one disposer-capture scope so effects
+  // created during setup belong to THIS component's cleanup (important for
+  // async mounts like defineLazy, where no outer scope is active).
+  const { el, mountCallbacks, destroyCallbacks, disposers } = runSetupAndRender(
+    def,
+    instance.props,
+    instance.slots,
+  );
+  instance.el = el;
 
   // Inject scoped styles if the definition carries them (deduplicated).
   if (def.styles && !injectedStyles.has(def.styles)) {
@@ -352,7 +345,7 @@ export function createComponent(
   }
 
   // Run onMount callbacks.
-  for (const cb of lifecycle.mount) {
+  for (const cb of mountCallbacks) {
     cb();
   }
 
@@ -365,7 +358,7 @@ export function createComponent(
   const cleanup = (): void => {
     if (cleaned) return;
     cleaned = true;
-    for (const cb of lifecycle.destroy) {
+    for (const cb of destroyCallbacks) {
       try {
         cb();
       } catch {
