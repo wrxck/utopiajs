@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { signal } from '@matthesketh/utopia-core';
-import type { VElement, VText, VComment, VNode } from './vnode';
+import type { VElement, VText, VNode } from './vnode';
 import {
   createElement,
   createTextNode,
@@ -641,7 +641,7 @@ describe('SSR form validation stubs', () => {
         });
         return { form };
       },
-      render(ctx: Record<string, unknown>) {
+      render(_ctx: Record<string, unknown>) {
         const el = createElement('form');
         const text = createTextNode('Form rendered');
         appendChild(el, text);

@@ -40,7 +40,8 @@ export function wrapEmailDocument(options: WrapEmailDocumentOptions): string {
     ? `<span style="display: none; font-size: 1px; color: #ffffff; line-height: 1px; max-height: 0px; max-width: 0px; opacity: 0; overflow: hidden;">${escapeHtml(previewText)}</span>`
     : '';
 
-  const styleBlock = !skipStyleBlock && css ? `<style type="text/css">\n${css}\n</style>` : '';
+  const styleBlock =
+    !skipStyleBlock && css ? `<style type="text/css">\n${escapeStyleContent(css)}\n</style>` : '';
 
   return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -73,6 +74,7 @@ export const AMPERSAND_RE = /&/g;
 export const LESS_THAN_RE = /</g;
 export const GREATER_THAN_RE = />/g;
 export const DOUBLE_QUOTE_RE = /"/g;
+export const STYLE_CLOSE_RE = /<\/style/gi;
 
 function escapeHtml(str: string): string {
   return str
@@ -80,4 +82,9 @@ function escapeHtml(str: string): string {
     .replace(LESS_THAN_RE, '&lt;')
     .replace(GREATER_THAN_RE, '&gt;')
     .replace(DOUBLE_QUOTE_RE, '&quot;');
+}
+
+/** Escape CSS content so `</style>` inside it cannot close the tag early. */
+function escapeStyleContent(css: string): string {
+  return css.replace(STYLE_CLOSE_RE, '<\\/style');
 }
