@@ -23,13 +23,7 @@
 //   form.handleSubmit(fn)       // validates all, calls fn if valid
 // ============================================================================
 
-import {
-  signal,
-  computed,
-  batch,
-  type Signal,
-  type ReadonlySignal,
-} from '@matthesketh/utopia-core';
+import { signal, computed, batch, type ReadonlySignal } from '@matthesketh/utopia-core';
 
 // ---------------------------------------------------------------------------
 // Validation rule types

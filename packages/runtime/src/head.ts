@@ -63,6 +63,22 @@ export function useHead(config: HeadConfig): void {
   const elements: Element[] = [];
   let previousTitle: string | undefined;
 
+  /** Create a head tag, copying only allowlisted attributes, and track it for cleanup. */
+  const appendFiltered = (
+    tag: 'link' | 'script',
+    attrs: Record<string, string>,
+    allowed: Set<string>,
+  ): void => {
+    const el = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs)) {
+      if (allowed.has(key.toLowerCase())) {
+        el.setAttribute(key, value);
+      }
+    }
+    document.head.appendChild(el);
+    elements.push(el);
+  };
+
   if (config.title) {
     previousTitle = document.title;
     document.title = config.title;
@@ -81,27 +97,13 @@ export function useHead(config: HeadConfig): void {
 
   if (config.link) {
     for (const link of config.link) {
-      const el = document.createElement('link');
-      for (const [key, value] of Object.entries(link)) {
-        if (ALLOWED_LINK_ATTRS.has(key.toLowerCase())) {
-          el.setAttribute(key, value);
-        }
-      }
-      document.head.appendChild(el);
-      elements.push(el);
+      appendFiltered('link', link, ALLOWED_LINK_ATTRS);
     }
   }
 
   if (config.script) {
     for (const script of config.script) {
-      const el = document.createElement('script');
-      for (const [key, value] of Object.entries(script)) {
-        if (ALLOWED_SCRIPT_ATTRS.has(key.toLowerCase())) {
-          el.setAttribute(key, value);
-        }
-      }
-      document.head.appendChild(el);
-      elements.push(el);
+      appendFiltered('script', script, ALLOWED_SCRIPT_ATTRS);
     }
   }
 

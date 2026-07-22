@@ -6,6 +6,8 @@
  * and keeps the runtime footprint small.
  */
 
+/* global EventListener, AddEventListenerOptions */
+
 import { effect } from '@matthesketh/utopia-core';
 
 import { pushDisposer } from './component';
@@ -62,53 +64,54 @@ export const KEBAB_CHAR_RE = /-([a-z])/g;
 // Node creation
 // ---------------------------------------------------------------------------
 
+/**
+ * Hydration helper shared by createElement/createTextNode/createComment:
+ * claim the cursor node if it has the expected nodeType; otherwise warn,
+ * create a fresh node via `create`, and swap it in place of the mismatched
+ * node (rewinding the cursor first so it is not permanently misaligned).
+ */
+function claimOrReplace<T extends Node>(
+  expectedNodeType: number,
+  expected: string,
+  create: () => T,
+): T {
+  const node = claimNode();
+  if (node && node.nodeType === expectedNodeType) {
+    return node as T;
+  }
+  if (node) {
+    unclaimNode(node);
+  }
+  console.warn(`[utopia] Hydration mismatch: expected ${expected}, got`, node);
+  const created = create();
+  if (node && node.parentNode) {
+    node.parentNode.insertBefore(created, node);
+    node.parentNode.removeChild(node);
+  }
+  return created;
+}
+
+/** Create the raw (non-hydrating) element for a tag, using the SVG namespace where needed. */
+function createRawElement(tag: string): Element {
+  return SVG_TAGS.has(tag) ? document.createElementNS(SVG_NS, tag) : document.createElement(tag);
+}
+
 /** Create a real DOM element for the given tag name. */
 export function createElement(tag: string): Element {
   if (isHydrating) {
-    const node = claimNode() as HTMLElement;
-    if (node && node.nodeType === 1) {
-      // Enter this element so child createElement/createTextNode calls
-      // walk its children.
-      enterNode(node);
-      return node;
-    }
-    if (node) {
-      unclaimNode(node);
-    }
-    console.warn(`[utopia] Hydration mismatch: expected <${tag}>, got`, node);
-    const created = SVG_TAGS.has(tag)
-      ? document.createElementNS(SVG_NS, tag)
-      : document.createElement(tag);
-    if (node && node.parentNode) {
-      node.parentNode.insertBefore(created, node);
-      node.parentNode.removeChild(node);
-    }
-    enterNode(created);
-    return created;
+    const el = claimOrReplace<Element>(1, `<${tag}>`, () => createRawElement(tag));
+    // Enter this element so child createElement/createTextNode calls walk
+    // its children.
+    enterNode(el);
+    return el;
   }
-  if (SVG_TAGS.has(tag)) {
-    return document.createElementNS(SVG_NS, tag);
-  }
-  return document.createElement(tag);
+  return createRawElement(tag);
 }
 
 /** Create a DOM text node. */
 export function createTextNode(text: string): Text {
   if (isHydrating) {
-    const node = claimNode() as Text;
-    if (node && node.nodeType === 3) {
-      return node;
-    }
-    if (node) {
-      unclaimNode(node);
-    }
-    console.warn(`[utopia] Hydration mismatch: expected text node, got`, node);
-    const created = document.createTextNode(String(text));
-    if (node && node.parentNode) {
-      node.parentNode.insertBefore(created, node);
-      node.parentNode.removeChild(node);
-    }
-    return created;
+    return claimOrReplace<Text>(3, 'text node', () => document.createTextNode(String(text)));
   }
   return document.createTextNode(String(text));
 }
@@ -387,15 +390,13 @@ const BOOLEAN_ATTRS = new Set([
 export function sanitizeHtml(html: string): string {
   const doc = new DOMParser().parseFromString(`<!DOCTYPE html><body>${html}</body>`, 'text/html');
 
-  // Walk the tree bottom-up so removals don't invalidate the iterator.
-  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  // Collect all elements first so removals don't invalidate the iterator.
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
   const elements: Element[] = [];
 
   let node = walker.nextNode();
   while (node !== null) {
-    if (node.nodeType === Node.ELEMENT_NODE) {
-      elements.push(node as Element);
-    }
+    elements.push(node as Element);
     node = walker.nextNode();
   }
 
@@ -712,20 +713,7 @@ export function appendChild(parent: Node, child: Node): void {
 /** Create a DOM comment node. */
 export function createComment(text: string): Comment {
   if (isHydrating) {
-    const node = claimNode() as Comment;
-    if (node && node.nodeType === 8) {
-      return node;
-    }
-    if (node) {
-      unclaimNode(node);
-    }
-    console.warn(`[utopia] Hydration mismatch: expected comment node, got`, node);
-    const created = document.createComment(text);
-    if (node && node.parentNode) {
-      node.parentNode.insertBefore(created, node);
-      node.parentNode.removeChild(node);
-    }
-    return created;
+    return claimOrReplace<Comment>(8, 'comment node', () => document.createComment(text));
   }
   return document.createComment(text);
 }

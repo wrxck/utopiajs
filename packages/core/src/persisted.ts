@@ -63,7 +63,6 @@ export function persistedSignal<T>(
   }
 
   const inner = signal(start);
-  let suppress = false;
 
   const write = (v: T): void => {
     if (!store) return;
@@ -83,13 +82,13 @@ export function persistedSignal<T>(
   if (store && syncTabs && typeof window !== 'undefined') {
     onStorage = (ev: StorageEvent) => {
       if (ev.key !== key || ev.storageArea !== store || ev.newValue === null) return;
-      suppress = true;
+      // write through inner.set (not wrapped.set) so the remote value is not
+      // echoed back to storage. any set() an effect issues while reacting to
+      // this update is a genuine local change and persists normally.
       try {
         inner.set(deserialize(ev.newValue));
       } catch {
         // ignore an unparseable cross-tab value.
-      } finally {
-        suppress = false;
       }
     };
     window.addEventListener('storage', onStorage);
@@ -98,11 +97,15 @@ export function persistedSignal<T>(
   const wrapped = (() => inner()) as PersistedSignal<T>;
   Object.defineProperty(wrapped, 'value', {
     get: () => inner(),
-    set: (v: T) => (wrapped as unknown as { set(x: T): void }).set(v),
+    set: (v: T) => {
+      (wrapped as unknown as { set(x: T): void }).set(v);
+    },
   });
   (wrapped as unknown as { set(x: T): void }).set = (v: T) => {
+    // persist BEFORE notifying: an effect reacting to this set may set() a
+    // corrected value synchronously, and its write must win in storage.
+    write(v);
     inner.set(v);
-    if (!suppress) write(v);
   };
   (wrapped as unknown as { peek(): T }).peek = () => inner.peek();
   (wrapped as unknown as { update(fn: (c: T) => T): void }).update = (fn) =>

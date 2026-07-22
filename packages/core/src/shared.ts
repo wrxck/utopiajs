@@ -67,31 +67,29 @@ export function sharedSignal<T>(
   }
 
   const channel = new BroadcastChannel(`utopia:shared:${key}`);
-  let isRemoteUpdate = false;
 
-  // Listen for updates from other tabs.
+  // Capture the non-broadcasting set BEFORE it is replaced below.
+  const originalSet = inner.set.bind(inner);
+
+  // Listen for updates from other tabs. Applying the remote value via
+  // originalSet means it is never echoed back to the channel, while a set()
+  // issued by an effect reacting to the update (a genuine local change)
+  // still goes through broadcastSet and reaches the other tabs.
   channel.onmessage = (event: MessageEvent) => {
     try {
-      const value = deserialize(event.data);
-      isRemoteUpdate = true;
-      inner.set(value);
-      isRemoteUpdate = false;
+      originalSet(deserialize(event.data));
     } catch {
       // Ignore malformed messages.
     }
   };
 
   // Wrap .set() to broadcast changes to other tabs.
-  const originalSet = inner.set.bind(inner);
   const broadcastSet = (newValue: T): void => {
     originalSet(newValue);
-    // Only broadcast if this was a local change (not a remote update).
-    if (!isRemoteUpdate) {
-      try {
-        channel.postMessage(serialize(newValue));
-      } catch {
-        // Ignore serialization failures.
-      }
+    try {
+      channel.postMessage(serialize(newValue));
+    } catch {
+      // Ignore serialization failures.
     }
   };
 
