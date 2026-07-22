@@ -211,7 +211,6 @@ interface ConsumeResult {
 function consumeAtRule(css: string, pos: number, scopeId: string): ConsumeResult {
   // Read the at-keyword and everything up to `{` or `;`.
   const start = pos;
-  let depth = 0;
   let headerEnd = -1;
 
   for (let i = pos; i < css.length; i++) {
@@ -236,8 +235,8 @@ function consumeAtRule(css: string, pos: number, scopeId: string): ConsumeResult
   const isKeyframes = KEYFRAMES_RE.test(header.trim());
 
   // Find the matching closing brace.
-  depth = 1;
-  let bodyStart = headerEnd + 1;
+  let depth = 1;
+  const bodyStart = headerEnd + 1;
   let bodyEnd = headerEnd + 1;
   for (let i = bodyStart; i < css.length && depth > 0; i++) {
     if (css[i] === '{') depth++;
@@ -245,7 +244,9 @@ function consumeAtRule(css: string, pos: number, scopeId: string): ConsumeResult
     bodyEnd = i;
   }
 
-  const body = css.slice(bodyStart, bodyEnd);
+  // When the at-rule is unterminated, everything to the end of input is body
+  // (`bodyEnd` points AT the closing brace only when one was found).
+  const body = css.slice(bodyStart, depth === 0 ? bodyEnd : css.length);
 
   let scopedBody: string;
   if (isKeyframes) {
@@ -282,7 +283,9 @@ function consumeRuleSet(css: string, pos: number, scopeId: string): ConsumeResul
     else if (css[endIdx] === '}') depth--;
   }
 
-  const declarations = css.slice(braceIdx + 1, endIdx - 1);
+  // `endIdx` sits one past the closing brace when it was found; when the rule
+  // is unterminated the whole remainder is declarations.
+  const declarations = css.slice(braceIdx + 1, depth === 0 ? endIdx - 1 : endIdx);
 
   // Scope each selector in the comma-separated list.
   const scopedSelectors = selectorText

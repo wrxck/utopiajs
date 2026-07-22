@@ -376,13 +376,13 @@ class TemplateParser {
   // ---- Low-level helpers --------------------------------------------------
 
   private readTagName(): string {
+    // parseElement is only entered when peekTagStart() saw a letter after
+    // `<`, so the name is always at least one character long.
     const start = this.pos;
     while (this.pos < this.source.length && TAG_NAME_CHAR_RE.test(this.source[this.pos])) {
       this.pos++;
     }
-    const name = this.source.slice(start, this.pos);
-    if (!name) throw this.error('Expected tag name');
-    return name;
+    return this.source.slice(start, this.pos);
   }
 
   private readAttributeName(): string {
@@ -532,12 +532,6 @@ function isDirectiveKind(s: string): s is DirectiveKind {
 // Phase 2 — Code generation
 // ===========================================================================
 
-/**
- * A set of variable names that are "local" (i.e. function parameters from
- * u-for).  This set is threaded through recursive codegen calls.
- */
-type LocalScope = Set<string>;
-
 class CodeGenerator {
   private code: string[] = [];
   private varCounter: number = 0;
@@ -545,13 +539,11 @@ class CodeGenerator {
   private scopeId: string | undefined;
   private deferredCallsStack: string[][] = [];
 
-  constructor(private options: TemplateCompileOptions) {
+  constructor(options: TemplateCompileOptions) {
     this.scopeId = options.scopeId;
   }
 
   generate(ast: TemplateNode[]): TemplateCompileResult {
-    const scope: LocalScope = new Set();
-
     // Find substantive root nodes (non-whitespace-only text, elements, interp).
     const rootElements = ast.filter(
       (n) =>
@@ -564,11 +556,18 @@ class CodeGenerator {
       this.helpers.add('createElement');
       this.emit(`const _root = createElement('div')`);
       this.emit(`return _root`);
-    } else if (rootElements.length === 1 && rootElements[0].type === NodeType.Element) {
-      const rootVar = this.genNode(rootElements[0], scope);
+    } else if (
+      rootElements.length === 1 &&
+      rootElements[0].type === NodeType.Element &&
+      !hasStructuralDirective(rootElements[0])
+    ) {
+      const rootVar = this.genNode(rootElements[0]);
       this.emit(`return ${rootVar}`);
     } else {
-      // Multiple root nodes — wrap in a <div>.
+      // Multiple root nodes — wrap in a <div>. A single structural root
+      // (u-if / u-for) is wrapped too: createIf/createFor require their
+      // anchor comment to have a parent node when they run, so a bare
+      // anchor as the render-function result would never render anything.
       this.helpers.add('createElement');
       const fragVar = this.freshVar();
       this.emit(`const ${fragVar} = createElement('div')`);
@@ -576,16 +575,15 @@ class CodeGenerator {
         this.helpers.add('setAttr');
         this.emit(`setAttr(${fragVar}, '${escapeStr(this.scopeId)}', '')`);
       }
-      this.genChildren(fragVar, ast, scope);
+      this.genChildren(fragVar, ast);
       this.emit(`return ${fragVar}`);
     }
 
-    // Build the final module.
+    // Build the final module. Every codegen path registers at least one
+    // helper (even an empty template emits createElement), so the import
+    // line is always present.
     const helperList = Array.from(this.helpers).sort();
-    const importLine =
-      helperList.length > 0
-        ? `import { ${helperList.join(', ')} } from '@matthesketh/utopia-runtime'\n\n`
-        : '';
+    const importLine = `import { ${helperList.join(', ')} } from '@matthesketh/utopia-runtime'\n\n`;
 
     const fnBody = this.code.map((l) => `  ${l}`).join('\n');
     const moduleCode = `${importLine}function __render(_ctx) {\n${fnBody}\n}\n`;
@@ -595,14 +593,14 @@ class CodeGenerator {
 
   // ---- Node generation ----------------------------------------------------
 
-  private genNode(node: TemplateNode, scope: LocalScope): string | null {
+  private genNode(node: TemplateNode): string | null {
     switch (node.type) {
       case NodeType.Element:
-        return this.genElement(node, scope);
+        return this.genElement(node);
       case NodeType.Text:
         return this.genText(node);
       case NodeType.Interpolation:
-        return this.genInterpolation(node, scope);
+        return this.genInterpolation(node);
       case NodeType.Comment:
         return null;
     }
@@ -610,17 +608,17 @@ class CodeGenerator {
 
   // ---- Element generation -------------------------------------------------
 
-  private genElement(node: ElementNode, scope: LocalScope): string {
+  private genElement(node: ElementNode): string {
     // Handle u-if — structural directive.
     const ifDir = node.directives.find((d) => d.kind === 'if');
     if (ifDir) {
-      return this.genIf(node, ifDir, scope);
+      return this.genIf(node, ifDir);
     }
 
     // Handle u-for — structural directive.
     const forDir = node.directives.find((d) => d.kind === 'for');
     if (forDir) {
-      return this.genFor(node, forDir, scope);
+      return this.genFor(node, forDir);
     }
 
     // Slot element — renders content from the parent's $slots.
@@ -630,7 +628,7 @@ class CodeGenerator {
 
     // Component reference? (PascalCase)
     if (isComponentTag(node.tag)) {
-      return this.genComponent(node, scope);
+      return this.genComponent(node);
     }
 
     // Regular HTML element.
@@ -661,23 +659,22 @@ class CodeGenerator {
       }
     }
 
-    // Directives (excluding structural ones).
+    // Directives. Structural kinds (if/else/else-if/for) are handled by the
+    // callers before an element reaches this point; genDirective's switch
+    // simply ignores them.
     for (const dir of node.directives) {
-      if (dir.kind === 'if' || dir.kind === 'else' || dir.kind === 'else-if' || dir.kind === 'for')
-        continue;
-      this.genDirective(elVar, dir, scope, mergedClassAttr?.value ?? null);
+      this.genDirective(elVar, dir, mergedClassAttr?.value ?? null);
     }
 
     // Children — handles u-if/u-else pairing, deferred createFor/createIf calls.
-    this.genChildren(elVar, node.children, scope);
+    this.genChildren(elVar, node.children);
 
     return elVar;
   }
 
   // ---- Text & Interpolation -----------------------------------------------
 
-  private genText(node: TextNode): string | null {
-    if (!node.content) return null;
+  private genText(node: TextNode): string {
     this.helpers.add('createTextNode');
     const v = this.freshVar();
     const decoded = decodeEntities(node.content);
@@ -685,13 +682,13 @@ class CodeGenerator {
     return v;
   }
 
-  private genInterpolation(node: InterpolationNode, scope: LocalScope): string {
+  private genInterpolation(node: InterpolationNode): string {
     this.helpers.add('createTextNode');
     this.helpers.add('createEffect');
     this.helpers.add('setText');
 
     const textVar = this.freshVar();
-    const expr = this.resolveExpression(node.expression, scope);
+    const expr = this.resolveExpression(node.expression);
     this.emit(`const ${textVar} = createTextNode('')`);
     this.emit(`createEffect(() => setText(${textVar}, String(${expr})))`);
     return textVar;
@@ -699,24 +696,19 @@ class CodeGenerator {
 
   // ---- Directives ---------------------------------------------------------
 
-  private genDirective(
-    elVar: string,
-    dir: Directive,
-    scope: LocalScope,
-    staticClass: string | null = null,
-  ): void {
+  private genDirective(elVar: string, dir: Directive, staticClass: string | null = null): void {
     switch (dir.kind) {
       case 'on':
-        this.genOn(elVar, dir, scope);
+        this.genOn(elVar, dir);
         break;
       case 'bind':
-        this.genBind(elVar, dir, scope, staticClass);
+        this.genBind(elVar, dir, staticClass);
         break;
       case 'model':
-        this.genModel(elVar, dir, scope);
+        this.genModel(elVar, dir);
         break;
       case 'html':
-        this.genHtml(elVar, dir, scope);
+        this.genHtml(elVar, dir);
         break;
       case 'transition':
         this.genTransition(elVar, dir);
@@ -724,10 +716,10 @@ class CodeGenerator {
     }
   }
 
-  private genOn(elVar: string, dir: Directive, scope: LocalScope): void {
+  private genOn(elVar: string, dir: Directive): void {
     this.helpers.add('addEventListener');
     const event = dir.arg ?? 'click';
-    const handler = this.resolveExpression(dir.expression, scope);
+    const handler = this.resolveExpression(dir.expression);
     const modifiers = dir.modifiers;
 
     // Separate handler-wrapping modifiers from addEventListener options.
@@ -787,16 +779,11 @@ class CodeGenerator {
     this.emit(`addEventListener(${elVar}, '${escapeStr(event)}', ${handlerExpr}${optionsStr})`);
   }
 
-  private genBind(
-    elVar: string,
-    dir: Directive,
-    scope: LocalScope,
-    staticClass: string | null = null,
-  ): void {
+  private genBind(elVar: string, dir: Directive, staticClass: string | null = null): void {
     this.helpers.add('setAttr');
     this.helpers.add('createEffect');
     const attrName = dir.arg ?? 'value';
-    const expr = this.resolveExpression(dir.expression, scope);
+    const expr = this.resolveExpression(dir.expression);
     if (attrName === 'class' && staticClass != null) {
       this.helpers.add('mergeClass');
       this.emit(
@@ -807,20 +794,20 @@ class CodeGenerator {
     this.emit(`createEffect(() => setAttr(${elVar}, '${escapeStr(attrName)}', ${expr}))`);
   }
 
-  private genModel(elVar: string, dir: Directive, scope: LocalScope): void {
+  private genModel(elVar: string, dir: Directive): void {
     this.helpers.add('setAttr');
     this.helpers.add('addEventListener');
     this.helpers.add('createEffect');
 
-    const signalRef = this.resolveExpression(dir.expression, scope);
+    const signalRef = this.resolveExpression(dir.expression);
     this.emit(`createEffect(() => setAttr(${elVar}, 'value', ${signalRef}()))`);
     this.emit(`addEventListener(${elVar}, 'input', (e) => ${signalRef}.set(e.target.value))`);
   }
 
   // ---- u-html ---------------------------------------------------------------
 
-  private genHtml(elVar: string, dir: Directive, scope: LocalScope): void {
-    const expr = this.resolveExpression(dir.expression, scope);
+  private genHtml(elVar: string, dir: Directive): void {
+    const expr = this.resolveExpression(dir.expression);
     if (dir.modifiers.includes('raw')) {
       this.helpers.add('setHtml');
       this.emit(`setHtml(${elVar}, () => ${expr})`);
@@ -853,98 +840,106 @@ class CodeGenerator {
 
   // ---- Structural: u-if ---------------------------------------------------
 
-  private genIf(
-    node: ElementNode,
-    dir: Directive,
-    scope: LocalScope,
-    elseIfChain?: { node: ElementNode; dir: Directive }[],
-    elseNode?: ElementNode,
-  ): string {
+  private genIf(node: ElementNode, dir: Directive, elseNode?: ElementNode): string {
+    const condition = this.resolveExpression(dir.expression);
+
+    // Strip the u-if directive so genElement does not re-dispatch here.
+    // (Other structural kinds left on the node are ignored by genDirective.)
+    const strippedNode: ElementNode = {
+      ...node,
+      directives: node.directives.filter((d) => d.kind !== 'if'),
+    };
+
     this.helpers.add('createIf');
 
     const anchorVar = this.freshVar();
     this.helpers.add('createComment');
     this.emit(`const ${anchorVar} = createComment('u-if')`);
 
-    const condition = this.resolveExpression(dir.expression, scope);
-
-    // Strip the u-if/u-else-if directive and generate the element in a nested function.
-    const strippedNode: ElementNode = {
-      ...node,
-      directives: node.directives.filter((d) => d.kind !== 'if' && d.kind !== 'else-if'),
-    };
-
     const trueFnVar = this.freshVar();
-    const savedCode = this.code;
-    this.code = [];
-    const innerVar = this.genElement(strippedNode, scope);
-    const innerLines = [...this.code];
-    this.code = savedCode;
+    this.emitArrowFn(trueFnVar, '', () => this.genElement(strippedNode));
 
-    this.emit(`const ${trueFnVar} = () => {`);
-    for (const line of innerLines) {
-      this.emit(`  ${line}`);
-    }
-    this.emit(`  return ${innerVar}`);
-    this.emit(`}`);
-
-    // Generate the else branch: could be an else-if chain, a plain u-else, or nothing.
+    // Generate the else branch, if any. (The u-else directive itself carries
+    // no codegen, so the node can be generated as-is.)
     let elseArg = '';
-    if (elseIfChain && elseIfChain.length > 0) {
-      // The false branch is a nested createIf for the first else-if.
-      const firstElseIf = elseIfChain[0];
-      const remainingElseIfs = elseIfChain.slice(1);
-
+    if (elseNode) {
       const falseFnVar = this.freshVar();
-      const savedCode2 = this.code;
-      this.code = [];
-      const nestedAnchor = this.genIf(
-        firstElseIf.node,
-        firstElseIf.dir,
-        scope,
-        remainingElseIfs.length > 0 ? remainingElseIfs : undefined,
-        elseNode,
-      );
-      const nestedLines = [...this.code];
-      this.code = savedCode2;
-
-      this.emit(`const ${falseFnVar} = () => {`);
-      for (const line of nestedLines) {
-        this.emit(`  ${line}`);
-      }
-      this.emit(`  return ${nestedAnchor}`);
-      this.emit(`}`);
-
-      elseArg = `, ${falseFnVar}`;
-    } else if (elseNode) {
-      const falseFnVar = this.freshVar();
-      const strippedElse: ElementNode = {
-        ...elseNode,
-        directives: elseNode.directives.filter((d) => d.kind !== 'else'),
-      };
-      const savedCode2 = this.code;
-      this.code = [];
-      const elseInnerVar = this.genElement(strippedElse, scope);
-      const elseLines = [...this.code];
-      this.code = savedCode2;
-
-      this.emit(`const ${falseFnVar} = () => {`);
-      for (const line of elseLines) {
-        this.emit(`  ${line}`);
-      }
-      this.emit(`  return ${elseInnerVar}`);
-      this.emit(`}`);
-
+      this.emitArrowFn(falseFnVar, '', () => this.genElement(elseNode));
       elseArg = `, ${falseFnVar}`;
     }
 
-    this.emitOrDefer(`createIf(${anchorVar}, () => Boolean(${condition}), ${trueFnVar}${elseArg})`);
+    this.defer(`createIf(${anchorVar}, () => Boolean(${condition}), ${trueFnVar}${elseArg})`);
     return anchorVar;
+  }
+
+  // ---- Structural: u-if / u-else-if / u-else chains -----------------------
+
+  /**
+   * Compile a conditional chain (u-if followed by u-else-if / u-else
+   * siblings) into *flat* sibling createIf/createFor calls with compound
+   * guard conditions:
+   *
+   *   u-if="a" / u-else-if="b" / u-else
+   *     -> createIf(anchorA, () => Boolean(a), ...)
+   *        createIf(anchorB, () => Boolean(!(a) && (b)), ...)
+   *        createIf(anchorC, () => Boolean(!(a) && !(b)), ...)
+   *
+   * Nesting the else branches inside closures (the previous strategy) is not
+   * viable: the runtime requires an anchor to be attached to a parent when
+   * createIf/createFor run, and a branch closure's nodes are only attached
+   * after the closure returns.
+   *
+   * A `cond` of `null` marks the final u-else branch.
+   */
+  private genConditionalChain(
+    parentVar: string,
+    branches: { cond: string | null; node: ElementNode }[],
+  ): void {
+    const negations: string[] = [];
+
+    for (const branch of branches) {
+      const parts = [...negations];
+      if (branch.cond !== null) {
+        // Only parenthesise when combined with negated prior conditions.
+        parts.push(parts.length > 0 ? `(${branch.cond})` : branch.cond);
+      }
+      const guard = parts.join(' && ');
+
+      const stripped: ElementNode = {
+        ...branch.node,
+        directives: branch.node.directives.filter((d) => d.kind !== 'if'),
+      };
+
+      const forDir = stripped.directives.find((d) => d.kind === 'for');
+      let anchorVar: string;
+      if (forDir) {
+        // A u-for branch folds its guard into the list expression.
+        anchorVar = this.genFor(stripped, forDir, guard);
+      } else {
+        this.helpers.add('createIf');
+        this.helpers.add('createComment');
+        anchorVar = this.freshVar();
+        this.emit(`const ${anchorVar} = createComment('u-if')`);
+        const fnVar = this.freshVar();
+        this.emitArrowFn(fnVar, '', () => this.genElement(stripped));
+        this.defer(`createIf(${anchorVar}, () => Boolean(${guard}), ${fnVar})`);
+      }
+
+      this.helpers.add('appendChild');
+      this.emit(`appendChild(${parentVar}, ${anchorVar})`);
+
+      if (branch.cond !== null) negations.push(`!(${branch.cond})`);
+    }
   }
 
   // ---- Structural: u-for --------------------------------------------------
 
-  private genFor(node: ElementNode, dir: Directive, scope: LocalScope): string {
+  /**
+   * Generate a createFor call. When `guard` is given (u-if + u-for on the
+   * same element, or a u-for inside an else-if chain), the list expression is
+   * wrapped so a falsy guard yields an empty list.
+   */
+  private genFor(node: ElementNode, dir: Directive, guard?: string): string {
     this.helpers.add('createFor');
 
     const anchorVar = this.freshVar();
@@ -958,16 +953,13 @@ class CodeGenerator {
     }
     const itemName = forMatch[1] ?? forMatch[3];
     const indexName = forMatch[2] ?? '_index';
-    const listExpr = this.resolveExpression(forMatch[4].trim(), scope);
-
-    // Create a new scope that includes the item variable.
-    const innerScope: LocalScope = new Set(scope);
-    innerScope.add(itemName);
+    const rawListExpr = this.resolveExpression(forMatch[4].trim());
+    const listExpr = guard === undefined ? rawListExpr : `(${guard}) ? (${rawListExpr}) : []`;
 
     // Look for a :key binding to pass as key function.
     const keyDir = node.directives.find((d) => d.kind === 'bind' && d.arg === 'key');
 
-    // Strip u-for and :key, then generate element in the inner scope.
+    // Strip u-for and :key, then generate the element.
     const strippedNode: ElementNode = {
       ...node,
       directives: node.directives.filter(
@@ -975,33 +967,25 @@ class CodeGenerator {
       ),
     };
 
-    const savedCode = this.code;
-    this.code = [];
-    const innerVar = this.genElement(strippedNode, innerScope);
-    const innerLines = [...this.code];
-    this.code = savedCode;
-
+    // NOTE: the render-fn variable is allocated *after* the captured body so
+    // variable numbering (and thus compiled output) stays stable.
+    const captured = this.capture(() => this.genElement(strippedNode));
     const renderFnVar = this.freshVar();
-    this.emit(`const ${renderFnVar} = (${itemName}, ${indexName}) => {`);
-    for (const line of innerLines) {
-      this.emit(`  ${line}`);
-    }
-    this.emit(`  return ${innerVar}`);
-    this.emit(`}`);
+    this.emitCapturedArrowFn(renderFnVar, `${itemName}, ${indexName}`, captured);
 
     let keyArg = '';
     if (keyDir) {
-      const keyExpr = this.resolveExpression(keyDir.expression, innerScope);
+      const keyExpr = this.resolveExpression(keyDir.expression);
       keyArg = `, (${itemName}, ${indexName}) => ${keyExpr}`;
     }
 
-    this.emitOrDefer(`createFor(${anchorVar}, () => ${listExpr}, ${renderFnVar}${keyArg})`);
+    this.defer(`createFor(${anchorVar}, () => ${listExpr}, ${renderFnVar}${keyArg})`);
     return anchorVar;
   }
 
   // ---- Children processing (handles u-if / u-else-if / u-else pairing) ----
 
-  private genChildren(parentVar: string, children: TemplateNode[], scope: LocalScope): void {
+  private genChildren(parentVar: string, children: TemplateNode[]): void {
     this.deferredCallsStack.push([]);
     let i = 0;
 
@@ -1036,15 +1020,24 @@ class CodeGenerator {
             break;
           }
 
-          const childVar = this.genIf(
-            child,
-            ifDir,
-            scope,
-            elseIfChain.length > 0 ? elseIfChain : undefined,
-            elseNode,
-          );
-          this.helpers.add('appendChild');
-          this.emit(`appendChild(${parentVar}, ${childVar})`);
+          const hasFor = (el: ElementNode) => el.directives.some((d) => d.kind === 'for');
+          if (elseIfChain.length === 0 && !hasFor(child) && !(elseNode && hasFor(elseNode))) {
+            // Plain u-if (optionally with u-else) — a single binary createIf.
+            const childVar = this.genIf(child, ifDir, elseNode);
+            this.helpers.add('appendChild');
+            this.emit(`appendChild(${parentVar}, ${childVar})`);
+          } else {
+            // u-else-if chains, or branches that are themselves u-for, are
+            // emitted as flat siblings with compound guard conditions.
+            this.genConditionalChain(parentVar, [
+              { cond: this.resolveExpression(ifDir.expression), node: child },
+              ...elseIfChain.map((e) => ({
+                cond: this.resolveExpression(e.dir.expression),
+                node: e.node,
+              })),
+              ...(elseNode ? [{ cond: null, node: elseNode }] : []),
+            ]);
+          }
           i = skipTo;
           continue;
         }
@@ -1057,7 +1050,7 @@ class CodeGenerator {
         }
       }
 
-      const childVar = this.genNode(child, scope);
+      const childVar = this.genNode(child);
       if (childVar) {
         this.helpers.add('appendChild');
         this.emit(`appendChild(${parentVar}, ${childVar})`);
@@ -1104,7 +1097,7 @@ class CodeGenerator {
 
   // ---- Component generation -----------------------------------------------
 
-  private genComponent(node: ElementNode, scope: LocalScope): string {
+  private genComponent(node: ElementNode): string {
     const compVar = this.freshVar();
 
     // Build props object.
@@ -1120,7 +1113,7 @@ class CodeGenerator {
 
     for (const d of node.directives) {
       if (d.kind === 'bind' && d.arg) {
-        propEntries.push(`'${escapeStr(d.arg)}': ${this.resolveExpression(d.expression, scope)}`);
+        propEntries.push(`'${escapeStr(d.arg)}': ${this.resolveExpression(d.expression)}`);
       }
     }
 
@@ -1137,35 +1130,23 @@ class CodeGenerator {
 
     if (substantiveChildren.length > 0) {
       const slotFnVar = this.freshVar();
-      const savedCode = this.code;
-      this.code = [];
-
-      // Generate a wrapper for slot children.
-      if (substantiveChildren.length === 1 && substantiveChildren[0].type === NodeType.Element) {
-        const innerVar = this.genNode(substantiveChildren[0], scope);
-        this.emit(`return ${innerVar}`);
-      } else {
+      this.emitArrowFn(slotFnVar, '', () => {
+        // A single plain element child is returned directly. Anything else —
+        // multiple children, text/interpolation, or a structural directive
+        // (whose anchor needs an attached parent) — is wrapped in a <div>.
+        if (
+          substantiveChildren.length === 1 &&
+          substantiveChildren[0].type === NodeType.Element &&
+          !hasStructuralDirective(substantiveChildren[0])
+        ) {
+          return this.genElement(substantiveChildren[0]);
+        }
         this.helpers.add('createElement');
-        this.helpers.add('appendChild');
         const fragVar = this.freshVar();
         this.emit(`const ${fragVar} = createElement('div')`);
-        for (const child of node.children) {
-          const childVar = this.genNode(child, scope);
-          if (childVar) {
-            this.emit(`appendChild(${fragVar}, ${childVar})`);
-          }
-        }
-        this.emit(`return ${fragVar}`);
-      }
-
-      const slotLines = [...this.code];
-      this.code = savedCode;
-
-      this.emit(`const ${slotFnVar} = () => {`);
-      for (const line of slotLines) {
-        this.emit(`  ${line}`);
-      }
-      this.emit(`}`);
+        this.genChildren(fragVar, node.children);
+        return fragVar;
+      });
 
       this.emit(
         `const ${compVar} = createComponent(${node.tag}, ${propsStr}, { default: ${slotFnVar} })`,
@@ -1185,7 +1166,7 @@ class CodeGenerator {
    * All identifiers are emitted as bare references — user script variables
    * live at module scope and are accessible via closure.
    */
-  private resolveExpression(expr: string, _scope: LocalScope): string {
+  private resolveExpression(expr: string): string {
     const trimmed = expr.trim();
     if (!trimmed) return "''";
     return trimmed;
@@ -1201,13 +1182,54 @@ class CodeGenerator {
     this.code.push(line);
   }
 
-  private emitOrDefer(line: string): void {
-    const stack = this.deferredCallsStack;
-    if (stack.length > 0) {
-      stack[stack.length - 1].push(line);
-    } else {
+  /**
+   * Queue a createIf/createFor call to run after the current children pass
+   * has appended its anchor comments — the runtime requires anchors to be
+   * parented when these calls execute. Every code path that defers runs
+   * inside a genChildren or capture() frame, so the stack is never empty.
+   */
+  private defer(line: string): void {
+    this.deferredCallsStack[this.deferredCallsStack.length - 1].push(line);
+  }
+
+  /**
+   * Run `fn`, collecting the lines it emits into a separate buffer instead of
+   * the main output. Deferred createIf/createFor calls made directly by `fn`
+   * (i.e. when the captured element is itself a structural directive) are
+   * flushed into the captured buffer — they reference variables declared
+   * inside it, so letting them escape to the surrounding scope would produce
+   * code that throws a ReferenceError at mount.
+   */
+  private capture(fn: () => string): { returnVar: string; lines: string[] } {
+    const savedCode = this.code;
+    this.code = [];
+    this.deferredCallsStack.push([]);
+    const returnVar = fn();
+    for (const line of this.deferredCallsStack.pop()!) {
       this.emit(line);
     }
+    const lines = this.code;
+    this.code = savedCode;
+    return { returnVar, lines };
+  }
+
+  /** Emit `const fnVar = (params) => { <captured body>; return <var> }`. */
+  private emitCapturedArrowFn(
+    fnVar: string,
+    params: string,
+    captured: { returnVar: string; lines: string[] },
+  ): void {
+    this.emit(`const ${fnVar} = (${params}) => {`);
+    for (const line of captured.lines) {
+      this.emit(`  ${line}`);
+    }
+    this.emit(`  return ${captured.returnVar}`);
+    this.emit(`}`);
+  }
+
+  /** Capture the code emitted by `fn` and emit it as an arrow function. */
+  private emitArrowFn(fnVar: string, params: string, fn: () => string): void {
+    this.emitCapturedArrowFn(fnVar, params, this.capture(fn));
   }
 }
 
@@ -1221,8 +1243,24 @@ function isComponentTag(tag: string): boolean {
   return COMPONENT_TAG_RE.test(tag);
 }
 
+/** True when the element carries a structural directive (u-if / u-for / u-else…). */
+function hasStructuralDirective(node: ElementNode): boolean {
+  return node.directives.some(
+    (d) => d.kind === 'if' || d.kind === 'for' || d.kind === 'else' || d.kind === 'else-if',
+  );
+}
+
+/**
+ * Escape a string for embedding in a single-quoted JS string literal.
+ * Newlines must be escaped too — attribute values may span lines, and a raw
+ * line break inside a string literal is a syntax error in the emitted module.
+ */
 function escapeStr(s: string): string {
-  return s.replace(BACKSLASH_RE, '\\\\').replace(SINGLE_QUOTE_RE, "\\'");
+  return s
+    .replace(BACKSLASH_RE, '\\\\')
+    .replace(SINGLE_QUOTE_RE, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r');
 }
 
 /**
@@ -1270,30 +1308,14 @@ export const KNOWN_NAMED_ENTITIES: ReadonlySet<string> = new Set(
 function decodeEntities(text: string): string {
   HTML_ENTITY_RE.lastIndex = 0;
   return text.replace(HTML_ENTITY_RE, (match, dec, hex, named) => {
-    if (dec) {
-      const code = parseInt(dec, 10);
-      if (code >= 0 && code <= 0x10ffff) {
-        try {
-          return String.fromCodePoint(code);
-        } catch {
-          return match;
-        }
-      }
-      return match;
+    if (dec || hex) {
+      // The regex only captures digit sequences, so parseInt always yields a
+      // non-negative integer; it just needs a range check.
+      const code = dec ? parseInt(dec, 10) : parseInt(hex, 16);
+      return code <= 0x10ffff ? String.fromCodePoint(code) : match;
     }
-    if (hex) {
-      const code = parseInt(hex, 16);
-      if (code >= 0 && code <= 0x10ffff) {
-        try {
-          return String.fromCodePoint(code);
-        } catch {
-          return match;
-        }
-      }
-      return match;
-    }
-    if (named) return ENTITY_MAP[`&${named};`] ?? match;
-    return match;
+    // Otherwise a named entity matched; unknown names pass through verbatim.
+    return ENTITY_MAP[`&${named};`] ?? match;
   });
 }
 
