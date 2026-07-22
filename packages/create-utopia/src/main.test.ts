@@ -299,7 +299,16 @@ describe('main()', () => {
   it('prints next steps including cd when scaffolding a subdirectory', async () => {
     mockState.answers = { language: 'typescript', features: ['router'], initGit: false };
 
-    await main(argv('steps-app'));
+    // Pin the invoking package manager: the runner's own environment (npm vs
+    // pnpm vs npx) must not decide which commands the next-steps box shows.
+    const originalUserAgent = process.env['npm_config_user_agent'];
+    process.env['npm_config_user_agent'] = 'npm/10.0.0 node/v22.0.0 linux x64';
+    try {
+      await main(argv('steps-app'));
+    } finally {
+      if (originalUserAgent === undefined) delete process.env['npm_config_user_agent'];
+      else process.env['npm_config_user_agent'] = originalUserAgent;
+    }
 
     const text = loggedText();
     expect(text).toContain('cd steps-app');
