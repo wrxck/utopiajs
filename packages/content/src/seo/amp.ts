@@ -1,12 +1,16 @@
 import type { SeoConfig, SeoEntry } from './types';
 import { generateMetaTags, generateJsonLd } from './meta';
 import { sanitiseHtml } from './prerender';
+import { escapeHtml } from '../escape';
 
 const AMP_BOILERPLATE = `<style amp-boilerplate>body{-webkit-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-moz-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-ms-animation:-amp-start 8s steps(1,end) 0s 1 normal both;animation:-amp-start 8s steps(1,end) 0s 1 normal both}@-webkit-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-moz-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-ms-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-o-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}</style><noscript><style amp-boilerplate>body{-webkit-animation:none;-moz-animation:none;-ms-animation:none;animation:none}</style></noscript>`;
 
 /** Convert <img> tags to <amp-img> with layout="responsive" */
 function convertImages(html: string): string {
-  return html.replace(/<img\s([^>]*)>/g, (_, attrs: string) => {
+  // attribute values may legally contain ">" (jsdom leaves it unescaped), so
+  // the tag match must skip over quoted strings instead of stopping at the
+  // first ">" it sees.
+  return html.replace(/<img\s((?:"[^"]*"|'[^']*'|[^>])*)>/g, (_, attrs: string) => {
     // Extract src, alt, width, height
     const src = attrs.match(/src="([^"]*)"/)?.[1] ?? '';
     const alt = attrs.match(/alt="([^"]*)"/)?.[1] ?? '';
@@ -191,12 +195,4 @@ ${generateAmpCss()}
   </article>
 </body>
 </html>`;
-}
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }

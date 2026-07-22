@@ -1,5 +1,6 @@
 import type { SeoConfig, SeoEntry } from './types';
 import { generateMetaTags, generateJsonLd } from './meta';
+import { escapeHtml } from '../escape';
 
 /** Extract <script> and <link rel="stylesheet"> tags from the built index.html */
 export function extractAssetTags(indexHtml: string): { scripts: string; styles: string } {
@@ -60,14 +61,6 @@ export function generatePrerenderedPage(
   ${assets.scripts}
 </body>
 </html>`;
-}
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 // ---------------------------------------------------------------------------
