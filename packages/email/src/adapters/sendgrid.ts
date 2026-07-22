@@ -17,11 +17,23 @@ interface SendGridClient {
 }
 
 export function sendgridAdapter(config: SendGridConfig): EmailAdapter {
-  let client: SendGridClient | null = null;
+  // Cache the in-flight promise (not the resolved client) so concurrent sends
+  // share one lazily-initialised client instead of racing past the null check
+  // and each initialising their own.
+  let clientPromise: Promise<SendGridClient> | null = null;
 
-  async function getClient(): Promise<SendGridClient> {
-    if (client) return client;
+  function getClient(): Promise<SendGridClient> {
+    if (!clientPromise) {
+      clientPromise = createClient().catch((err: unknown) => {
+        // Allow a later send to retry after a failed initialisation.
+        clientPromise = null;
+        throw err;
+      });
+    }
+    return clientPromise;
+  }
 
+  async function createClient(): Promise<SendGridClient> {
     let sgMail: SendGridClient;
     try {
       const mod = await import('@sendgrid/mail');
@@ -34,8 +46,7 @@ export function sendgridAdapter(config: SendGridConfig): EmailAdapter {
     }
 
     sgMail.setApiKey(config.apiKey);
-    client = sgMail;
-    return client;
+    return sgMail;
   }
 
   return {

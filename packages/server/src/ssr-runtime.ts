@@ -133,7 +133,8 @@ export function setAttr(el: VElement, name: string, value: unknown): void {
       delete el.attrs['class'];
     } else if (typeof value === 'string') {
       el.attrs['class'] = value;
-    } else if (typeof value === 'object' && value !== null) {
+    } else if (typeof value === 'object') {
+      // null is already handled by the first branch.
       const classes: string[] = [];
       const obj = value as Record<string, unknown>;
       for (const key of Object.keys(obj)) {
@@ -149,7 +150,8 @@ export function setAttr(el: VElement, name: string, value: unknown): void {
       delete el.attrs['style'];
     } else if (typeof value === 'string') {
       el.attrs['style'] = value;
-    } else if (typeof value === 'object' && value !== null) {
+    } else if (typeof value === 'object') {
+      // null is already handled by the first branch.
       const parts: string[] = [];
       const styleObj = value as Record<string, unknown>;
       for (const prop of Object.keys(styleObj)) {
@@ -206,7 +208,9 @@ export function setAttr(el: VElement, name: string, value: unknown): void {
 export function addEventListener(
   _el: VElement,
   _event: string,
+  // eslint-disable-next-line no-undef -- TS lib.dom type, not a runtime global
   _handler: EventListener,
+  // eslint-disable-next-line no-undef -- TS lib.dom type, not a runtime global
   _options?: AddEventListenerOptions,
 ): () => void {
   return () => {};

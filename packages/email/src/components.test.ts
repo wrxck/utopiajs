@@ -242,6 +242,115 @@ describe('Email Components', () => {
       expect(html).toContain('height: 40px');
     });
   });
+
+  describe('EmailButton — defaults', () => {
+    it('falls back to default href, text and border radius', () => {
+      const { html } = renderToString(EmailButton);
+      expect(html).toContain('href="#"');
+      expect(html).toContain('Click Here');
+      expect(html).toContain('border-radius: 4px');
+    });
+
+    it('accepts a custom border radius', () => {
+      const { html } = renderToString(EmailButton, { borderRadius: '10px' });
+      expect(html).toContain('border-radius: 10px');
+    });
+  });
+
+  describe('EmailHeading — level clamping', () => {
+    it('clamps levels above 3 down to h3', () => {
+      const node = createComponent(EmailHeading, { level: 99 }) as VElement;
+      expect(node.tag).toBe('h3');
+    });
+
+    it('clamps invalid levels to h1', () => {
+      expect((createComponent(EmailHeading, { level: 0 }) as VElement).tag).toBe('h1');
+      expect((createComponent(EmailHeading, { level: 'nope' }) as VElement).tag).toBe('h1');
+    });
+
+    it('falls back to the h1 font size for fractional levels', () => {
+      // 1.5 survives the clamp; there is no size entry for it.
+      const node = createComponent(EmailHeading, { level: 1.5 }) as VElement;
+      expect(node.attrs.style).toContain('font-size: 28px');
+    });
+
+    it('applies custom color and alignment', () => {
+      const node = createComponent(EmailHeading, { color: '#111111', align: 'center' }) as VElement;
+      expect(node.attrs.style).toContain('color: #111111');
+      expect(node.attrs.style).toContain('text-align: center');
+    });
+  });
+
+  describe('EmailText — without slot content', () => {
+    it('renders an empty paragraph', () => {
+      const { html } = renderToString(EmailText);
+      expect(html).toMatch(/^<p [^>]*><\/p>$/);
+    });
+  });
+
+  describe('EmailImage — defaults', () => {
+    it('renders empty src/alt and no dimensions when props are omitted', () => {
+      const node = createComponent(EmailImage, {}) as VElement;
+      // Default align is center, so the img is wrapped in a div.
+      expect(node.tag).toBe('div');
+      const img = node.children[0] as VElement;
+      expect(img.attrs.src).toBe('');
+      expect(img.attrs.alt).toBe('');
+      expect(img.attrs.width).toBeUndefined();
+      expect(img.attrs.height).toBeUndefined();
+      expect(img.attrs.style).not.toContain('max-width');
+    });
+  });
+
+  describe('EmailColumns — slots and clamping', () => {
+    it('renders named column slots', () => {
+      const node = createComponent(
+        EmailColumns,
+        { columns: 2 },
+        {
+          'column-0': () => {
+            const s = createElement('span');
+            appendChild(s, createTextNode('First'));
+            return s;
+          },
+          'column-1': () => {
+            const s = createElement('span');
+            appendChild(s, createTextNode('Second'));
+            return s;
+          },
+        },
+      ) as VElement;
+      const html = serializeTree(node);
+      expect(html).toContain('First');
+      expect(html).toContain('Second');
+      // Only the second column gets the gap padding.
+      expect(html.match(/padding-left/g)).toHaveLength(1);
+    });
+
+    it('falls back to the default slot for the first column', () => {
+      const node = createComponent(
+        EmailColumns,
+        { columns: 2 },
+        {
+          default: () => {
+            const s = createElement('span');
+            appendChild(s, createTextNode('Only'));
+            return s;
+          },
+        },
+      ) as VElement;
+      expect(serializeTree(node)).toContain('Only');
+    });
+
+    it('clamps the column count between 1 and 4', () => {
+      const many = renderToString(EmailColumns, { columns: 99 }).html;
+      expect(many.match(/<td /g)).toHaveLength(4);
+      const few = renderToString(EmailColumns, { columns: -3 }).html;
+      expect(few.match(/<td /g)).toHaveLength(1);
+      const invalid = renderToString(EmailColumns, { columns: 'nope' }).html;
+      expect(invalid.match(/<td /g)).toHaveLength(2);
+    });
+  });
 });
 
 // Helper to serialize a VNode tree (simplified version of serializeVNode)
