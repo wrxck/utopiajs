@@ -4,7 +4,7 @@
 
 // @vitest-environment happy-dom
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { buildRouteTable } from './matcher';
 import { createRouter, currentRoute, navigate, destroy } from './router';
 import { queryParams, getQueryParam, setQueryParam, setQueryParams, getRouteParam } from './query';
@@ -77,6 +77,13 @@ describe('getQueryParam', () => {
     const missing = getQueryParam('nope');
     expect(missing()).toBeNull();
   });
+
+  it('returns null when no route is matched', () => {
+    window.history.replaceState(null, '', '/nonexistent?page=1');
+    createRouter(makeRoutes());
+    expect(currentRoute.peek()).toBeNull();
+    expect(getQueryParam('page')()).toBeNull();
+  });
 });
 
 // ============================================================================
@@ -146,5 +153,30 @@ describe('getRouteParam', () => {
 
     const missing = getRouteParam('nope');
     expect(missing()).toBeNull();
+  });
+
+  it('returns null when no route is matched', () => {
+    window.history.replaceState(null, '', '/nonexistent');
+    createRouter(makeRoutes());
+    expect(getRouteParam('id')()).toBeNull();
+  });
+});
+
+// ============================================================================
+// SSR guards
+// ============================================================================
+
+describe('SSR guards (no window)', () => {
+  it('setQueryParam and setQueryParams are no-ops without a window', () => {
+    window.history.replaceState(null, '', '/?page=1');
+    createRouter(makeRoutes());
+
+    vi.stubGlobal('window', undefined);
+    expect(() => setQueryParam('page', '2')).not.toThrow();
+    expect(() => setQueryParams({ page: '3', sort: 'name' })).not.toThrow();
+    vi.unstubAllGlobals();
+
+    // Nothing changed — no navigation happened server-side.
+    expect(queryParams()).toEqual({ page: '1' });
   });
 });

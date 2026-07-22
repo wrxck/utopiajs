@@ -23,11 +23,13 @@ import {
   currentRoute,
   isNavigating,
   navigate,
+  back,
+  forward,
   beforeNavigate,
   destroy,
 } from './router';
 import { createLink } from './components';
-import type { Route, RouteMatch } from './types';
+import type { Route } from './types';
 
 /** Extended anchor type exposing the dispose function attached by createLink. */
 interface LinkWithDispose extends HTMLAnchorElement {
@@ -103,6 +105,10 @@ describe('filePathToRoute', () => {
 
   it('handles path starting without src/', () => {
     expect(filePathToRoute('routes/about/+page.utopia')).toBe('/about');
+  });
+
+  it('handles a bare +page filename with no routes/ prefix', () => {
+    expect(filePathToRoute('+page.utopia')).toBe('/');
   });
 });
 
@@ -256,6 +262,13 @@ describe('matchRoute', () => {
     const url = new URL('http://localhost/nonexistent/page/deep');
     const match = matchRoute(url, routes);
     expect(match).toBeNull();
+  });
+
+  it('normalizes a trailing slash before matching', () => {
+    const url = new URL('http://localhost/about/');
+    const match = matchRoute(url, routes);
+    expect(match).not.toBeNull();
+    expect(match!.route.path).toBe('/about');
   });
 
   it('decodes URI-encoded parameters', () => {
@@ -412,6 +425,36 @@ describe('buildRouteTable', () => {
       expect(path).not.toContain('(');
       expect(path).not.toContain(')');
     }
+  });
+
+  it('handles a manifest keyed by bare filenames', () => {
+    const manifest: Record<string, () => Promise<any>> = {
+      '+page.utopia': () => Promise.resolve({ default: 'Home' }),
+      '+layout.utopia': () => Promise.resolve({ default: 'Layout' }),
+      'about/+page.utopia': () => Promise.resolve({ default: 'About' }),
+    };
+
+    const routes = buildRouteTable(manifest);
+    expect(routes.map((r) => r.path).sort()).toEqual(['/', '/about']);
+    // A bare page file has no parent directory to search for special files,
+    // and a bare layout file lives in no directory, so neither page finds it.
+    for (const route of routes) {
+      expect(route.layout).toBeUndefined();
+    }
+  });
+
+  it('prefers a static segment over a dynamic one at the same position', () => {
+    const manifest: Record<string, () => Promise<any>> = {
+      'src/routes/a/[x]/+page.utopia': () => Promise.resolve({}),
+      'src/routes/[y]/b/+page.utopia': () => Promise.resolve({}),
+    };
+
+    const routes = buildRouteTable(manifest);
+    // '/a/b' matches both '/a/:x' and '/:y/b'; the route that is static
+    // earliest (left-most) must win.
+    const match = matchRoute(new URL('http://localhost/a/b'), routes);
+    expect(match).not.toBeNull();
+    expect(match!.route.path).toBe('/a/:x');
   });
 
   it('produces correct regex patterns for all routes', () => {
@@ -600,6 +643,9 @@ describe('Router (client-side navigation)', () => {
     await navigate('/about');
     expect(currentRoute.peek()!.route.path).toBe('/about');
     expect(guardFn).toHaveBeenCalledTimes(1); // not called again
+
+    // Removing an already-removed guard is a safe no-op.
+    expect(() => removeGuard()).not.toThrow();
   });
 
   it('cleans up on destroy()', () => {
@@ -757,6 +803,627 @@ describe('Scroll position map cap', () => {
     // One more navigation should still work fine.
     await navigate('/about');
     expect(currentRoute.peek()!.route.path).toBe('/about');
+  });
+});
+
+// ============================================================================
+// 8a. Regressions — origin confusion, redirect depth accounting, bad redirects
+// ============================================================================
+
+describe('Router regressions', () => {
+  const makeRoutes = (): Route[] => {
+    return buildRouteTable({
+      'src/routes/+page.utopia': () => Promise.resolve({ default: () => {} }),
+      'src/routes/about/+page.utopia': () => Promise.resolve({ default: () => {} }),
+    });
+  };
+
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/');
+  });
+
+  afterEach(() => {
+    destroy();
+  });
+
+  it('does not intercept clicks on cross-origin links whose host merely starts with the page origin', () => {
+    createRouter(makeRoutes());
+
+    // e.g. page origin http://localhost:3000 vs link to http://localhost:3000.evil.com
+    const evilHref = window.location.origin + '.evil.com/phishing';
+    const anchor = document.createElement('a');
+    anchor.setAttribute('href', evilHref);
+    document.body.appendChild(anchor);
+
+    // Observe the router's decision from a window-level listener (which runs
+    // after the router's document-level one), then cancel the event ourselves
+    // so the test environment does not really navigate cross-origin.
+    let interceptedByRouter: boolean | null = null;
+    const observer = (event: Event): void => {
+      interceptedByRouter = event.defaultPrevented;
+      event.preventDefault();
+    };
+    window.addEventListener('click', observer);
+
+    anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    // The router must leave the click alone (the browser performs a full
+    // cross-origin navigation); intercepting it would pushState a
+    // cross-origin URL.
+    expect(interceptedByRouter).toBe(false);
+
+    window.removeEventListener('click', observer);
+    anchor.remove();
+  });
+
+  it('still intercepts clicks on absolute same-origin links', async () => {
+    createRouter(makeRoutes());
+
+    const anchor = document.createElement('a');
+    anchor.setAttribute('href', window.location.origin + '/about');
+    document.body.appendChild(anchor);
+
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    anchor.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+
+    // navigate() is fire-and-forget from the click handler — flush it.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(currentRoute.peek()!.route.path).toBe('/about');
+
+    anchor.remove();
+  });
+
+  it('keeps the redirect-loop limit intact across repeated loop trips', async () => {
+    createRouter(makeRoutes());
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    let firstTripCalls = 0;
+    let removeGuard = beforeNavigate(() => {
+      firstTripCalls++;
+      return '/loop';
+    });
+    await navigate('/loop');
+    removeGuard();
+
+    let secondTripCalls = 0;
+    removeGuard = beforeNavigate(() => {
+      secondTripCalls++;
+      return '/loop';
+    });
+    await navigate('/loop');
+    removeGuard();
+
+    // The internal depth counter must return to its baseline after a loop is
+    // stopped; otherwise each trip doubles the number of redirects allowed.
+    expect(secondTripCalls).toBe(firstTripCalls);
+
+    consoleSpy.mockRestore();
+  });
+
+  it('blocks (rather than rejects on) a guard redirect to an unparseable URL', async () => {
+    createRouter(makeRoutes());
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // 'https://' has a scheme but no host — new URL() throws even with a base.
+    const removeGuard = beforeNavigate(() => 'https://');
+
+    await expect(navigate('/about')).resolves.toBeUndefined();
+    // The bogus redirect must be blocked, leaving the route unchanged.
+    expect(currentRoute.peek()!.route.path).toBe('/');
+
+    consoleSpy.mockRestore();
+    removeGuard();
+  });
+});
+
+// ============================================================================
+// 8b. popstate handling (browser back/forward)
+// ============================================================================
+
+describe('Router popstate handling', () => {
+  const makeRoutes = (): Route[] => {
+    return buildRouteTable({
+      'src/routes/+page.utopia': () => Promise.resolve({ default: () => {} }),
+      'src/routes/about/+page.utopia': () => Promise.resolve({ default: () => {} }),
+      'src/routes/blog/[slug]/+page.utopia': () => Promise.resolve({ default: () => {} }),
+    });
+  };
+
+  /** Simulate the browser going back: restore URL + state, fire popstate. */
+  const simulatePop = async (path: string, navIndex: number | null): Promise<void> => {
+    const state = navIndex === null ? null : { _utopiaNavIndex: navIndex };
+    window.history.replaceState(state, '', path);
+    window.dispatchEvent(new PopStateEvent('popstate', { state }));
+    // The popstate handler resolves guard hooks asynchronously.
+    await new Promise((r) => setTimeout(r, 0));
+  };
+
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/');
+    // Run animation frames synchronously so scroll logic is deterministic.
+    vi.stubGlobal('requestAnimationFrame', (cb: (time: number) => void): number => {
+      cb(0);
+      return 0;
+    });
+  });
+
+  afterEach(() => {
+    destroy();
+    vi.unstubAllGlobals();
+  });
+
+  it('updates currentRoute when popstate fires', async () => {
+    createRouter(makeRoutes());
+    await navigate('/about');
+    expect(currentRoute.peek()!.route.path).toBe('/about');
+
+    await simulatePop('/', 0);
+    expect(currentRoute.peek()!.route.path).toBe('/');
+  });
+
+  it('treats a null popstate state as navigation index 0', async () => {
+    createRouter(makeRoutes());
+    await navigate('/about');
+
+    await simulatePop('/', null);
+    expect(currentRoute.peek()!.route.path).toBe('/');
+  });
+
+  it('restores the saved scroll position on popstate', async () => {
+    createRouter(makeRoutes());
+    await navigate('/about');
+
+    const scrollSpy = vi.spyOn(window, 'scrollTo');
+    await simulatePop('/', 0);
+
+    // The position saved for entry 0 (captured when leaving '/') is restored.
+    expect(scrollSpy).toHaveBeenCalled();
+    scrollSpy.mockRestore();
+  });
+
+  it('restores the previous URL when a guard cancels a popstate navigation', async () => {
+    createRouter(makeRoutes());
+    await navigate('/about');
+
+    const removeGuard = beforeNavigate(() => false);
+    await simulatePop('/', 0);
+
+    // Route unchanged; URL pushed back to the guarded page.
+    expect(currentRoute.peek()!.route.path).toBe('/about');
+    expect(window.location.pathname).toBe('/about');
+
+    removeGuard();
+  });
+
+  it('does not restore scroll when the target entry has no saved position', async () => {
+    createRouter(makeRoutes());
+    await navigate('/about');
+
+    const scrollSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    // An index we never navigated from — nothing saved for it.
+    await simulatePop('/', 99);
+
+    expect(currentRoute.peek()!.route.path).toBe('/');
+    expect(scrollSpy).not.toHaveBeenCalled();
+    scrollSpy.mockRestore();
+  });
+
+  it('cancelled popstate with no current route leaves the URL alone', async () => {
+    // Start on an unmatched URL so currentRoute is null.
+    window.history.replaceState(null, '', '/ghost');
+    createRouter(makeRoutes());
+    expect(currentRoute.peek()).toBeNull();
+
+    const removeGuard = beforeNavigate(() => false);
+    await simulatePop('/', 0);
+
+    // Guard cancelled, but there is no previous route to restore to.
+    expect(currentRoute.peek()).toBeNull();
+    expect(window.location.pathname).toBe('/');
+
+    removeGuard();
+  });
+
+  it('follows a guard redirect issued during popstate', async () => {
+    createRouter(makeRoutes());
+    await navigate('/about');
+
+    const removeGuard = beforeNavigate((_from, to) => {
+      if (to && to.route.path === '/') {
+        return '/blog/redirected';
+      }
+    });
+    await simulatePop('/', 0);
+
+    expect(currentRoute.peek()!.route.path).toBe('/blog/:slug');
+    expect(currentRoute.peek()!.params.slug).toBe('redirected');
+
+    removeGuard();
+  });
+
+  it('blocks a cross-origin guard redirect issued during popstate', async () => {
+    createRouter(makeRoutes());
+    await navigate('/about');
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const removeGuard = beforeNavigate((_from, to) => {
+      if (to && to.route.path === '/') {
+        return 'https://evil.com/phishing';
+      }
+    });
+    await simulatePop('/', 0);
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Cross-origin redirect blocked'),
+      expect.any(String),
+    );
+    // The route is left as it was before the pop.
+    expect(currentRoute.peek()!.route.path).toBe('/about');
+
+    consoleSpy.mockRestore();
+    removeGuard();
+  });
+});
+
+// ============================================================================
+// 8c. Hash navigation and scrollToHash
+// ============================================================================
+
+describe('Hash navigation', () => {
+  const makeRoutes = (): Route[] => {
+    return buildRouteTable({
+      'src/routes/+page.utopia': () => Promise.resolve({ default: () => {} }),
+      'src/routes/about/+page.utopia': () => Promise.resolve({ default: () => {} }),
+    });
+  };
+
+  let target: HTMLElement;
+  let scrollIntoViewSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/');
+    vi.stubGlobal('requestAnimationFrame', (cb: (time: number) => void): number => {
+      cb(0);
+      return 0;
+    });
+    target = document.createElement('div');
+    target.id = 'section';
+    scrollIntoViewSpy = vi.fn();
+    target.scrollIntoView = scrollIntoViewSpy as unknown as typeof target.scrollIntoView;
+    document.body.appendChild(target);
+  });
+
+  afterEach(() => {
+    target.remove();
+    destroy();
+    vi.unstubAllGlobals();
+  });
+
+  it('scrolls to the hash target on initial load', () => {
+    window.history.replaceState(null, '', '/#section');
+    createRouter(makeRoutes());
+    expect(scrollIntoViewSpy).toHaveBeenCalled();
+  });
+
+  it('handles same-page hash navigation without a route change', async () => {
+    createRouter(makeRoutes());
+    const before = currentRoute.peek();
+
+    await navigate('/#section');
+
+    expect(window.location.hash).toBe('#section');
+    // Same-page hash jumps must not re-match or replace the current route.
+    expect(currentRoute.peek()).toBe(before);
+    expect(scrollIntoViewSpy).toHaveBeenCalled();
+    expect(isNavigating.peek()).toBe(false);
+  });
+
+  it('supports replace mode for same-page hash navigation', async () => {
+    createRouter(makeRoutes());
+    await navigate('/#section', { replace: true });
+    expect(window.location.hash).toBe('#section');
+  });
+
+  it('intercepts hash-only link clicks, updating the URL and scrolling', () => {
+    createRouter(makeRoutes());
+    const anchor = document.createElement('a');
+    anchor.setAttribute('href', '#section');
+    document.body.appendChild(anchor);
+
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    anchor.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(window.location.hash).toBe('#section');
+    expect(scrollIntoViewSpy).toHaveBeenCalled();
+
+    anchor.remove();
+  });
+
+  it('swallows clicks on bare "#" links without changing the URL', () => {
+    createRouter(makeRoutes());
+    const anchor = document.createElement('a');
+    anchor.setAttribute('href', '#');
+    document.body.appendChild(anchor);
+
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    anchor.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(window.location.hash).toBe('');
+
+    anchor.remove();
+  });
+
+  it('scrolls to the target after a cross-page hash navigation', async () => {
+    createRouter(makeRoutes());
+    await navigate('/about#section');
+    expect(currentRoute.peek()!.route.path).toBe('/about');
+    expect(scrollIntoViewSpy).toHaveBeenCalled();
+  });
+
+  it('gives up quietly when the hash target never appears', async () => {
+    createRouter(makeRoutes());
+    await expect(navigate('/about#missing')).resolves.toBeUndefined();
+    expect(currentRoute.peek()!.route.path).toBe('/about');
+    expect(scrollIntoViewSpy).not.toHaveBeenCalled();
+  });
+
+  it('ignores hash fragments that are not safe DOM ids', async () => {
+    createRouter(makeRoutes());
+    const lookupSpy = vi.spyOn(document, 'getElementById');
+    await navigate('/about#not%20safe');
+    expect(lookupSpy).not.toHaveBeenCalled();
+    lookupSpy.mockRestore();
+  });
+});
+
+// ============================================================================
+// 8d. Click interception details
+// ============================================================================
+
+describe('Click interception', () => {
+  const makeRoutes = (): Route[] => {
+    return buildRouteTable({
+      'src/routes/+page.utopia': () => Promise.resolve({ default: () => {} }),
+      'src/routes/about/+page.utopia': () => Promise.resolve({ default: () => {} }),
+    });
+  };
+
+  /**
+   * Dispatch a click and report whether the router intercepted it. A
+   * window-level observer (which runs after the router's document-level
+   * handler) records defaultPrevented, then cancels the event so the test
+   * environment never really navigates.
+   */
+  const dispatchClick = (
+    element: Element,
+    init: {
+      ctrlKey?: boolean;
+      metaKey?: boolean;
+      shiftKey?: boolean;
+      altKey?: boolean;
+      button?: number;
+    } = {},
+  ): boolean => {
+    let intercepted = false;
+    const observer = (event: Event): void => {
+      intercepted = event.defaultPrevented;
+      event.preventDefault();
+    };
+    window.addEventListener('click', observer);
+    element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...init }));
+    window.removeEventListener('click', observer);
+    return intercepted;
+  };
+
+  const makeAnchor = (href: string | null): HTMLAnchorElement => {
+    const anchor = document.createElement('a');
+    if (href !== null) anchor.setAttribute('href', href);
+    document.body.appendChild(anchor);
+    return anchor;
+  };
+
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/');
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+    destroy();
+  });
+
+  it('ignores clicks with modifier keys held', () => {
+    createRouter(makeRoutes());
+    const anchor = makeAnchor('/about');
+    expect(dispatchClick(anchor, { ctrlKey: true })).toBe(false);
+    expect(dispatchClick(anchor, { metaKey: true })).toBe(false);
+    expect(dispatchClick(anchor, { shiftKey: true })).toBe(false);
+    expect(dispatchClick(anchor, { altKey: true })).toBe(false);
+  });
+
+  it('ignores non-left-button clicks', () => {
+    createRouter(makeRoutes());
+    const anchor = makeAnchor('/about');
+    expect(dispatchClick(anchor, { button: 1 })).toBe(false);
+  });
+
+  it('ignores links with a target attribute', () => {
+    createRouter(makeRoutes());
+    const anchor = makeAnchor('/about');
+    anchor.setAttribute('target', '_blank');
+    expect(dispatchClick(anchor)).toBe(false);
+  });
+
+  it('ignores links with a download attribute', () => {
+    createRouter(makeRoutes());
+    const anchor = makeAnchor('/files/report.pdf');
+    anchor.setAttribute('download', '');
+    expect(dispatchClick(anchor)).toBe(false);
+  });
+
+  it('ignores anchors without an href', () => {
+    createRouter(makeRoutes());
+    const anchor = makeAnchor(null);
+    expect(dispatchClick(anchor)).toBe(false);
+  });
+
+  it('ignores relative hrefs that do not start with a slash', () => {
+    createRouter(makeRoutes());
+    const anchor = makeAnchor('about');
+    expect(dispatchClick(anchor)).toBe(false);
+  });
+
+  it('ignores protocol-relative hrefs', () => {
+    createRouter(makeRoutes());
+    const anchor = makeAnchor('//evil.com/path');
+    expect(dispatchClick(anchor)).toBe(false);
+  });
+
+  it('ignores non-HTTP protocols like mailto:', () => {
+    createRouter(makeRoutes());
+    const anchor = makeAnchor('mailto:hi@example.com');
+    expect(dispatchClick(anchor)).toBe(false);
+  });
+
+  it('ignores clicks that were already default-prevented', async () => {
+    createRouter(makeRoutes());
+    const anchor = makeAnchor('/about');
+    const cancel = (event: Event): void => event.preventDefault();
+    document.addEventListener('click', cancel, true); // capture — runs first
+
+    dispatchClick(anchor);
+    document.removeEventListener('click', cancel, true);
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(currentRoute.peek()!.route.path).toBe('/');
+  });
+
+  it('ignores clicks on elements outside any anchor', () => {
+    createRouter(makeRoutes());
+    const div = document.createElement('div');
+    document.body.appendChild(div);
+    expect(dispatchClick(div)).toBe(false);
+  });
+
+  it('intercepts clicks on elements nested inside an anchor', async () => {
+    createRouter(makeRoutes());
+    const anchor = makeAnchor('/about');
+    const span = document.createElement('span');
+    span.textContent = 'About';
+    anchor.appendChild(span);
+
+    expect(dispatchClick(span)).toBe(true);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(currentRoute.peek()!.route.path).toBe('/about');
+  });
+});
+
+// ============================================================================
+// 8e. back/forward, destroy, and SSR guards
+// ============================================================================
+
+describe('back/forward and teardown', () => {
+  const makeRoutes = (): Route[] => {
+    return buildRouteTable({
+      'src/routes/+page.utopia': () => Promise.resolve({ default: () => {} }),
+      'src/routes/about/+page.utopia': () => Promise.resolve({ default: () => {} }),
+    });
+  };
+
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/');
+  });
+
+  afterEach(() => {
+    destroy();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('back() delegates to history.back', () => {
+    const spy = vi.spyOn(history, 'back').mockImplementation(() => {});
+    back();
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('forward() delegates to history.forward', () => {
+    const spy = vi.spyOn(history, 'forward').mockImplementation(() => {});
+    forward();
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops intercepting clicks and popstate after destroy()', async () => {
+    createRouter(makeRoutes());
+    destroy();
+
+    const anchor = document.createElement('a');
+    anchor.setAttribute('href', '/about');
+    document.body.appendChild(anchor);
+
+    let intercepted = false;
+    const observer = (event: Event): void => {
+      intercepted = event.defaultPrevented;
+      event.preventDefault();
+    };
+    window.addEventListener('click', observer);
+    anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    window.removeEventListener('click', observer);
+    expect(intercepted).toBe(false);
+
+    window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(currentRoute.peek()).toBeNull();
+
+    anchor.remove();
+  });
+
+  it('replaces the previous listeners when createRouter is called again', async () => {
+    createRouter(makeRoutes());
+    createRouter(makeRoutes()); // e.g. HMR re-init
+
+    const anchor = document.createElement('a');
+    anchor.setAttribute('href', '/about');
+    document.body.appendChild(anchor);
+    const pushSpy = vi.spyOn(history, 'pushState');
+
+    anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Exactly one interception — the first router's click listener is gone.
+    expect(pushSpy).toHaveBeenCalledTimes(1);
+    expect(currentRoute.peek()!.route.path).toBe('/about');
+
+    pushSpy.mockRestore();
+    anchor.remove();
+  });
+
+  it('navigate() is a no-op without a window (SSR)', async () => {
+    createRouter(makeRoutes());
+    vi.stubGlobal('window', undefined);
+    await expect(navigate('/about')).resolves.toBeUndefined();
+    vi.unstubAllGlobals();
+    expect(currentRoute.peek()!.route.path).toBe('/');
+  });
+
+  it('back()/forward() are no-ops without a window (SSR)', () => {
+    const backSpy = vi.spyOn(history, 'back').mockImplementation(() => {});
+    const forwardSpy = vi.spyOn(history, 'forward').mockImplementation(() => {});
+    vi.stubGlobal('window', undefined);
+    back();
+    forward();
+    vi.unstubAllGlobals();
+    expect(backSpy).not.toHaveBeenCalled();
+    expect(forwardSpy).not.toHaveBeenCalled();
+  });
+
+  it('createRouter() skips DOM setup without a window (SSR)', () => {
+    vi.stubGlobal('window', undefined);
+    expect(() => createRouter(makeRoutes())).not.toThrow();
+    vi.unstubAllGlobals();
+    // No URL matching happened server-side.
+    expect(currentRoute.peek()).toBeNull();
   });
 });
 

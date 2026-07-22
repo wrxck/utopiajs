@@ -74,6 +74,15 @@ describe('generateFaviconSvg', () => {
     const svg = generateFaviconSvg('MH');
     expect(svg).toContain('>MH</text>');
   });
+
+  it('escapes XML-special characters in the glyph', () => {
+    // Regression: '&' (e.g. an "A&B" brand mark) produced invalid XML,
+    // which browsers refuse to render as an SVG favicon.
+    const svg = generateFaviconSvg('&');
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+    expect(doc.querySelector('parsererror')).toBeNull();
+    expect(svg).toContain('>&amp;</text>');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -104,6 +113,13 @@ describe('generateStaticSvg', () => {
     const svg = generateStaticSvg('M', { radius: 15 });
     expect(svg).toContain('rx="15"');
   });
+
+  it('escapes XML-special characters in the glyph', () => {
+    const svg = generateStaticSvg('<');
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+    expect(doc.querySelector('parsererror')).toBeNull();
+    expect(svg).toContain('>&lt;</text>');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -127,6 +143,13 @@ describe('generateMaskSvg', () => {
   it('accepts custom font family', () => {
     const svg = generateMaskSvg('M', { fontFamily: 'Helvetica' });
     expect(svg).toContain('font-family="Helvetica"');
+  });
+
+  it('escapes XML-special characters in the glyph', () => {
+    const svg = generateMaskSvg('&');
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+    expect(doc.querySelector('parsererror')).toBeNull();
+    expect(svg).toContain('>&amp;</text>');
   });
 });
 
