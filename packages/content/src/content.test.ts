@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, writeFile, mkdir, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { existsSync } from 'node:fs';
@@ -960,7 +960,7 @@ This is a draft.`,
     const beforeResult = JSON.parse(
       (before.result as { content: Array<{ text: string }> }).content[0].text,
     );
-    const originalBody = beforeResult.body;
+    expect(beforeResult.body).toContain('Hello from MCP');
 
     // Update only data (no body param)
     await server.handleRequest(
@@ -1437,7 +1437,6 @@ describe('createVirtualAdapter', () => {
   };
 
   const blogConfig = { name: 'blog', directory: 'blog' };
-  const notesConfig = { name: 'notes', directory: 'notes' };
   const emptyConfig = { name: 'nonexistent', directory: 'nonexistent' };
 
   it('readEntries returns all entries for a collection', async () => {

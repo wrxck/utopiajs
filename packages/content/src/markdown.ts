@@ -60,14 +60,7 @@ export async function renderMarkdown(
 
   // custom plugins → assemble a one-off pipeline (cannot be safely cached).
   let processor: Processor = unified().use(remarkParse);
-
-  for (const plugin of remarkPlugins) {
-    if (Array.isArray(plugin)) {
-      processor = processor.use(plugin[0], ...plugin.slice(1));
-    } else {
-      processor = processor.use(plugin);
-    }
-  }
+  processor = applyPlugins(processor, remarkPlugins);
 
   processor = processor.use(remarkRehype);
   processor = processor.use(rehypeSlug);
@@ -76,16 +69,24 @@ export async function renderMarkdown(
     processor = processor.use(rehypeHighlight);
   }
 
-  for (const plugin of rehypePlugins) {
+  processor = applyPlugins(processor, rehypePlugins);
+  processor = processor.use(rehypeStringify);
+
+  const result = await processor.process(source);
+  return String(result);
+}
+
+/** apply caller-supplied plugins, each either a bare plugin or a [plugin, ...options] tuple. */
+function applyPlugins(
+  processor: Processor,
+  plugins: NonNullable<MarkdownOptions['remarkPlugins']>,
+): Processor {
+  for (const plugin of plugins) {
     if (Array.isArray(plugin)) {
       processor = processor.use(plugin[0], ...plugin.slice(1));
     } else {
       processor = processor.use(plugin);
     }
   }
-
-  processor = processor.use(rehypeStringify);
-
-  const result = await processor.process(source);
-  return String(result);
+  return processor;
 }

@@ -7,7 +7,7 @@ import { parseFrontmatter, serializeFrontmatter } from '../frontmatter';
 import { renderMarkdown } from '../markdown';
 
 /** slug must start with alphanumeric, then allow alphanumeric, hyphens, underscores, and slashes. */
-export const VALID_SLUG_RE = /^[a-zA-Z0-9][a-zA-Z0-9_/-]*$/;
+const VALID_SLUG_RE = /^[a-zA-Z0-9][a-zA-Z0-9_/-]*$/;
 
 export function validateSlug(slug: string): void {
   if (!slug || !VALID_SLUG_RE.test(slug) || slug.includes('..') || slug.includes('//')) {
@@ -47,12 +47,28 @@ const FORMAT_EXTENSIONS: Record<string, ContentFormat> = {
   '.yml': 'yaml',
 };
 
-const FORMAT_EXT_MAP: Record<ContentFormat, string> = {
-  md: '.md',
-  utopia: '.utopia',
-  json: '.json',
-  yaml: '.yaml',
+/** candidate file extensions per format, in lookup/preference order. */
+const FORMAT_CANDIDATE_EXTS: Record<ContentFormat, string[]> = {
+  md: ['.md'],
+  utopia: ['.utopia'],
+  json: ['.json'],
+  yaml: ['.yaml', '.yml'],
 };
+
+/**
+ * resolve the on-disk path for a slug + format. prefers an existing file with
+ * any of the format's extensions (so a `.yml` entry is found and updated in
+ * place rather than shadowed by a new `.yaml` duplicate), falling back to the
+ * format's primary extension for new files.
+ */
+function resolveEntryPath(dir: string, slug: string, format: ContentFormat): string {
+  const exts = FORMAT_CANDIDATE_EXTS[format];
+  for (const ext of exts) {
+    const candidate = join(dir, `${slug}${ext}`);
+    if (existsSync(candidate)) return candidate;
+  }
+  return join(dir, `${slug}${exts[0]}`);
+}
 
 function slugFromFilename(filename: string): string {
   return basename(filename, extname(filename));
@@ -135,6 +151,7 @@ export function createFilesystemAdapter(baseDir?: string): ContentAdapter {
         if (!isAllowedFormat(ext, config.formats)) continue;
 
         const filePath = join(dir, file);
+        assertWithinRoot(filePath, dir);
         entries.push(await parseFile(filePath, config.name));
       }
 
@@ -147,10 +164,12 @@ export function createFilesystemAdapter(baseDir?: string): ContentAdapter {
       const formats = config.formats ?? (['md', 'utopia', 'json', 'yaml'] as ContentFormat[]);
 
       for (const format of formats) {
-        const filePath = join(dir, `${slug}${FORMAT_EXT_MAP[format]}`);
-        if (existsSync(filePath)) {
-          assertWithinRoot(filePath, dir);
-          return parseFile(filePath, config.name);
+        for (const ext of FORMAT_CANDIDATE_EXTS[format]) {
+          const filePath = join(dir, `${slug}${ext}`);
+          if (existsSync(filePath)) {
+            assertWithinRoot(filePath, dir);
+            return parseFile(filePath, config.name);
+          }
         }
       }
 
@@ -170,7 +189,7 @@ export function createFilesystemAdapter(baseDir?: string): ContentAdapter {
         await mkdir(dir, { recursive: true });
       }
 
-      const filePath = join(dir, `${slug}${FORMAT_EXT_MAP[format]}`);
+      const filePath = resolveEntryPath(dir, slug, format);
       assertWithinRoot(filePath, dir);
 
       switch (format) {

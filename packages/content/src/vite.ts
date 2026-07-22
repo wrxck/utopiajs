@@ -1,6 +1,6 @@
 import type { Plugin } from 'vite';
 import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join, extname, basename, resolve } from 'node:path';
+import { join, extname, basename, resolve, sep } from 'node:path';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { parseFrontmatter } from './frontmatter';
@@ -69,6 +69,11 @@ export default function contentPlugin(options: ContentPluginOptions = {}): Plugi
   let resolvedRoot: string;
   let collectedEntries: CollectedEntries = {};
 
+  /** true when the path is a content file inside the content dir (path-separator boundary, so a sibling like `content-drafts` does not match). */
+  function isContentFile(file: string): boolean {
+    return file.startsWith(resolvedContentDir + sep) && CONTENT_EXTENSIONS.has(extname(file));
+  }
+
   return {
     name: 'utopia-content',
 
@@ -103,8 +108,7 @@ export default function contentPlugin(options: ContentPluginOptions = {}): Plugi
       }
 
       server.watcher.on('all', (event, filePath) => {
-        if (!filePath.startsWith(resolvedContentDir)) return;
-        if (!CONTENT_EXTENSIONS.has(extname(filePath))) return;
+        if (!isContentFile(filePath)) return;
 
         // Invalidate the virtual module to regenerate the manifest
         const mod = server.moduleGraph.getModuleById(RESOLVED_VIRTUAL_MODULE_ID);
@@ -116,8 +120,7 @@ export default function contentPlugin(options: ContentPluginOptions = {}): Plugi
     },
 
     handleHotUpdate({ file }) {
-      if (!file.startsWith(resolvedContentDir)) return;
-      if (!CONTENT_EXTENSIONS.has(extname(file))) return;
+      if (!isContentFile(file)) return;
       return [];
     },
 
@@ -131,22 +134,10 @@ export default function contentPlugin(options: ContentPluginOptions = {}): Plugi
       const entries = collectedEntries[collectionName];
       if (!entries || entries.length === 0) return;
 
-      const feedEntries = entries
-        .filter((e) => !filterDrafts || !e.data.draft)
-        .sort((a, b) => {
-          const da = new Date(a.data.date as string).getTime();
-          const db = new Date(b.data.date as string).getTime();
-          return db - da;
-        })
-        .map((e) => ({
-          slug: e.slug,
-          title: (e.data.title as string) ?? e.slug,
-          description: e.data.description as string | undefined,
-          date: (e.data.date as string) ?? new Date().toISOString(),
-          html: e.html,
-          url: `${feedOpts.siteUrl}/blog/${e.slug}`,
-          tags: e.data.tags as string[] | undefined,
-        }));
+      const feedEntries = selectPublishedEntries(entries, filterDrafts).map((e) => ({
+        ...toPublishedEntry(e),
+        url: `${feedOpts.siteUrl}/blog/${e.slug}`,
+      }));
 
       const rssFeedUrl = feedOpts.feedUrl ?? `${feedOpts.siteUrl}/feed.xml`;
       const atomFeedUrl = `${feedOpts.siteUrl}/atom.xml`;
@@ -198,22 +189,10 @@ export default function contentPlugin(options: ContentPluginOptions = {}): Plugi
       if (!entries || entries.length === 0) return;
 
       // Filter and sort entries
-      const seoEntries: SeoEntry[] = entries
-        .filter((e) => !filterDrafts || !e.data.draft)
-        .sort((a, b) => {
-          const da = new Date(a.data.date as string).getTime();
-          const db = new Date(b.data.date as string).getTime();
-          return db - da;
-        })
-        .map((e) => ({
-          slug: e.slug,
-          title: (e.data.title as string) ?? e.slug,
-          description: e.data.description as string | undefined,
-          date: (e.data.date as string) ?? new Date().toISOString(),
-          tags: e.data.tags as string[] | undefined,
-          html: e.html,
-          image: e.data.image as string | undefined,
-        }));
+      const seoEntries: SeoEntry[] = selectPublishedEntries(entries, filterDrafts).map((e) => ({
+        ...toPublishedEntry(e),
+        image: e.data.image as string | undefined,
+      }));
 
       // Read built index.html for asset extraction
       const indexPath = join(resolvedOutDir, 'index.html');
@@ -227,7 +206,7 @@ export default function contentPlugin(options: ContentPluginOptions = {}): Plugi
       const ogImageConfig = typeof seoConfig.ogImage === 'object' ? seoConfig.ogImage : undefined;
 
       // Try to resolve sharp from the consuming project
-      let sharpFn: ((input: Buffer) => any) | undefined;
+      let sharpFn: Parameters<typeof svgToPng>[1];
       if (seoConfig.ogImage) {
         try {
           const require = createRequire(join(resolvedRoot, 'package.json'));
@@ -298,6 +277,32 @@ interface CollectedEntry {
 
 type CollectedEntries = Record<string, CollectedEntry[]>;
 
+/** drop drafts (when enabled) and sort newest-first by data.date. */
+function selectPublishedEntries(
+  entries: CollectedEntry[],
+  filterDrafts: boolean,
+): CollectedEntry[] {
+  return entries
+    .filter((e) => !filterDrafts || !e.data.draft)
+    .sort((a, b) => {
+      const da = new Date(a.data.date as string).getTime();
+      const db = new Date(b.data.date as string).getTime();
+      return db - da;
+    });
+}
+
+/** shape shared by feed and seo entry construction. */
+function toPublishedEntry(e: CollectedEntry) {
+  return {
+    slug: e.slug,
+    title: (e.data.title as string) ?? e.slug,
+    description: e.data.description as string | undefined,
+    date: (e.data.date as string) ?? new Date().toISOString(),
+    tags: e.data.tags as string[] | undefined,
+    html: e.html,
+  };
+}
+
 interface ManifestResult {
   code: string;
   entries: CollectedEntries;
@@ -351,8 +356,6 @@ async function generateManifestModule(
           html = await renderMarkdown(parsed.body, {
             highlight: opts.highlight ?? true,
           });
-          // Always store body internally for feed generation even if not embedded
-          body = parsed.body;
         }
       } else if (ext === '.json') {
         try {

@@ -1,12 +1,5 @@
 import type { SeoConfig, SeoEntry } from './types';
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+import { escapeHtml } from '../escape';
 
 /** generate <meta> and json-ld tags for a blog post */
 export function generateMetaTags(entry: SeoEntry, config: SeoConfig): string {
@@ -70,6 +63,16 @@ function escapeJsonForHtml(json: string): string {
   );
 }
 
+/**
+ * resolve an entry image reference against the site URL. absolute URLs pass
+ * through untouched; relative paths (with or without a leading slash) are
+ * joined without doubling slashes.
+ */
+function resolveImageUrl(siteUrl: string, image: string): string {
+  if (/^https?:\/\//i.test(image)) return image;
+  return `${siteUrl.replace(/\/+$/, '')}/${image.replace(/^\/+/, '')}`;
+}
+
 /** generate json-ld BlogPosting structured data */
 export function generateJsonLd(entry: SeoEntry, config: SeoConfig): string {
   const url = `${config.siteUrl}/${config.routePrefix ?? 'blog'}/${entry.slug}`;
@@ -81,7 +84,7 @@ export function generateJsonLd(entry: SeoEntry, config: SeoConfig): string {
     headline: entry.title,
     url,
     datePublished: new Date(entry.date).toISOString(),
-    image: entry.image ? `${config.siteUrl}/${entry.image}` : ogImageUrl,
+    image: entry.image ? resolveImageUrl(config.siteUrl, entry.image) : ogImageUrl,
   };
 
   if (entry.description) {
