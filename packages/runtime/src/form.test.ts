@@ -63,6 +63,15 @@ describe('validation rules', () => {
     it('passes on lower', () => expect(rule(50)).toBeNull());
   });
 
+  describe('email — non-string and length guards', () => {
+    const rule = email();
+    it('ignores non-string values', () => expect(rule(123 as unknown as string)).toBeNull());
+    it('rejects addresses longer than the RFC 5321 maximum', () => {
+      const long = `${'a'.repeat(250)}@b.com`;
+      expect(rule(long)).toBe('Invalid email address');
+    });
+  });
+
   describe('email', () => {
     const rule = email();
     it('passes on valid email', () => expect(rule('user@example.com')).toBeNull());

@@ -1,3 +1,5 @@
+import { escapeXml } from './escape';
+
 export interface FeedOptions {
   title: string;
   description: string;
@@ -16,15 +18,6 @@ export interface FeedEntry {
   html?: string;
   url: string;
   tags?: string[];
-}
-
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
 }
 
 function escapeCdata(html: string): string {

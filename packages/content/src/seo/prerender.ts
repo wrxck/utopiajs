@@ -1,3 +1,4 @@
+import { escapeHtml } from '@/escape';
 import { generateJsonLd, generateMetaTags } from '@/seo/meta';
 import type { SeoConfig, SeoEntry } from '@/seo/types';
 
@@ -60,14 +61,6 @@ export function generatePrerenderedPage(
   ${assets.scripts}
 </body>
 </html>`;
-}
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 // ---------------------------------------------------------------------------

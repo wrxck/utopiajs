@@ -3,11 +3,12 @@
 // ============================================================================
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { STYLE_CLOSE_RE, escapeStyleContent } from '@/html-utils';
+import { Readable } from 'node:stream';
+
+import { escapeAttr, escapeStyleContent } from '@/html-utils';
 import type { HeadConfig } from '@/ssr-runtime';
 import { serializeHead } from '@/render-to-string';
 import { buildApiRoutes, handleApiRequest } from '@/api-handler';
-import type { RequestEvent, RequestHandler } from '@/api-handler';
 
 export interface HandlerOptions {
   /** The HTML template with <!--ssr-outlet--> and <!--ssr-head--> markers. */
@@ -30,6 +31,39 @@ export interface HandlerOptions {
    * so a bare `nonce` generator has no effect until a policy is supplied.
    */
   csp?: string | ((nonce: string | undefined) => string);
+}
+
+// RequestInit derived from the Request constructor (avoids relying on the
+// global type name), plus the fetch-spec `duplex` member required for
+// stream bodies, which the built-in lib typings do not yet declare.
+type FetchRequestInit = NonNullable<ConstructorParameters<typeof Request>[1]> & {
+  duplex?: 'half';
+};
+
+/**
+ * Convert a Node.js IncomingMessage into a fetch Request, forwarding the
+ * incoming headers and (for methods that can carry one) the request body so
+ * API route handlers can read `request.headers` / `await request.json()` etc.
+ */
+function toFetchRequest(req: IncomingMessage, url: URL, method: string): Request {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      for (const v of value) headers.append(name, v);
+    } else {
+      headers.set(name, value);
+    }
+  }
+
+  const canHaveBody = method !== 'GET' && method !== 'HEAD';
+  const init: FetchRequestInit = { method, headers };
+  if (canHaveBody) {
+    init.body = Readable.toWeb(req) as unknown as FetchRequestInit['body'];
+    // required by fetch when the body is a stream.
+    init.duplex = 'half';
+  }
+  return new Request(url.href, init);
 }
 
 /**
@@ -66,7 +100,7 @@ export function createHandler(
       try {
         const parsedUrl = new URL(url, `http://${req.headers.host ?? 'localhost'}`);
         const method = (req.method ?? 'GET').toUpperCase();
-        const apiRequest = new Request(parsedUrl.href, { method });
+        const apiRequest = toFetchRequest(req, parsedUrl, method);
         const apiResponse = await handleApiRequest(
           parsedUrl,
           method,
@@ -105,7 +139,8 @@ export function createHandler(
       // Build the head injection (scoped styles + head entries).
       const headParts: string[] = [];
       if (css) {
-        const nonceAttr = requestNonce ? ` nonce="${requestNonce}"` : '';
+        // escape so a nonce value can never break out of the attribute.
+        const nonceAttr = requestNonce ? ` nonce="${escapeAttr(requestNonce)}"` : '';
         headParts.push(`<style${nonceAttr}>${escapeStyleContent(css)}</style>`);
       }
       if (head && head.length > 0) {

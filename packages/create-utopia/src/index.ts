@@ -11,7 +11,7 @@ import { green, cyan, yellow, bold, red, dim } from 'kolorist';
 // Types
 // ---------------------------------------------------------------------------
 
-interface ProjectOptions {
+export interface ProjectOptions {
   projectName: string;
   language: 'typescript' | 'javascript';
   useRouter: boolean;
@@ -49,7 +49,7 @@ export const INVALID_CHARS_RE = /[^a-z0-9-~]+/g;
  * Validates that a string is a legal npm package name.
  * Based on the validate-npm-package-name specification.
  */
-function isValidPackageName(name: string): boolean {
+export function isValidPackageName(name: string): boolean {
   return VALID_PACKAGE_NAME_RE.test(name);
 }
 
@@ -57,7 +57,7 @@ function isValidPackageName(name: string): boolean {
  * Converts an arbitrary string into a valid package name by lowercasing and
  * replacing disallowed characters with hyphens.
  */
-function toValidPackageName(name: string): string {
+export function toValidPackageName(name: string): string {
   return name
     .trim()
     .toLowerCase()
@@ -69,7 +69,7 @@ function toValidPackageName(name: string): string {
 /**
  * Returns true when the given directory is empty or contains only `.git`.
  */
-function isEmptyDir(dirPath: string): boolean {
+export function isEmptyDir(dirPath: string): boolean {
   if (!fs.existsSync(dirPath)) return true;
   const files = fs.readdirSync(dirPath);
   return files.length === 0 || (files.length === 1 && files[0] === '.git');
@@ -83,7 +83,12 @@ function isEmptyDir(dirPath: string): boolean {
  * Recursively copies `src` into `dest`, creating directories as needed.
  * Files whose names are listed in `skip` (relative to src root) are excluded.
  */
-function copyDir(src: string, dest: string, skip: Set<string> = new Set(), _root?: string): void {
+export function copyDir(
+  src: string,
+  dest: string,
+  skip: Set<string> = new Set(),
+  _root?: string,
+): void {
   const root = _root ?? src;
   fs.mkdirSync(dest, { recursive: true });
 
@@ -111,7 +116,7 @@ function copyDir(src: string, dest: string, skip: Set<string> = new Set(), _root
  * Recursively removes a directory that may contain files that were only
  * partially written. Works like `rm -rf`.
  */
-function removeDir(dirPath: string): void {
+export function removeDir(dirPath: string): void {
   if (!fs.existsSync(dirPath)) return;
   fs.rmSync(dirPath, { recursive: true, force: true });
 }
@@ -130,7 +135,7 @@ function replaceInFile(filePath: string, replacements: Record<string, string>): 
 /**
  * Renames a file if it exists.
  */
-function renameFile(dir: string, from: string, to: string): void {
+export function renameFile(dir: string, from: string, to: string): void {
   const srcPath = path.join(dir, from);
   if (fs.existsSync(srcPath)) {
     fs.renameSync(srcPath, path.join(dir, to));
@@ -141,7 +146,7 @@ function renameFile(dir: string, from: string, to: string): void {
 // Scaffolding logic
 // ---------------------------------------------------------------------------
 
-function scaffoldProject(root: string, options: ProjectOptions): void {
+export function scaffoldProject(root: string, options: ProjectOptions): void {
   const { projectName, language, useRouter, useSSR, useEmail, useAI, useContent, cssPreprocessor } =
     options;
 
@@ -237,14 +242,18 @@ function scaffoldProject(root: string, options: ProjectOptions): void {
     // Move vite to dependencies for the SSR server
     if (ssrDevDeps['vite']) {
       ssrDeps['vite'] = ssrDevDeps['vite'];
+      delete ssrDevDeps['vite'];
     }
 
-    // Update scripts for SSR
+    // Update scripts for SSR. The server entry keeps the extension that the
+    // scaffolded file will actually have (.ts is renamed to .js below when
+    // the project is JavaScript).
+    const serverEntry = language === 'typescript' ? 'src/entry-server.ts' : 'src/entry-server.js';
     const scripts = ssrPkg['scripts'] as Record<string, string>;
     scripts['dev'] = 'node server.js';
     scripts['build'] = 'npm run build:client && npm run build:server';
     scripts['build:client'] = 'vite build --outDir dist/client';
-    scripts['build:server'] = 'vite build --outDir dist/server --ssr src/entry-server.ts';
+    scripts['build:server'] = `vite build --outDir dist/server --ssr ${serverEntry}`;
     scripts['preview'] = 'NODE_ENV=production node server.js';
 
     fs.writeFileSync(pkgJsonPath, JSON.stringify(ssrPkg, null, 2) + '\n', 'utf-8');
@@ -308,14 +317,18 @@ h1 {
 `;
     fs.writeFileSync(appPath, simpleApp, 'utf-8');
 
-    // Simplify main entry — remove router imports
-    const mainPath = path.join(root, 'src', language === 'typescript' ? 'main.ts' : 'main.js');
-    const simpleMain = `import { mount } from '@matthesketh/utopia-runtime'
+    // Simplify main entry — remove router imports. SSR projects have no
+    // main entry at all (they use entry-client/entry-server instead), so
+    // only rewrite it for client-only projects.
+    if (!useSSR) {
+      const mainPath = path.join(root, 'src', language === 'typescript' ? 'main.ts' : 'main.js');
+      const simpleMain = `import { mount } from '@matthesketh/utopia-runtime'
 import App from './App.utopia'
 
 mount(App, '#app')
 `;
-    fs.writeFileSync(mainPath, simpleMain, 'utf-8');
+      fs.writeFileSync(mainPath, simpleMain, 'utf-8');
+    }
   }
 
   // 7. If AI is selected, scaffold an example chat API route and .env.example
@@ -597,7 +610,7 @@ if (slug) {
 /**
  * Initializes a git repository in the given directory.
  */
-function initGitRepo(root: string): boolean {
+export function initGitRepo(root: string): boolean {
   try {
     execSync('git init', { cwd: root, stdio: 'ignore' });
     execSync('git add -A', { cwd: root, stdio: 'ignore' });
@@ -619,7 +632,7 @@ function initGitRepo(root: string): boolean {
  * Determines the package manager that invoked `create-utopia`.
  * Falls back to "npm" if detection fails.
  */
-function detectPackageManager(): 'npm' | 'yarn' | 'pnpm' | 'bun' {
+export function detectPackageManager(): 'npm' | 'yarn' | 'pnpm' | 'bun' {
   const userAgent = process.env['npm_config_user_agent'] ?? '';
   if (userAgent.startsWith('yarn')) return 'yarn';
   if (userAgent.startsWith('pnpm')) return 'pnpm';
@@ -630,7 +643,7 @@ function detectPackageManager(): 'npm' | 'yarn' | 'pnpm' | 'bun' {
 /**
  * Returns the install and dev commands for the detected package manager.
  */
-function getPackageManagerCommands(pm: string): { install: string; dev: string } {
+export function getPackageManagerCommands(pm: string): { install: string; dev: string } {
   switch (pm) {
     case 'yarn':
       return { install: 'yarn', dev: 'yarn dev' };
@@ -647,9 +660,21 @@ function getPackageManagerCommands(pm: string): { install: string; dev: string }
 // Pretty output
 // ---------------------------------------------------------------------------
 
+/** Reads this package's own version (for the banner). */
+function packageVersion(): string {
+  try {
+    const selfDir = path.dirname(fileURLToPath(import.meta.url));
+    const pkgPath = path.resolve(selfDir, '..', 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { version?: string };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
 function printBanner(): void {
   console.log();
-  console.log(bold(cyan('  create-utopia')) + dim(' v0.1.0'));
+  console.log(bold(cyan('  create-utopia')) + dim(` v${packageVersion()}`));
   console.log();
 }
 
@@ -675,7 +700,9 @@ function printSuccessBox(projectName: string, root: string): void {
   console.log(bottom);
   console.log();
   console.log('  Next steps:');
-  if (cdPath !== '.') {
+  // path.relative() yields '' when the project was scaffolded into the cwd —
+  // no `cd` step is needed then.
+  if (cdPath !== '' && cdPath !== '.') {
     console.log(cyan(`    cd ${cdPath}`));
   }
   console.log(cyan(`    ${cmds.install}`));
@@ -692,7 +719,7 @@ export const ANSI_ESCAPE_RE = /\u001B\[[0-9;]*m/g;
 /**
  * Strips ANSI escape codes for length measurement.
  */
-function stripAnsi(str: string): string {
+export function stripAnsi(str: string): string {
   return str.replace(ANSI_ESCAPE_RE, '');
 }
 
@@ -700,11 +727,11 @@ function stripAnsi(str: string): string {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main(): Promise<void> {
+export async function main(argv: string[] = process.argv): Promise<void> {
   printBanner();
 
   // Allow the project name to be passed as the first positional argument.
-  const argProjectName = process.argv[2]?.trim();
+  const argProjectName = argv[2]?.trim();
   const defaultProjectName = argProjectName ?? 'utopia-app';
 
   let response: prompts.Answers<
@@ -802,10 +829,21 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Resolve final options
-  const projectName: string = toValidPackageName(
-    (response.projectName as string | undefined) ?? defaultProjectName,
-  );
+  // Resolve final options. The target directory keeps its historical
+  // derivation from the sanitized input ("" resolves to the cwd itself, so
+  // `create-utopia .` scaffolds in place), while the package name falls back
+  // to the directory's own basename when sanitizing left nothing usable.
+  const rawName = (response.projectName as string | undefined) ?? defaultProjectName;
+  const sanitizedName = toValidPackageName(rawName);
+  const root = path.resolve(process.cwd(), sanitizedName);
+
+  let projectName: string = sanitizedName;
+  if (!isValidPackageName(projectName)) {
+    projectName = toValidPackageName(path.basename(root));
+  }
+  if (!isValidPackageName(projectName)) {
+    projectName = 'utopia-app';
+  }
 
   const overwrite: boolean = (response.overwrite as boolean | undefined) ?? true;
   const language = (response.language as 'typescript' | 'javascript') ?? 'typescript';
@@ -819,8 +857,6 @@ async function main(): Promise<void> {
   const useEmail = features.includes('email');
   const useAI = features.includes('ai');
   const useContent = features.includes('content');
-
-  const root = path.resolve(process.cwd(), projectName);
 
   // Handle non-empty directory
   if (fs.existsSync(root) && !isEmptyDir(root)) {
@@ -876,7 +912,7 @@ async function main(): Promise<void> {
  * Lists all files in a directory recursively, returning paths relative to
  * the base directory.
  */
-function listFiles(dir: string, base: string): string[] {
+export function listFiles(dir: string, base: string): string[] {
   const results: string[] = [];
   if (!fs.existsSync(dir)) return results;
 
@@ -894,8 +930,31 @@ function listFiles(dir: string, base: string): string[] {
   return results;
 }
 
-// Run
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+/**
+ * True when this module is the script Node was asked to execute (the
+ * `create-utopia` bin), as opposed to being imported (e.g. by tests).
+ */
+export function isDirectInvocation(
+  argv1: string | undefined,
+  moduleUrl: string = import.meta.url,
+): boolean {
+  if (!argv1) return false;
+  try {
+    return fs.realpathSync(argv1) === fs.realpathSync(fileURLToPath(moduleUrl));
+  } catch {
+    return false;
+  }
+}
+
+/* v8 ignore start -- only reachable when run as the CLI binary */
+if (isDirectInvocation(process.argv[1])) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
+/* v8 ignore stop */

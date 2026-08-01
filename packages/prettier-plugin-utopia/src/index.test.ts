@@ -74,4 +74,67 @@ describe('format', () => {
     const out = await format('<style></style>');
     expect(out.trim()).toBe('<style></style>');
   });
+
+  it('formats scss and less style blocks with the matching sub-parser', async () => {
+    const scss = await format('<style lang="scss">.a{.b{color:red}}</style>');
+    expect(scss).toContain('.a {');
+    expect(scss).toContain('.b {');
+
+    const less = await format('<style lang="less">@c:red;.a{color:@c}</style>');
+    expect(less).toContain('@c: red;');
+  });
+
+  it('formats <test> blocks as typescript', async () => {
+    const out = await format("<test>it('x',()=>{expect(1).toBe(1)})</test>");
+    expect(out).toContain('it("x", () => {');
+  });
+
+  it('does not truncate a template containing a native <template> element', async () => {
+    const out = await format(
+      '<template>\n<div><template>inner</template></div>\n</template>\n<script>const a=1</script>',
+    );
+    expect(out).toContain('<template>inner</template>');
+    expect(out).toContain('const a = 1;');
+    // exactly one top-level template block remains.
+    expect(out.match(/^<template>/gm)).toHaveLength(1);
+  });
+});
+
+describe('plugin surface', () => {
+  it('registers the utopia language for .utopia files', () => {
+    expect(plugin.languages?.[0].extensions).toEqual(['.utopia']);
+    expect(plugin.languages?.[0].parsers).toEqual(['utopia']);
+  });
+
+  it('locStart/locEnd report block offsets', () => {
+    const root = splitBlocks('<script>const a = 1;</script>');
+    const block = root.blocks[0];
+    const parser = plugin.parsers!.utopia;
+    expect(parser.locStart(block)).toBe(0);
+    expect(parser.locEnd(block)).toBe('<script>const a = 1;</script>'.length);
+  });
+
+  it('the synchronous print fallback re-indents block contents', () => {
+    const root = splitBlocks('<script lang="ts">  const a = 1;  </script>');
+    const printer = plugin.printers!['utopia-ast'];
+    const printed = printer.print(
+      { node: root.blocks[0] } as never,
+      {} as never,
+      (() => '') as never,
+    );
+    expect(JSON.stringify(printed)).toContain('<script lang=\\"ts\\">');
+    expect(JSON.stringify(printed)).toContain('const a = 1;');
+    expect(JSON.stringify(printed)).toContain('</script>');
+  });
+
+  it('the synchronous print fallback collapses empty blocks', () => {
+    const root = splitBlocks('<style></style>');
+    const printer = plugin.printers!['utopia-ast'];
+    const printed = printer.print(
+      { node: root.blocks[0] } as never,
+      {} as never,
+      (() => '') as never,
+    );
+    expect(printed).toEqual(['<style>', '</style>']);
+  });
 });

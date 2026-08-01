@@ -27,29 +27,68 @@ export interface UtopiaRoot {
   end: number;
 }
 
-const BLOCK_NAMES: BlockName[] = ['template', 'script', 'style', 'test'];
+/** matches the opening tag of any known block, capturing its raw attributes. */
+const OPEN_TAG_RE = /<(template|script|style|test)(\s[^>]*)?>/g;
+
+/**
+ * find the offset one past the closing tag that matches an opening tag whose
+ * body starts at `from`, accounting for nested same-name tags (a template may
+ * legally contain native `<template>` elements). returns -1 when unclosed.
+ */
+function findBlockEnd(source: string, name: BlockName, from: number): number {
+  const openRe = new RegExp(`<${name}(\\s[^>]*)?>`, 'g');
+  const closeTag = `</${name}>`;
+  let depth = 1;
+  let cursor = from;
+
+  while (depth > 0) {
+    const closeIndex = source.indexOf(closeTag, cursor);
+    if (closeIndex === -1) return -1;
+
+    openRe.lastIndex = cursor;
+    const openMatch = openRe.exec(source);
+
+    if (openMatch !== null && openMatch.index < closeIndex) {
+      // a nested same-name opening tag before the next close: go deeper.
+      depth++;
+      cursor = openMatch.index + openMatch[0].length;
+    } else {
+      depth--;
+      cursor = closeIndex + closeTag.length;
+    }
+  }
+
+  return cursor;
+}
 
 export function splitBlocks(source: string): UtopiaRoot {
   const blocks: UtopiaBlock[] = [];
 
-  for (const name of BLOCK_NAMES) {
-    // match an opening tag with optional attributes, then the lazy body up to
-    // the matching closing tag. block names never nest within themselves at the
-    // top level, so a non-greedy body is sufficient and safe.
-    const re = new RegExp(`<${name}(\\s[^>]*)?>([\\s\\S]*?)</${name}>`, 'g');
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(source)) !== null) {
-      blocks.push({
-        type: 'block',
-        name,
-        rawAttrs: (match[1] ?? '').trim(),
-        content: match[2],
-        start: match.index,
-        end: match.index + match[0].length,
-      });
-    }
+  // single left-to-right scan: after each block is captured the scan resumes
+  // past its closing tag, so tags appearing *inside* a block body (e.g. a
+  // <style> sample shown within <template>) never become blocks of their own.
+  OPEN_TAG_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = OPEN_TAG_RE.exec(source)) !== null) {
+    const name = match[1] as BlockName;
+    const start = match.index;
+    const bodyStart = start + match[0].length;
+
+    const end = findBlockEnd(source, name, bodyStart);
+    if (end === -1) continue; // unclosed block: ignore it, keep scanning.
+
+    blocks.push({
+      type: 'block',
+      name,
+      rawAttrs: (match[2] ?? '').trim(),
+      content: source.slice(bodyStart, end - `</${name}>`.length),
+      start,
+      end,
+    });
+
+    OPEN_TAG_RE.lastIndex = end;
   }
 
-  blocks.sort((a, b) => a.start - b.start);
   return { type: 'root', blocks, start: 0, end: source.length };
 }

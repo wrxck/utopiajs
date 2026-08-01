@@ -15,7 +15,11 @@ import type { Plugin } from 'vite';
 // ---------------------------------------------------------------------------
 
 export interface UtopiaTestPluginOptions {
-  /** Glob patterns to scan for .utopia files. @default ['src/**\/*.utopia'] */
+  /**
+   * Directories to scan recursively for .utopia files. Relative paths are
+   * resolved against the current working directory.
+   * @default ['src']
+   */
   include?: string[];
   /** Whether to clean up generated files on exit. @default true */
   cleanup?: boolean;
@@ -60,7 +64,19 @@ export function utopiaTestPlugin(options: UtopiaTestPluginOptions = {}): Plugin 
   const { include = ['src'], cleanup = true } = options;
   const generatedFiles = new Set<string>();
 
+  function removeGeneratedFile(testPath: string): void {
+    if (!generatedFiles.has(testPath)) return;
+    try {
+      fs.unlinkSync(testPath);
+    } catch {
+      // File may already be deleted.
+    }
+    generatedFiles.delete(testPath);
+  }
+
   function generateTestFile(utopiaPath: string): void {
+    const testPath = utopiaPath + '.test.ts';
+
     const source = fs.readFileSync(utopiaPath, 'utf-8');
     let descriptor;
     try {
@@ -69,11 +85,15 @@ export function utopiaTestPlugin(options: UtopiaTestPluginOptions = {}): Plugin 
       return;
     }
 
-    if (!descriptor.test) return;
+    if (!descriptor.test) {
+      // The <test> block was removed — drop any previously generated file so
+      // vitest stops running tests that no longer exist in source.
+      removeGeneratedFile(testPath);
+      return;
+    }
 
     const testContent = descriptor.test.content;
     const basename = path.basename(utopiaPath);
-    const testPath = utopiaPath + '.test.ts';
 
     const output = [
       `// Auto-generated from ${basename} <test> block`,
@@ -88,14 +108,9 @@ export function utopiaTestPlugin(options: UtopiaTestPluginOptions = {}): Plugin 
   }
 
   function cleanupFiles(): void {
-    for (const file of generatedFiles) {
-      try {
-        fs.unlinkSync(file);
-      } catch {
-        // File may already be deleted.
-      }
+    for (const file of [...generatedFiles]) {
+      removeGeneratedFile(file);
     }
-    generatedFiles.clear();
   }
 
   return {
@@ -118,6 +133,9 @@ export function utopiaTestPlugin(options: UtopiaTestPluginOptions = {}): Plugin 
     },
 
     handleHotUpdate(ctx) {
+      // Same guard as buildStart: never write generated files into the
+      // source tree outside a vitest run (e.g. during `utopia dev`).
+      if (!process.env.VITEST) return;
       if (ctx.file.endsWith('.utopia')) {
         generateTestFile(ctx.file);
       }

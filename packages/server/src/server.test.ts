@@ -673,7 +673,7 @@ describe('SSR form validation stubs', () => {
         });
         return { form };
       },
-      render(ctx: Record<string, unknown>) {
+      render(_ctx: Record<string, unknown>) {
         const el = createElement('form');
         const text = createTextNode('Form rendered');
         appendChild(el, text);

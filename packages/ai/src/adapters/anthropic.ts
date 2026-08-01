@@ -15,6 +15,13 @@ import type {
   ToolDefinition,
 } from '@/types';
 
+import {
+  assertHttpBaseURL,
+  messageContentToText,
+  missingPeerDepError,
+  tryParseJSON,
+} from './shared';
+
 /**
  * Create an Anthropic adapter.
  *
@@ -38,16 +45,10 @@ export function anthropicAdapter(config: AnthropicConfig): AIAdapter {
       const mod = await import('@anthropic-ai/sdk');
       AnthropicCtor = (mod.Anthropic ?? mod.default) as typeof AnthropicCtor;
     } catch {
-      throw new Error(
-        '@matthesketh/utopia-ai: "@anthropic-ai/sdk" package is required for the Anthropic adapter. ' +
-          'Install it with: npm install @anthropic-ai/sdk',
-      );
+      throw missingPeerDepError('@anthropic-ai/sdk', 'Anthropic');
     }
 
-    // only http(s) base urls are permitted (no file:, etc.).
-    if (config.baseURL && !/^https?:$/.test(new URL(config.baseURL).protocol)) {
-      throw new Error(`Anthropic baseURL must be http(s): ${config.baseURL}`);
-    }
+    if (config.baseURL) assertHttpBaseURL(config.baseURL, 'Anthropic');
 
     client = new AnthropicCtor({
       apiKey: config.apiKey,
@@ -234,16 +235,7 @@ function toAnthropicMessages(messages: ChatMessage[]): {
 
   for (const msg of messages) {
     if (msg.role === 'system') {
-      system =
-        typeof msg.content === 'string'
-          ? msg.content
-          : Array.isArray(msg.content)
-            ? msg.content
-                .map((c) => (typeof c === 'string' ? c : 'text' in c ? c.text : ''))
-                .join('')
-            : 'text' in msg.content
-              ? msg.content.text
-              : '';
+      system = messageContentToText(msg.content);
       continue;
     }
 
@@ -336,13 +328,5 @@ function mapStopReason(reason: string): ChatResponse['finishReason'] {
       return 'length';
     default:
       return 'stop';
-  }
-}
-
-function tryParseJSON(str: string): Record<string, unknown> | undefined {
-  try {
-    return JSON.parse(str);
-  } catch {
-    return undefined;
   }
 }

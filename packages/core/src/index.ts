@@ -187,6 +187,34 @@ function popSubscriber(): void {
   currentSubscriber = subscriberStack.pop() ?? null;
 }
 
+/** Internal: remove `sub` from every signal it is subscribed to. */
+function unsubscribeFromDependencies(sub: Subscriber): void {
+  for (const dep of sub.dependencies) {
+    dep._subscribers.delete(sub);
+  }
+  sub.dependencies.clear();
+}
+
+/**
+ * Internal: build the callable read accessor shared by signal() and
+ * computed() — invocation and `.value` are tracked reads, `.peek()` is not.
+ */
+function makeCallable<T>(node: { _read(): T; _peek(): T }): ReadonlySignal<T> {
+  const read = (() => node._read()) as ReadonlySignal<T>;
+
+  Object.defineProperty(read, 'value', {
+    get(): T {
+      return node._read();
+    },
+    enumerable: true,
+    configurable: false,
+  });
+
+  (read as any).peek = (): T => node._peek();
+
+  return read;
+}
+
 // ---------------------------------------------------------------------------
 // SignalNode — the internal mutable state cell
 // ---------------------------------------------------------------------------
@@ -261,18 +289,7 @@ export function signal<T>(initialValue: T): Signal<T> {
   const node = new SignalNode<T>(initialValue);
 
   // The callable function itself acts as the read accessor.
-  const read = (() => node._read()) as Signal<T>;
-
-  // Attach methods and the .value getter.
-  Object.defineProperty(read, 'value', {
-    get(): T {
-      return node._read();
-    },
-    enumerable: true,
-    configurable: false,
-  });
-
-  (read as any).peek = (): T => node._peek();
+  const read = makeCallable(node) as Signal<T>;
 
   (read as any).set = (newValue: T): void => {
     node._write(newValue);
@@ -353,15 +370,7 @@ class ComputedNode<T> implements Subscriber {
   _dispose(): void {
     if (this._disposed) return;
     this._disposed = true;
-    this._cleanup();
-  }
-
-  /** Unsubscribe from all current dependencies. */
-  _cleanup(): void {
-    for (const dep of this.dependencies) {
-      dep._subscribers.delete(this);
-    }
-    this.dependencies.clear();
+    unsubscribeFromDependencies(this);
   }
 
   /** Recompute the derived value. */
@@ -372,13 +381,12 @@ class ComputedNode<T> implements Subscriber {
     computeDepth++;
     this._computing = true;
     // Clean up old subscriptions so conditional branches are correct.
-    this._cleanup();
+    unsubscribeFromDependencies(this);
 
     pushSubscriber(this);
     try {
       const newValue = this._fn();
       this._dirty = false;
-      this._computing = false;
       if (!this._initialized || !Object.is(newValue, this._signalNode._value)) {
         this._initialized = true;
         // Directly set _value (don't use _write) because we already
@@ -408,18 +416,8 @@ class ComputedNode<T> implements Subscriber {
  */
 export function computed<T>(fn: () => T): ReadonlySignal<T> {
   const node = new ComputedNode<T>(fn);
+  const read = makeCallable(node);
 
-  const read = (() => node._read()) as ReadonlySignal<T>;
-
-  Object.defineProperty(read, 'value', {
-    get(): T {
-      return node._read();
-    },
-    enumerable: true,
-    configurable: false,
-  });
-
-  (read as any).peek = (): T => node._peek();
   (read as any).dispose = (): void => node._dispose();
 
   // if created inside a createRoot, tie this computed's teardown to the root so
@@ -481,6 +479,18 @@ class EffectNode implements Subscriber {
     }
   }
 
+  /** Run the pending cleanup function (if any), reporting — not rethrowing — errors. */
+  _runCleanup(): void {
+    if (this._cleanupFn) {
+      try {
+        this._cleanupFn();
+      } catch (err) {
+        reportEffectError('Error in effect cleanup:', err);
+      }
+      this._cleanupFn = undefined;
+    }
+  }
+
   /** Execute the effect, cleaning up previous subscriptions first. */
   _run(): void {
     if (this._disposed) {
@@ -505,14 +515,7 @@ class EffectNode implements Subscriber {
     syncRunDepth++;
     try {
       // Run previous cleanup function (like React useEffect cleanup).
-      if (this._cleanupFn) {
-        try {
-          this._cleanupFn();
-        } catch (err) {
-          reportEffectError('Error in effect cleanup:', err);
-        }
-        this._cleanupFn = undefined;
-      }
+      this._runCleanup();
 
       // Snapshot the current dependencies before dropping them. Unsubscribing
       // first is what makes conditional tracking correct, but it also means a
@@ -526,7 +529,7 @@ class EffectNode implements Subscriber {
 
       // Unsubscribe from all previous dependencies so conditional tracking
       // is correct on re-execution.
-      this._unsubscribe();
+      unsubscribeFromDependencies(this);
 
       pushSubscriber(this);
       let threw = false;
@@ -562,26 +565,11 @@ class EffectNode implements Subscriber {
     }
   }
 
-  /** Unsubscribe from all tracked dependencies. */
-  _unsubscribe(): void {
-    for (const dep of this.dependencies) {
-      dep._subscribers.delete(this);
-    }
-    this.dependencies.clear();
-  }
-
   /** Dispose the effect permanently — runs cleanup and unsubscribes. */
   _dispose(): void {
     this._disposed = true;
-    if (this._cleanupFn) {
-      try {
-        this._cleanupFn();
-      } catch (err) {
-        reportEffectError('Error in effect cleanup:', err);
-      }
-      this._cleanupFn = undefined;
-    }
-    this._unsubscribe();
+    this._runCleanup();
+    unsubscribeFromDependencies(this);
     pendingEffects.delete(this);
   }
 }
@@ -620,10 +608,7 @@ export interface EffectOptions {
  * dispose(); // stop watching
  * ```
  */
-export function effect(
-  fn: () => void | (() => void),
-  options?: EffectOptions,
-): () => void {
+export function effect(fn: () => void | (() => void), options?: EffectOptions): () => void {
   const node = new EffectNode(fn, options?.scheduler);
 
   // Run synchronously on creation to establish initial subscriptions. This is
@@ -719,34 +704,53 @@ function flushPendingEffects(): void {
   flushDepth++;
   try {
     if (flushDepth > MAX_FLUSH_ITERATIONS) {
-      pendingEffects.clear();
-      throw new FlushGuardError(
-        'Maximum effect flush iterations exceeded (possible infinite loop: an effect is re-triggering itself)',
-      );
+      abortFlush();
     }
     let iterations = 0;
     while (pendingEffects.size > 0) {
       if (++iterations > MAX_FLUSH_ITERATIONS) {
-        pendingEffects.clear();
-        throw new FlushGuardError(
-          'Maximum effect flush iterations exceeded (possible infinite loop: an effect is re-triggering itself)',
-        );
+        abortFlush();
       }
       const effects = Array.from(pendingEffects);
       pendingEffects.clear();
       for (let i = 0; i < effects.length; i++) {
         const node = effects[i];
-        // a scheduled effect keeps its scheduler even when it was queued by a
-        // batch: the point of a DOM binding's scheduler is that its updates
-        // ALWAYS land in one place, so batch() must not smuggle one back onto
-        // the synchronous path.
-        if (node._scheduler) node._scheduler(node._runBound);
-        else node._run();
+        try {
+          // a scheduled effect keeps its scheduler even when it was queued by a
+          // batch: the point of a DOM binding's scheduler is that its updates
+          // ALWAYS land in one place, so batch() must not smuggle one back onto
+          // the synchronous path.
+          if (node._scheduler) node._scheduler(node._runBound);
+          else node._run();
+        } catch (err) {
+          // A guard abort deeper in the cascade unwinds through here. The
+          // effects we did not get to still have _queued set — reset it so
+          // future notifications can re-run them instead of being silently
+          // ignored forever.
+          for (let j = i + 1; j < effects.length; j++) {
+            effects[j]._queued = false;
+          }
+          throw err;
+        }
       }
     }
   } finally {
     flushDepth--;
   }
+}
+
+/**
+ * Abort a runaway flush: drop the pending queue (resetting each effect's
+ * queued flag so it stays re-runnable) and throw the guard error.
+ */
+function abortFlush(): never {
+  for (const pending of pendingEffects) {
+    pending._queued = false;
+  }
+  pendingEffects.clear();
+  throw new FlushGuardError(
+    'Maximum effect flush iterations exceeded (possible infinite loop: an effect is re-triggering itself)',
+  );
 }
 
 // ---------------------------------------------------------------------------
