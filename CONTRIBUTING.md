@@ -54,6 +54,19 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 - Follow existing patterns in the codebase
 - Add tests for new functionality
 
+```bash
+pnpm lint          # eslint over the whole repo
+pnpm lint:fix      # …and apply the fixable ones
+pnpm format        # prettier over the whole repo
+pnpm format:check  # what CI runs
+```
+
+Both commands take the repository root, not a file glob. A glob silently
+stops matching when a file moves or a directory is added, which is how most
+of the repo went unlinted for a long time. If something must be skipped, skip
+it where the exclusion belongs — `ignores` in `eslint.config.js` or
+`.prettierignore` — and say why in a comment.
+
 ## Testing
 
 Tests use [Vitest](https://vitest.dev/) with jsdom environment:
