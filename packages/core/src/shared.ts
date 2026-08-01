@@ -100,9 +100,9 @@ export function sharedSignal<T>(
 
   // Build the SharedSignal by re-assigning set/update and adding close.
   const shared = inner as unknown as SharedSignal<T>;
-  (shared as any).set = broadcastSet;
-  (shared as any).update = broadcastUpdate;
-  (shared as any).close = () => {
+  shared.set = broadcastSet;
+  shared.update = broadcastUpdate;
+  shared.close = () => {
     channel.close();
   };
 
