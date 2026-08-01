@@ -1,10 +1,11 @@
 // API route: POST /api/chat
 // Demonstrates @matthesketh/utopia-ai with OpenAI adapter + SSE streaming
 
-import { createAI } from '@matthesketh/utopia-ai'
-import { openaiAdapter } from '@matthesketh/utopia-ai/openai'
-import { streamSSE } from '@matthesketh/utopia-ai'
-import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http';
+
+import { createAI } from '@matthesketh/utopia-ai';
+import { streamSSE } from '@matthesketh/utopia-ai';
+import { openaiAdapter } from '@matthesketh/utopia-ai/openai';
 
 const ai = createAI(
   openaiAdapter({
@@ -14,11 +15,11 @@ const ai = createAI(
   {
     hooks: {
       onBeforeChat(request) {
-        console.log(`[ai] chat request: ${request.messages.length} messages`)
-        return request
+        console.log(`[ai] chat request: ${request.messages.length} messages`);
+        return request;
       },
       onError(error, context) {
-        console.error(`[ai] error in ${context.method}:`, error.message)
+        console.error(`[ai] error in ${context.method}:`, error.message);
       },
     },
     retry: {
@@ -26,16 +27,18 @@ const ai = createAI(
       baseDelay: 1000,
     },
   },
-)
+);
 
 export async function POST(req: IncomingMessage, res: ServerResponse) {
   const body = await new Promise<string>((resolve) => {
-    let data = ''
-    req.on('data', (chunk: Buffer) => { data += chunk.toString() })
-    req.on('end', () => resolve(data))
-  })
+    let data = '';
+    req.on('data', (chunk: Buffer) => {
+      data += chunk.toString();
+    });
+    req.on('end', () => resolve(data));
+  });
 
-  const { messages } = JSON.parse(body)
+  const { messages } = JSON.parse(body);
 
   // Stream AI response as SSE
   const stream = ai.stream({
@@ -43,13 +46,13 @@ export async function POST(req: IncomingMessage, res: ServerResponse) {
     model: 'gpt-4o',
     temperature: 0.7,
     maxTokens: 1024,
-  })
+  });
 
   await streamSSE(res, stream, {
     onChunk(chunk) {
       if (chunk.finishReason) {
-        console.log(`[ai] stream finished: ${chunk.finishReason}`)
+        console.log(`[ai] stream finished: ${chunk.finishReason}`);
       }
     },
-  })
+  });
 }

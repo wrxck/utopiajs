@@ -1,4 +1,5 @@
-import { hydrate } from '@matthesketh/utopia-runtime'
-import App from './App.utopia'
+import { hydrate } from '@matthesketh/utopia-runtime';
 
-hydrate(App, '#app')
+import App from './App.utopia';
+
+hydrate(App, '#app');
