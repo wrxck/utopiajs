@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] - 2026-08-01
+
+A single-defect patch. `@matthesketh/prettier-plugin-utopia` could silently
+delete part of a component's `<script>` block, and the damage survived every
+check that would normally catch it.
+
+### Fixed
+
+- `@matthesketh/prettier-plugin-utopia` — **formatting could destroy source.**
+  The block splitter counted `<script>` tags by scanning text, so any token
+  that looked like an opening tag but was not one raised the depth count with
+  nothing to unwind it. The commonest trigger is the literal text `<script>`
+  inside an ordinary `//` comment; the mandatory `<\/script>` escape inside a
+  string literal, and an unclosed block, do it too. The block's opening lines —
+  every import and declaration above the comment — were dropped, and the
+  remnant of the comment line was left as a bare `is;` statement. The wreckage
+  is valid TypeScript, so nothing failed; it is also idempotent, so a
+  fixed-point check passes on an already-ruined file.
+
+  Fixed in three places, so no single miscount can delete source again:
+  `findBlockEnd` falls back to the first closing tag when the depth cannot
+  unwind, which is where the compiler's parser ends the block too, so the
+  formatter and the compiler always agree; the parser refuses any file its
+  blocks do not fully span; and the printer repeats that check against
+  prettier's own copy of the file, since the printer is where the loss would
+  actually happen. An unclosed block is now refused rather than emptied.
+
+### Changed
+
+- All packages bumped to 0.13.1, as the lockstep convention requires. Only the
+  prettier plugin's shipped code changed; the other fifteen carry the
+  repository-wide lint and format pass, which is source-level only — their
+  built output differs from 0.13.0 by import ordering and chunk hashes alone.
+
 ## [0.13.0] - 2026-08-01
 
 A quality release. The bulk of it is the repository-wide review in #39 — 56
