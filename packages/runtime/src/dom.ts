@@ -8,6 +8,8 @@
 
 import { effect } from '@matthesketh/utopia-core';
 
+import { domScheduler } from '@/scheduler';
+
 import { pushDisposer } from '@/component';
 import { isHydrating, claimNode, unclaimNode, enterNode, exitNode } from '@/hydration';
 
@@ -149,7 +151,7 @@ export function setHtml(el: Element, getter: () => unknown): void {
       if (el.innerHTML !== html) {
         el.innerHTML = html;
       }
-    }),
+    }, { scheduler: domScheduler }),
   );
 }
 
@@ -175,7 +177,7 @@ export function setShow(el: HTMLElement, getter: () => unknown): void {
   pushDisposer(
     effect(() => {
       el.style.display = getter() ? original : 'none';
-    }),
+    }, { scheduler: domScheduler }),
   );
 }
 
@@ -508,7 +510,7 @@ export function setSafeHtml(el: Element, getter: () => unknown): void {
       if (el.innerHTML !== html) {
         el.innerHTML = html;
       }
-    }),
+    }, { scheduler: domScheduler }),
   );
 }
 

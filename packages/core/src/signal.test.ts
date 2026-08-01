@@ -3,7 +3,18 @@
 // ============================================================================
 
 import { describe, it, expect, vi } from 'vitest';
-import { signal, computed, effect, batch, untrack, createRoot, type ReadonlySignal } from '@/index';
+import {
+  signal,
+  computed,
+  effect,
+  batch,
+  untrack,
+  createRoot,
+  queueJob,
+  tick,
+  flushSync,
+  type ReadonlySignal,
+} from '@/index';
 
 // ---------------------------------------------------------------------------
 // signal — basic read / write
@@ -1088,5 +1099,296 @@ describe('createRoot()', () => {
     s.set(1);
     expect(runs).toBe(2);
     stop();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// effect — a throwing run must not orphan the effect
+// ---------------------------------------------------------------------------
+
+describe('effect — a throwing run must not orphan the effect', () => {
+  it('keeps its dependencies when a re-run throws before reading any signal', () => {
+    const s = signal(0);
+    const seen: number[] = [];
+    let boom = false;
+
+    const stop = effect(() => {
+      // this throw lands before the first signal read, and _run has already
+      // dropped every subscription by then. without the snapshot restore the
+      // effect survives subscribed to nothing and can never be notified again.
+      if (boom) throw new Error('failed before reading anything');
+      seen.push(s());
+    });
+    expect(seen).toEqual([0]);
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    boom = true;
+    s.set(1);
+    expect(seen).toEqual([0]);
+    expect(consoleSpy).toHaveBeenCalledWith('Error in effect:', expect.any(Error));
+
+    boom = false;
+    s.set(2);
+    expect(seen).toEqual([0, 2]); // still reachable — the effect recovered
+
+    consoleSpy.mockRestore();
+    stop();
+  });
+
+  it('does not restore dependencies a successful run deliberately dropped', () => {
+    const a = signal(0);
+    const b = signal(0);
+    let readB = true;
+    let runs = 0;
+
+    const stop = effect(() => {
+      runs++;
+      a();
+      if (readB) b();
+    });
+    expect(runs).toBe(1);
+
+    readB = false;
+    a.set(1); // re-runs and legitimately stops tracking b
+    expect(runs).toBe(2);
+
+    b.set(1);
+    expect(runs).toBe(2); // conditional tracking still drops b
+
+    stop();
+  });
+
+  it('keeps only what a run captured when it throws after reading a signal', () => {
+    const a = signal(0);
+    const b = signal(0);
+    let runs = 0;
+    let boom = false;
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const stop = effect(() => {
+      runs++;
+      a();
+      if (boom) throw new Error('failed between the two reads');
+      b();
+    });
+    expect(runs).toBe(1);
+
+    boom = true;
+    a.set(1); // run 2 captures a, then throws before reaching b
+    expect(runs).toBe(2);
+
+    b.set(1);
+    expect(runs).toBe(2); // b was dropped by a partial run — not resurrected
+
+    a.set(2);
+    expect(runs).toBe(3); // what it did capture still notifies it
+
+    consoleSpy.mockRestore();
+    stop();
+  });
+
+  it('leaves a disposed effect unsubscribed even when its final run threw', () => {
+    const s = signal(0);
+    let runs = 0;
+    let dispose: () => void;
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    dispose = effect(() => {
+      runs++;
+      if (runs > 1) {
+        dispose();
+        throw new Error('disposed mid-run, then threw');
+      }
+      s();
+    });
+    expect(runs).toBe(1);
+
+    s.set(1);
+    expect(runs).toBe(2);
+
+    s.set(2);
+    expect(runs).toBe(2); // stayed disposed
+
+    consoleSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// effect — synchronous cascade guard
+// ---------------------------------------------------------------------------
+
+describe('effect — synchronous cascade guard', () => {
+  it('throws when running an effect synchronously runs effects without bound', () => {
+    // the unbatched path: every run starts the next one synchronously, so the
+    // cascade never reaches flushPendingEffects and its guards never see it.
+    let depth = 0;
+    const grow = (): void => {
+      effect(() => {
+        if (depth++ < 500) grow();
+      });
+    };
+
+    expect(() => grow()).toThrow('Maximum synchronous effect cascade depth exceeded');
+    expect(depth).toBeLessThan(500); // stopped early rather than running away
+  });
+
+  it('permits a deep but finite synchronous chain', () => {
+    let depth = 0;
+    const grow = (): void => {
+      effect(() => {
+        if (depth++ < 50) grow();
+      });
+    };
+
+    expect(() => grow()).not.toThrow();
+    expect(depth).toBe(51);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// effect — scheduler option
+// ---------------------------------------------------------------------------
+
+describe('effect — scheduler option', () => {
+  it('runs the first pass inline and defers only re-runs', async () => {
+    // a binding must paint on mount; it is the UPDATE that waits, so an element
+    // never appears blank for a microtask.
+    const s = signal('a');
+    const seen: string[] = [];
+    effect(() => void seen.push(s()), { scheduler: queueJob });
+
+    expect(seen).toEqual(['a']); // mounted synchronously
+
+    s.set('b');
+    expect(seen).toEqual(['a']); // not yet
+    await tick();
+    expect(seen).toEqual(['a', 'b']);
+  });
+
+  it('collapses a burst of writes into one run', () => {
+    // the reason bindings are scheduled at all: a handler that writes five
+    // signals should produce one DOM pass, not five.
+    const a = signal(0);
+    const b = signal(0);
+    let runs = 0;
+    effect(
+      () => {
+        a();
+        b();
+        runs++;
+      },
+      { scheduler: queueJob },
+    );
+    expect(runs).toBe(1);
+
+    a.set(1);
+    a.set(2);
+    b.set(1);
+    return tick().then(() => {
+      expect(runs).toBe(2); // one re-run for all three writes
+    });
+  });
+
+  it('lets the write finish before a scheduled reader observes the world', async () => {
+    // the bug this exists for. `store` stands in for anything a binding reads
+    // that is not itself reactive — a date-fns default locale, a persisted
+    // copy, a dom attribute — updated by the same function that wrote the
+    // signal. run inline, the reader sees the old value.
+    const flag = signal(0);
+    let store = 'old';
+    const observed: string[] = [];
+
+    effect(
+      () => {
+        flag();
+        observed.push(store);
+      },
+      { scheduler: queueJob },
+    );
+    observed.length = 0;
+
+    const update = (): void => {
+      flag.set(1); // subscribers are notified INSIDE this call
+      store = 'new'; // ...and this had not happened yet
+    };
+    update();
+
+    await tick();
+    expect(observed).toEqual(['new']);
+  });
+
+  it('keeps a scheduled effect scheduled when it was queued by a batch', () => {
+    // batch() must not smuggle a binding back onto the synchronous path: its
+    // updates always land in one place.
+    const s = signal(0);
+    let runs = 0;
+    effect(
+      () => {
+        s();
+        runs++;
+      },
+      { scheduler: queueJob },
+    );
+    batch(() => {
+      s.set(1);
+      s.set(2);
+    });
+    expect(runs).toBe(1); // still deferred after the batch closed
+    return tick().then(() => expect(runs).toBe(2));
+  });
+
+  it('does not run a scheduled effect that was disposed before its turn', () => {
+    const s = signal(0);
+    let runs = 0;
+    const stop = effect(
+      () => {
+        s();
+        runs++;
+      },
+      { scheduler: queueJob },
+    );
+    s.set(1);
+    stop(); // disposed while its job sits in the queue
+    return tick().then(() => expect(runs).toBe(1));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// flushSync
+// ---------------------------------------------------------------------------
+
+describe('flushSync', () => {
+  it('applies scheduled work before returning', () => {
+    const s = signal(0);
+    let runs = 0;
+    effect(
+      () => {
+        s();
+        runs++;
+      },
+      { scheduler: queueJob },
+    );
+
+    flushSync(() => s.set(1));
+    expect(runs).toBe(2); // no await needed
+  });
+
+  it('still collapses several writes into one run', () => {
+    const s = signal(0);
+    let runs = 0;
+    effect(
+      () => {
+        s();
+        runs++;
+      },
+      { scheduler: queueJob },
+    );
+
+    flushSync(() => {
+      s.set(1);
+      s.set(2);
+      s.set(3);
+    });
+    expect(runs).toBe(2);
   });
 });

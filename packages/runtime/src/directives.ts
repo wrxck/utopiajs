@@ -5,7 +5,7 @@
  * constructs (`@if`, `@for`) and child components in .utopia templates.
  */
 
-import { effect } from '@matthesketh/utopia-core';
+import { effect, signal } from '@matthesketh/utopia-core';
 import { insertBefore, removeNode } from '@/dom';
 import {
   createComponentInstance,
@@ -128,6 +128,12 @@ export function createIf(
     }
     lastConditionTruthy = truthy;
     applyBranch();
+    // NOT scheduled. structural work stays synchronous: mounting a branch runs
+    // its own bindings' first pass inline, so a newly shown subtree is complete
+    // the moment it appears, and everything still settles before paint (a
+    // microtask precedes the frame). deferring reconciliation instead would put
+    // node identity, focus and caret preservation — the most delicate code in
+    // the runtime — behind a queue, for nothing the user could ever see.
   });
 
   const disposeAll = (): void => {
@@ -149,18 +155,41 @@ export function createIf(
 // ---------------------------------------------------------------------------
 
 /**
+ * The reactive handle a row gets on its own loop variables.
+ *
+ * Compiled templates take it as the third parameter of `renderItem` and use
+ * both halves; a hand-written `renderItem` can ignore it and keep the plain
+ * `(item, index)` contract.
+ */
+export interface ForItemScope<T> {
+  /**
+   * Subscribe the calling effect to this row's item. Compiled rows call it at
+   * the start of every expression they evaluate reactively, which is what
+   * makes the loop variable reactive — a plain `item.name` read registers no
+   * dependency, so without this the row's effects would run exactly once.
+   */
+  track(): void;
+  /**
+   * Register the row's rebinder. createFor calls it with the current item and
+   * index before waking the row's effects, so they read fresh values through
+   * the very same loop variables the template was written against.
+   */
+  onUpdate(fn: (item: T, index: number) => void): void;
+}
+
+/**
  * List rendering directive.
  *
  * @param anchor     Comment node marking the insertion point.
  * @param list       Function returning the current array (reads signals).
- * @param renderItem Factory `(item, index) => Node` for each element.
- * @param key        Optional key extractor for future keyed-diffing optimisation.
+ * @param renderItem Factory `(item, index, scope) => Node` for each element.
+ * @param key        Optional key extractor for keyed diffing.
  * @returns A dispose function.
  */
 export function createFor<T>(
   anchor: Comment,
   list: () => T[],
-  renderItem: (item: T, index: number) => Node,
+  renderItem: (item: T, index: number, scope: ForItemScope<T>) => Node,
   key?: (item: T, index: number) => string | number,
 ): () => void {
   // keyed reconciliation: on every list update we diff the new array
@@ -182,7 +211,21 @@ export function createFor<T>(
   // the disposers are also forwarded to the surrounding scope (the
   // component or the calling createFor) via pushDisposer so unmount still
   // sweeps everything up.
-  type Entry = { key: string | number; node: Node; dispose: () => void };
+  //
+  // reuse is only half the story: the row that survives must also start
+  // showing the NEW item. keying by `item.id` means the canonical immutable
+  // update — items.map(x => ({ ...x, name })) — hits the reuse path with a
+  // different object under the same key, and a row whose bindings closed over
+  // the first object would render it forever. so every entry owns a version
+  // cell: `refresh` rebinds the row's loop variables and bumps the cell, and
+  // the row's effects (which read it through ForItemScope.track) re-run
+  // against the new item without the node being recreated.
+  type Entry = {
+    key: string | number;
+    node: Node;
+    dispose: () => void;
+    refresh: (item: T, index: number) => void;
+  };
   let entries: Entry[] = [];
 
   const keyOf = (item: T, index: number): string | number => {
@@ -210,10 +253,24 @@ export function createFor<T>(
   // restore the parent disposer scope before propagating, so a faulty
   // renderItem can't leak the disposer-capture stack.
   const renderEntry = (item: T, index: number, k: string | number): Entry => {
+    // bumped on every reconcile this row survives. the value itself is
+    // meaningless — it exists to notify, so an unchanged (even identical)
+    // item still re-runs the row's bindings and picks up an in-place mutation.
+    const version = signal(0);
+    let rebind: ((item: T, index: number) => void) | undefined;
+    const scope: ForItemScope<T> = {
+      track: () => {
+        version();
+      },
+      onUpdate: (fn) => {
+        rebind = fn;
+      },
+    };
+
     const prev = startCapturingDisposers();
     let node: Node;
     try {
-      node = renderItem(item, index);
+      node = renderItem(item, index, scope);
     } catch (err) {
       stopCapturingDisposers(prev);
       throw err;
@@ -228,7 +285,13 @@ export function createFor<T>(
         }
       }
     };
-    return { key: k, node, dispose };
+    // rebind before bumping: the effects the bump wakes read the loop
+    // variables, so those must already hold the new item and index.
+    const refresh = (nextItem: T, nextIndex: number): void => {
+      if (rebind) rebind(nextItem, nextIndex);
+      version.update((n) => n + 1);
+    };
+    return { key: k, node, dispose, refresh };
   };
 
   const reconcile = effect(() => {
@@ -251,6 +314,7 @@ export function createFor<T>(
       seen.add(k);
       const existing = prevByKey.get(k);
       if (existing) {
+        existing.refresh(item, i);
         next[i] = existing;
         prevByKey.delete(k);
       } else {
@@ -281,6 +345,7 @@ export function createFor<T>(
     }
 
     entries = next;
+    // NOT scheduled — see createIf above.
   });
 
   const disposeAll = (): void => {

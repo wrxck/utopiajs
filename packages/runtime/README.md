@@ -47,7 +47,7 @@ hydrate(App, '#app');
 | Export | Description |
 |--------|-------------|
 | `createIf(anchor, cond, trueBranch, falseBranch?)` | Conditional rendering |
-| `createFor(anchor, list, renderFn)` | List rendering |
+| `createFor(anchor, list, renderFn, key?)` | Keyed list rendering. `renderFn` is `(item, index, scope)`; the scope lets a reused row rebind its loop variables and re-run its bindings |
 | `createComponent(def, props?)` | Component instantiation |
 
 **Lifecycle:**

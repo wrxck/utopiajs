@@ -414,10 +414,11 @@ describe('Template Compilation', () => {
     expect(result.code).toContain('createFor(');
     expect(result.code).toContain('items()');
     expect(result.code).not.toContain('_ctx.');
-    // The item should be a function parameter.
-    expect(result.code).toContain('(item, _index)');
-    // Inside the for body, `item` should be used directly.
-    expect(result.code).toContain('String(item)');
+    // The item should be a function parameter (followed by the row scope).
+    expect(result.code).toMatch(/\(item, _index, _scope\d+\) =>/);
+    // Inside the for body, `item` should be used directly — behind the row's
+    // track call, which is what re-runs the binding when the row is reused.
+    expect(result.code).toMatch(/String\(\(_track\d+\(\), item\)\)/);
     expect(result.helpers.has('createFor')).toBe(true);
     expect(result.helpers.has('createComment')).toBe(true);
   });
@@ -828,8 +829,8 @@ const items = signal(['a', 'b', 'c'])
     expect(result.code).toContain('items()');
     expect(result.code).not.toContain('_ctx.');
     // `item` inside the for body should be a function parameter.
-    expect(result.code).toContain('(item, _index)');
-    expect(result.code).toContain('String(item)');
+    expect(result.code).toMatch(/\(item, _index, _scope\d+\) =>/);
+    expect(result.code).toMatch(/String\(\(_track\d+\(\), item\)\)/);
   });
 
   it('compiles a SFC with all directive types', () => {
@@ -1268,5 +1269,122 @@ describe('u-else-if codegen', () => {
     // ...and the else-if createIf is indented (inside the false-branch closure),
     // never at the bare render-body indent.
     expect(code).not.toMatch(/\n {2}createIf\([^\n]*Boolean\(b\)/);
+  });
+});
+
+// ===========================================================================
+// u-for row scope — the loop variable has to be reactive
+// ===========================================================================
+//
+// A keyed row survives an immutable list update (that is the point of :key),
+// so the row must be told that it now holds a different item. The loop
+// variable stays a plain parameter — templates keep writing `item.name`, not
+// `item().name` — and the codegen supplies the two halves that make it
+// reactive: `onUpdate` rebinds the parameter, and a `track()` call in front of
+// every reactive expression subscribes that expression's effect to the row.
+
+describe('u-for row scope codegen', () => {
+  it('takes the row scope and rebinds the loop variables from it', () => {
+    const { code } = compileTemplate(
+      '<li u-for="(item, i) in items()" :key="item.id">{{ item.n }}</li>',
+    );
+    const scopeVar = code.match(/\(item, i, (_scope\d+)\) =>/)?.[1];
+    expect(scopeVar).toBeTruthy();
+    // the track fn is read defensively, so a caller that passes no scope (a
+    // hand-written renderItem, or an older runtime) still renders.
+    expect(code).toMatch(
+      new RegExp(`const _track\\d+ = ${scopeVar} \\? ${scopeVar}\\.track : \\(\\) => \\{\\}`),
+    );
+    expect(code).toContain(`if (${scopeVar}) ${scopeVar}.onUpdate(`);
+    // the rebinder assigns the author's own names — nothing downstream is rewritten.
+    expect(code).toMatch(
+      /\.onUpdate\(\(_item\d+, _idx\d+\) => \{ item = _item\d+; i = _idx\d+ \}\)/,
+    );
+  });
+
+  it('tracks the row in every expression the runtime evaluates reactively', () => {
+    const { code } = compileTemplate(
+      '<li u-for="it in items()" :class="it.cls" u-show="it.vis"><b u-html="it.body"></b><i u-if="it.on">{{ it.n }}</i></li>',
+    );
+    const track = code.match(/const (_track\d+) =/)?.[1] as string;
+    expect(track).toBeTruthy();
+    expect(code).toMatch(
+      new RegExp(`setAttr\\(_el\\d+, 'class', \\(${track}\\(\\), it\\.cls\\)\\)`),
+    );
+    expect(code).toMatch(
+      new RegExp(`setShow\\(_el\\d+, \\(\\) => \\(${track}\\(\\), it\\.vis\\)\\)`),
+    );
+    expect(code).toMatch(
+      new RegExp(`setSafeHtml\\(_el\\d+, \\(\\) => \\(${track}\\(\\), it\\.body\\)\\)`),
+    );
+    expect(code).toContain(`Boolean((${track}(), it.on))`);
+    expect(code).toContain(`String((${track}(), it.n))`);
+  });
+
+  it('leaves the :key and event handlers untracked', () => {
+    const { code } = compileTemplate(
+      '<li u-for="it in items()" :key="it.id" @click="() => pick(it)">{{ it.n }}</li>',
+    );
+    // the key runs against the item createFor is placing, not the row's
+    // current one, and it takes the raw parameters.
+    expect(code).toMatch(/, \(it, _index\) => it\.id\)/);
+    // a handler is not evaluated in an effect; it reads the rebound parameter
+    // at call time, so tracking it would only add a wasted subscription — and
+    // wrapping it would break the compiler's arrow-vs-expression detection.
+    expect(code).toMatch(/addEventListener\(_el\d+, 'click', \(\) => pick\(it\)\)/);
+  });
+
+  it('tracks every enclosing row from a nested loop', () => {
+    const { code } = compileTemplate(
+      '<ul><li u-for="g in groups()" :key="g.id"><b u-for="c in g.kids" :key="c.id">{{ g.label }}{{ c.n }}</b></li></ul>',
+    );
+    const tracks = [...code.matchAll(/const (_track\d+) =/g)].map((m) => m[1]);
+    expect(tracks.length).toBe(2);
+    const [outer, inner] = tracks;
+    // the inner list expression reads the outer row, so replacing the outer
+    // item re-reconciles the inner list against its new children.
+    expect(code).toMatch(
+      new RegExp(`createFor\\(_el\\d+, \\(\\) => \\(${outer}\\(\\), g\\.kids\\)`),
+    );
+    // and expressions in the inner row read BOTH rows: an inner list that
+    // never mentions the outer variable would otherwise leave a binding on
+    // the outer one stale.
+    expect(code).toContain(`String((${outer}(), ${inner}(), g.label))`);
+    expect(code).toContain(`String((${outer}(), ${inner}(), c.n))`);
+  });
+
+  it('adds nothing at all outside a u-for', () => {
+    const { code } = compileTemplate(
+      '<div :class="c()" u-if="show()">{{ msg() }}<button @click="go">x</button></div>',
+    );
+    expect(code).not.toContain('_track');
+    expect(code).not.toContain('_scope');
+    expect(code).toContain('String(msg())');
+    expect(code).toContain("setAttr(_el2, 'class', c())");
+  });
+
+  it('emits a parseable module for every shape of row', () => {
+    const templates = [
+      '<li u-for="i in items()">{{ i }}</li>',
+      '<li u-for="(i, n) in items()" :key="i.id">{{ n }}{{ i.a ? i.b : i.c }}</li>',
+      '<ul><li u-for="a in x()" :key="a.id"><b u-for="c in a.kids" :key="c.id">{{ a.n }}{{ c.n }}</b></li></ul>',
+      '<li u-for="i in items()" :class="{ on: i.active }" :style="{ color: i.c }">{{ `${i.a}-${i.b}` }}</li>',
+      '<li u-for="i in items()"><span u-if="i.a">A</span><span u-else-if="i.b">B</span><span u-else>C</span></li>',
+      '<li u-for="i in items()"><Child :item="i" @pick="() => pick(i)" /></li>',
+      '<li u-for="i in items()" @click.prevent.stop="remove(i.id)"><input u-model="name" :value="i.v" /></li>',
+    ];
+    const free = ['items', 'x', 'name', 'pick', 'remove', 'Child'];
+    for (const tpl of templates) {
+      const { code } = compileTemplate(tpl);
+      const helpers = (code.match(/import \{ ([^}]*) \}/)?.[1] ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const body = code.replace(/^import[^\n]*\n/, '');
+      expect(
+        () => new Function(...helpers, ...free, `${body}\nreturn __render`),
+        `failed to parse: ${tpl}`,
+      ).not.toThrow();
+    }
   });
 });
