@@ -3,8 +3,15 @@ name: CI
 on:
   push:
     branches: [main, develop]
+  # every pull request, whatever it targets. filtering on the base branch meant
+  # a PR stacked on another branch merged without lint, format or tests ever
+  # running against it.
   pull_request:
-    branches: [main, develop]
+
+# a new push supersedes the run in flight for the same ref.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint:
