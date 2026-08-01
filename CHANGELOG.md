@@ -4,6 +4,50 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-08-01
+
+A quality release. The bulk of it is the repository-wide review in #39 — 56
+bugs, each proven by a failing test written before the fix, plus a coverage
+push from ~66% to ~100% (1009 tests to 1923). No public API changes. Alongside
+it, three defects that the review surfaced in code it could not itself reach,
+because it branched before the 0.9.0-0.12.0 wave.
+
+### Fixed
+
+- `@matthesketh/utopia-compiler` — **a static attribute value spanning lines
+  emitted an invalid module.** `escapeStr` escaped backslashes and quotes but
+  not line breaks, so a raw newline landed inside a single-quoted JS string
+  literal and the emitted render module failed to parse.
+- `@matthesketh/utopia-compiler` — **a structural directive inside a component
+  slot crashed at render.** The slot body is generated into a closure, but the
+  deferred `createIf`/`createFor` call it produces was flushed into the
+  surrounding function, where the closure's variables are not in scope — every
+  such component threw a `ReferenceError`. The slot body now gets its own
+  deferred frame, the same way conditional branches already did.
+- `@matthesketh/utopia-runtime` — **a root-level `u-for` rendered nothing.**
+  `createFor`'s first reconcile runs before the caller has attached the
+  anchor; it returned early instead of retrying, so unless the list happened to
+  change again later the rows never appeared at all. It now retries on a
+  microtask once the anchor has a parent, matching `createIf`. This also
+  covers a `u-for` used as a branch of a `u-else-if` chain.
+- Roughly 56 further fixes across `ai`, `content`, `email`, `router`, `server`,
+  `runtime`, `core`, `cli`, `create-utopia`, `vite-plugin`, `test` and the
+  prettier plugin — among them: the resend adapter reporting failed sends as
+  success, a lazy-init race duplicating SMTP pools, the router's same-origin
+  check being fooled by `http://origin.evil.com`, API route handlers receiving
+  requests with no headers or body, streamed renders leaking head entries,
+  leaked AI stream readers, `.yml` content entries being unreadable, and the
+  formatter truncating templates that contain a native `<template>` element.
+  See PR #39 for the full list.
+
+### Changed
+
+- `renderToStream` honours backpressure (output asserted byte-identical to
+  `renderToString`).
+- CI builds the workspace before linting, since the workspace eslint and
+  prettier plugins load from `dist/`.
+- All packages bumped to 0.13.0.
+
 ## [0.12.0] - 2026-07-27
 
 Every package moves to 0.12.0 together. The versions had drifted three ways
