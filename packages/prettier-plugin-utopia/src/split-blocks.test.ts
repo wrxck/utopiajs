@@ -80,6 +80,25 @@ describe('splitBlocks', () => {
     expect(root.blocks[0].end).toBe(source.length);
   });
 
+  it('ends a script block at its real closing tag despite a mention in a comment', () => {
+    // the trigger seen in the wild, and by far the likeliest: an ordinary line
+    // comment that happens to name the tag. no escape sequence is involved, so
+    // nothing about the file looks unusual.
+    const source = [
+      '<script>',
+      "import { signal } from '@matthesketh/utopia-core';",
+      '',
+      '// the client bundle inlines every route module, so this <script> is',
+      '// evaluated at app boot, not when the route renders.',
+      'const status = signal(0);',
+      '</script>',
+    ].join('\n');
+    const root = splitBlocks(source);
+    expect(root.blocks.map((b) => b.name)).toEqual(['script']);
+    expect(root.blocks[0].content).toContain("import { signal } from '@matthesketh/utopia-core';");
+    expect(root.blocks[0].end).toBe(source.length);
+  });
+
   it('returns blocks in source order', () => {
     const root = splitBlocks(
       '<style>.a{}</style><script>1</script><template><i/></template><test>2</test>',

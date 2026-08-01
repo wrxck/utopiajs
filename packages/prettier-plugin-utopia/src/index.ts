@@ -9,7 +9,13 @@
 
 import { doc, type Parser, type Plugin, type Printer, type SupportLanguage } from 'prettier';
 
-import { type BlockName, splitBlocks, type UtopiaBlock, type UtopiaRoot } from '@/split-blocks';
+import {
+  assertBlocksSpanSource,
+  type BlockName,
+  splitBlocks,
+  type UtopiaBlock,
+  type UtopiaRoot,
+} from '@/split-blocks';
 
 const { hardline, indent, join } = doc.builders;
 
@@ -52,9 +58,16 @@ function openingTag(block: UtopiaBlock): string {
 
 export const printers: Record<string, Printer<AnyNode>> = {
   'utopia-ast': {
-    print(path, _options, print) {
+    print(path, options, print) {
       const node = path.node;
       if (node.type === 'root') {
+        // the line below is the only thing that reaches the output file, so
+        // anything the blocks do not span is about to be deleted. the parser
+        // checks this too; it is repeated here because this is where the loss
+        // would actually happen, and it is checked against prettier's own copy
+        // of the file rather than whatever the parser was handed.
+        assertBlocksSpanSource(options.originalText, node.blocks);
+
         // a blank line between blocks, and a trailing newline at end of file.
         return [join([hardline, hardline], path.map(print, 'blocks')), hardline];
       }
