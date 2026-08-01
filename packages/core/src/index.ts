@@ -807,12 +807,12 @@ export { queueJob, tick } from '@/scheduler';
 // Shared signals (cross-tab sync via BroadcastChannel)
 // ---------------------------------------------------------------------------
 
-export { sharedSignal } from '@/shared';
 export type { SharedSignal, SharedSignalOptions } from '@/shared';
+export { sharedSignal } from '@/shared';
 
 // ---------------------------------------------------------------------------
 // Persisted signals (synced to localStorage / sessionStorage)
 // ---------------------------------------------------------------------------
 
-export { persistedSignal } from '@/persisted';
 export type { PersistedSignal, PersistedSignalOptions } from '@/persisted';
+export { persistedSignal } from '@/persisted';

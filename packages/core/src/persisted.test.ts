@@ -1,7 +1,7 @@
 // tests for persistedSignal: storage seeding, write-through, cross-instance
 // restore, SSR fallback, and corrupt-value tolerance.
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { effect } from '@/index';
 import { persistedSignal } from '@/persisted';

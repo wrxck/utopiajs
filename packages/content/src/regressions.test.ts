@@ -1,25 +1,26 @@
 // regression tests for bugs found in the code-quality review pass.
 // each describe block names the bug it pins down.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
-import { symlinkSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, symlinkSync } from 'node:fs';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createFilesystemAdapter } from './adapters/filesystem';
 import {
+  clearCollections,
   createContent,
   defineCollection,
   getCollection,
-  clearCollections,
   getCollectionAdapter,
 } from './collection';
 import * as contentIndex from './index';
 import { generateAmpPage } from './seo/amp';
 import { generateJsonLd } from './seo/meta';
-import contentPlugin from './vite';
 import type { SeoConfig, SeoEntry } from './seo/types';
+import contentPlugin from './vite';
 
 // ---------------------------------------------------------------------------
 // BUG 1 — filesystem adapter: .yml files are discovered by readEntries and

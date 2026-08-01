@@ -7,7 +7,7 @@
 // RequestEvent and return a Response.
 // ============================================================================
 
-import { filePathToRoute, compilePattern } from '@matthesketh/utopia-router';
+import { compilePattern, filePathToRoute } from '@matthesketh/utopia-router';
 
 // ---------------------------------------------------------------------------
 // Types

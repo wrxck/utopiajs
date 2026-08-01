@@ -2,10 +2,11 @@
 // a11y.test.ts — Tests for compile-time accessibility checking
 // ============================================================================
 
-import { describe, it, expect } from 'vitest';
-import { parseTemplate } from '@/template-compiler';
+import { describe, expect, it } from 'vitest';
+
 import { checkA11y } from '@/a11y';
 import { compile } from '@/index';
+import { parseTemplate } from '@/template-compiler';
 
 // Helper: parse and check in one call.
 function check(template: string, options?: { disable?: string[] }) {

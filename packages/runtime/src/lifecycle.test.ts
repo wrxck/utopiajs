@@ -1,13 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { ComponentDefinition } from '@matthesketh/utopia-runtime';
 import {
-  mount,
-  onMount,
-  onDestroy,
+  appendChild,
   createComponent,
   createElement,
-  appendChild,
+  mount,
+  onDestroy,
+  onMount,
 } from '@matthesketh/utopia-runtime';
-import type { ComponentDefinition } from '@matthesketh/utopia-runtime';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 beforeEach(() => {
   document.body.innerHTML = '<div id="app"></div>';

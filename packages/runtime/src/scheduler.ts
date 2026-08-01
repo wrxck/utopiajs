@@ -7,7 +7,7 @@
  * already importing `queueJob` / `nextTick` from the runtime keeps working.
  */
 
-export { queueJob, tick, tick as nextTick } from '@matthesketh/utopia-core';
+export { tick as nextTick, queueJob, tick } from '@matthesketh/utopia-core';
 
 /**
  * The scheduler the DOM bindings pass to `effect`.

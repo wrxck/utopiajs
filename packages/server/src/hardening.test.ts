@@ -4,12 +4,12 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { setAttr, createElement } from '@/ssr-runtime';
-import { createHandler } from '@/handler';
-import type { HandlerOptions } from '@/handler';
 import { buildApiRoutes, handleApiRequest } from '@/api-handler';
+import type { HandlerOptions } from '@/handler';
+import { createHandler } from '@/handler';
+import { createElement, setAttr } from '@/ssr-runtime';
 
 interface CapturedResponse {
   statusCode: number;

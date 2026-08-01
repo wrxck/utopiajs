@@ -2,9 +2,10 @@
 // @matthesketh/utopia-server — server router tests
 // ============================================================================
 
-import { describe, it, expect } from 'vitest';
-import { compilePattern } from '@matthesketh/utopia-router';
 import type { Route } from '@matthesketh/utopia-router';
+import { compilePattern } from '@matthesketh/utopia-router';
+import { describe, expect, it } from 'vitest';
+
 import { createServerRouter } from './server-router';
 
 function makeRoute(path: string): Route {

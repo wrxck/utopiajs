@@ -2,12 +2,14 @@
 // @matthesketh/utopia-server — createHandler / api-handler tests
 // ============================================================================
 
-import { describe, it, expect, vi } from 'vitest';
-import { Readable } from 'node:stream';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { createHandler } from './handler';
-import type { HandlerOptions } from './handler';
+import { Readable } from 'node:stream';
+
+import { describe, expect, it, vi } from 'vitest';
+
 import { buildApiRoutes, handleApiRequest } from './api-handler';
+import type { HandlerOptions } from './handler';
+import { createHandler } from './handler';
 import { serializeHead } from './render-to-string';
 
 interface CapturedResponse {

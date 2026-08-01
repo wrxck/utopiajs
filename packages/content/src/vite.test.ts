@@ -1,14 +1,15 @@
 // unit tests for the vite plugin — hooks are invoked directly as functions
 // with mock contexts, no real vite server involved.
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, writeFile, mkdir, rm, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import type { Plugin } from 'vite';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import contentPlugin from './vite';
-import type { Plugin } from 'vite';
 
 const SCRATCH = process.env.CLAUDE_SCRATCHPAD ?? tmpdir();
 

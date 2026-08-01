@@ -5,9 +5,10 @@
  * files that vitest discovers automatically.
  */
 
-import { parse } from '@matthesketh/utopia-compiler';
 import fs from 'node:fs';
 import path from 'node:path';
+
+import { parse } from '@matthesketh/utopia-compiler';
 import type { Plugin } from 'vite';
 
 // ---------------------------------------------------------------------------

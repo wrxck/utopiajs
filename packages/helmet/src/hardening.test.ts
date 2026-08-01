@@ -2,9 +2,9 @@
 // escaped before being interpolated into a querySelector, so a crafted value
 // cannot throw a SyntaxError out of the reactive head update.
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
-import { setMeta, resetHead } from '@/head';
+import { resetHead, setMeta } from '@/head';
 
 describe('helmet builds safe attribute selectors', () => {
   afterEach(() => resetHead());

@@ -1,10 +1,10 @@
 // regression tests for the v0.8.1 ai hardening pass: stream buffer caps and
 // adapter base-url scheme validation.
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { parseSSEStream } from '@/streaming';
 import { ollamaAdapter } from '@/adapters/ollama';
+import { parseSSEStream } from '@/streaming';
 
 function streamResponse(chunks: Uint8Array[]): Response {
   const stream = new ReadableStream<Uint8Array>({

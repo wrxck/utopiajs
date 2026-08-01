@@ -1,16 +1,16 @@
 // regression tests for the v0.8 content hardening pass: seo xss (amp + json-ld),
 // frontmatter prototype pollution, and filesystem traversal/symlink defences.
 
-import { mkdtempSync, writeFileSync, symlinkSync, rmSync, mkdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
+import { createFilesystemAdapter, validateSlug } from '@/adapters/filesystem';
+import { parseFrontmatter } from '@/frontmatter';
 import { generateAmpPage } from '@/seo/amp';
 import { generateJsonLd } from '@/seo/meta';
-import { parseFrontmatter } from '@/frontmatter';
-import { createFilesystemAdapter, validateSlug } from '@/adapters/filesystem';
 import type { SeoConfig, SeoEntry } from '@/seo/types';
 
 const config: SeoConfig = {

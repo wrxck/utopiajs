@@ -4,10 +4,11 @@
 
 // @vitest-environment happy-dom
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { buildRouteTable } from '@/matcher';
-import { createRouter, currentRoute, navigate, destroy } from '@/router';
-import { queryParams, getQueryParam, setQueryParam, setQueryParams, getRouteParam } from '@/query';
+import { getQueryParam, getRouteParam, queryParams, setQueryParam, setQueryParams } from '@/query';
+import { createRouter, currentRoute, destroy, navigate } from '@/router';
 import type { Route } from '@/types';
 
 // Helper to create a route table with a dynamic route.

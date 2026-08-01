@@ -2,31 +2,32 @@
 // @matthesketh/utopia-ai — Tests
 // ============================================================================
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { ServerResponse } from 'node:http';
+
+import { describe, expect, it, vi } from 'vitest';
+
 import { createAI } from '@/ai';
-import type { CreateAIOptions } from '@/ai';
-import { collectStream } from '@/streaming';
 import { createMCPServer } from '@/mcp/server';
 import type {
+  MCPPromptArgument,
+  MCPPromptDefinition,
+  MCPPromptResult,
+  MCPResourceContent,
+  MCPResourceDefinition,
+  MCPToolDefinition,
+  MCPToolResult,
+} from '@/mcp/types';
+import { collectStream } from '@/streaming';
+import type {
   AIAdapter,
+  ChatChunk,
   ChatRequest,
   ChatResponse,
-  ChatChunk,
-  MessageContent,
   ImageContent,
+  MessageContent,
   ToolCallContent,
   ToolResultContent,
 } from '@/types';
-import type {
-  MCPToolResult,
-  MCPPromptResult,
-  MCPResourceContent,
-  MCPToolDefinition,
-  MCPResourceDefinition,
-  MCPPromptDefinition,
-  MCPPromptArgument,
-} from '@/mcp/types';
-import type { ServerResponse } from 'node:http';
 
 // ---------------------------------------------------------------------------
 // Mock adapter
@@ -523,7 +524,7 @@ describe('collectStream', () => {
 // streamSSE
 // ---------------------------------------------------------------------------
 
-import { streamSSE, parseSSEStream } from '@/streaming';
+import { parseSSEStream, streamSSE } from '@/streaming';
 
 function mockRes() {
   return {

@@ -12,9 +12,10 @@
 //
 // ============================================================================
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createRouter, currentRoute, navigate, destroy } from './router';
-import { createRouterView, createLink, preloadRoute } from './components';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { createLink, createRouterView, preloadRoute } from './components';
+import { createRouter, currentRoute, destroy, navigate } from './router';
 import type { RouteConfig } from './types';
 
 /** Flush pending microtasks and timers so fire-and-forget loads settle. */

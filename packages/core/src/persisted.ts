@@ -2,7 +2,7 @@
 // @matthesketh/utopia-core — Persisted signals (synced to localStorage)
 // ============================================================================
 
-import { signal, type Signal } from '@/index';
+import { type Signal, signal } from '@/index';
 
 export interface PersistedSignalOptions<T> {
   /** serialise before writing to storage (default JSON.stringify). */
