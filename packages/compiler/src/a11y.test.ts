@@ -305,3 +305,53 @@ describe('compile() a11y integration', () => {
     expect(result.a11y).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Remaining rule branches
+// ---------------------------------------------------------------------------
+
+describe('rule branch coverage', () => {
+  it('img with role="none" is treated as decorative', () => {
+    expect(check('<img src="bg.jpg" role="none">')).toHaveLength(0);
+  });
+
+  it('click-keyboard accepts role="link" as interactive', () => {
+    const w = check('<div @click="go" role="link" tabindex="0">go</div>');
+    expect(w.filter((x) => x.rule === 'click-keyboard')).toHaveLength(0);
+  });
+
+  it('click-keyboard warns when role is not interactive', () => {
+    const w = check('<div @click="go" role="banner" tabindex="0">go</div>');
+    expect(w.some((x) => x.rule === 'click-keyboard')).toBe(true);
+  });
+
+  it('form-label accepts a title attribute', () => {
+    const w = check('<input type="text" title="Name">');
+    expect(w.filter((x) => x.rule === 'form-label')).toHaveLength(0);
+  });
+
+  it('click-keyboard accepts a bound :tabindex', () => {
+    const w = check('<div @click="go" @keydown="go" :tabindex="idx()">go</div>');
+    expect(w.filter((x) => x.rule === 'click-keyboard')).toHaveLength(0);
+  });
+
+  it('aria-role ignores an empty role value', () => {
+    const w = check('<div role="">content</div>');
+    expect(w.filter((x) => x.rule === 'aria-role')).toHaveLength(0);
+  });
+
+  it('no-positive-tabindex ignores non-numeric values', () => {
+    const w = check('<div tabindex="abc">content</div>');
+    expect(w.filter((x) => x.rule === 'no-positive-tabindex')).toHaveLength(0);
+  });
+
+  it('anchor-content is satisfied by interpolation content', () => {
+    const w = check('<a href="/x">{{ label() }}</a>');
+    expect(w.filter((x) => x.rule === 'anchor-content')).toHaveLength(0);
+  });
+
+  it('audio without track warns like video', () => {
+    const w = check('<audio src="pod.mp3"></audio>');
+    expect(w.some((x) => x.rule === 'media-captions')).toBe(true);
+  });
+});

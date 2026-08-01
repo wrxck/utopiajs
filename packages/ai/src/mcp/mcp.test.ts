@@ -238,6 +238,132 @@ describe('MCP Handler', () => {
     expect(res.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', '*');
   });
 
+  it('should still respond when the Host header is not a valid URL host', async () => {
+    const body = JSON.stringify({ jsonrpc: '2.0', id: 7, method: 'ping' });
+    const req = mockReq('POST', '/', body);
+    // A malformed Host header must not crash routing with an unhandled
+    // URL-parse rejection (which would leave the request hanging).
+    req.headers = { host: 'not a valid host' };
+    const res = mockRes();
+
+    const done = new Promise<void>((resolve) => {
+      res.end.mockImplementation((data?: string) => {
+        if (data) res._body = data;
+        resolve();
+      });
+    });
+
+    handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
+    await Promise.race([
+      done,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('handler never responded')), 500),
+      ),
+    ]);
+
+    expect(res._status).toBe(200);
+    expect(JSON.parse(res._body).id).toBe(7);
+  });
+
+  it('should dispatch when authorize returns true', async () => {
+    const authHandler = createMCPHandler(server, { authorize: () => true });
+    const body = JSON.stringify({ jsonrpc: '2.0', id: 8, method: 'ping' });
+    const req = mockReq('POST', '/', body);
+    const res = mockRes();
+
+    await new Promise<void>((resolve) => {
+      res.end.mockImplementation((data?: string) => {
+        if (data) res._body = data;
+        resolve();
+      });
+      authHandler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
+    });
+
+    expect(res._status).toBe(200);
+    expect(JSON.parse(res._body).result).toEqual({});
+  });
+
+  it('should return 401 when authorize throws', async () => {
+    const authHandler = createMCPHandler(server, {
+      authorize: () => {
+        throw new Error('boom');
+      },
+    });
+    const req = mockReq('POST', '/', JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'ping' }));
+    const res = mockRes();
+
+    await new Promise<void>((resolve) => {
+      res.end.mockImplementation((data?: string) => {
+        if (data) res._body = data;
+        resolve();
+      });
+      authHandler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
+    });
+
+    expect(res._status).toBe(401);
+  });
+
+  it('should fall back to defaults when url and host are missing', async () => {
+    const req = new EventEmitter() as MockRequest;
+    req.method = 'PUT';
+    req.url = undefined as unknown as string;
+    req.headers = {};
+    const res = mockRes();
+
+    await new Promise<void>((resolve) => {
+      res.end.mockImplementation((data?: string) => {
+        if (data) res._body = data;
+        resolve();
+      });
+      handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
+    });
+
+    expect(res._status).toBe(405);
+  });
+
+  it('should fall back to the raw path when url is missing and host is invalid', async () => {
+    const req = new EventEmitter() as MockRequest;
+    req.method = 'PUT';
+    req.url = undefined as unknown as string;
+    req.headers = { host: 'not a valid host' };
+    const res = mockRes();
+
+    await new Promise<void>((resolve) => {
+      res.end.mockImplementation((data?: string) => {
+        if (data) res._body = data;
+        resolve();
+      });
+      handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
+    });
+
+    expect(res._status).toBe(405);
+  });
+
+  it('should respond 400 with a generic message when the request stream errors', async () => {
+    const req = new EventEmitter() as MockRequest;
+    req.method = 'POST';
+    req.url = '/';
+    req.headers = { host: 'localhost' };
+    const res = mockRes();
+
+    const done = new Promise<void>((resolve) => {
+      res.end.mockImplementation((data?: string) => {
+        if (data) res._body = data;
+        resolve();
+      });
+    });
+
+    handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
+    process.nextTick(() => req.emit('error', new Error('socket reset')));
+    await done;
+
+    expect(res._status).toBe(400);
+    const parsed = JSON.parse(res._body);
+    expect(parsed.error.code).toBe(-32700);
+    // non-SyntaxError details must not leak
+    expect(parsed.error.data).toBe('Invalid request');
+  });
+
   it('should handle tools/call via POST', async () => {
     const body = JSON.stringify({
       jsonrpc: '2.0',
@@ -410,6 +536,37 @@ describe('MCP Client', () => {
     expect(result.text).toBe('{"theme":"dark"}');
   });
 
+  it('listPrompts() should return prompt definitions (and [] when absent)', async () => {
+    mockFetchResponse({
+      prompts: [{ name: 'greeting', description: 'Say hi', arguments: [{ name: 'name' }] }],
+    });
+
+    const client = createMCPClient({ url: 'http://localhost:3001/mcp' });
+    const result = await client.listPrompts();
+
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('greeting');
+    expect(JSON.parse(fetchMock().mock.calls[0][1].body).method).toBe('prompts/list');
+
+    mockFetchResponse({});
+    expect(await client.listPrompts()).toEqual([]);
+  });
+
+  it('getPrompt() should send name and arguments', async () => {
+    const promptResult = {
+      messages: [{ role: 'user', content: { type: 'text', text: 'Say hello to Bob' } }],
+    };
+    mockFetchResponse(promptResult);
+
+    const client = createMCPClient({ url: 'http://localhost:3001/mcp' });
+    const result = await client.getPrompt('greeting', { name: 'Bob' });
+
+    const body = JSON.parse(fetchMock().mock.calls[0][1].body);
+    expect(body.method).toBe('prompts/get');
+    expect(body.params).toEqual({ name: 'greeting', arguments: { name: 'Bob' } });
+    expect(result.messages[0].content.text).toBe('Say hello to Bob');
+  });
+
   it('toToolHandlers() should convert MCP tools to AI-compatible ToolHandler[]', async () => {
     // First call: listTools
     mockFetchResponse({
@@ -568,6 +725,45 @@ describe('MCP Client', () => {
     expect(body2.id).toBe(2);
   });
 
+  it('readResource() should fall back to the raw result when contents is missing', async () => {
+    mockFetchResponse({ uri: 'config://raw', text: 'raw-shape' });
+
+    const client = createMCPClient({ url: 'http://localhost:3001/mcp' });
+    const result = await client.readResource('config://raw');
+
+    expect(result.uri).toBe('config://raw');
+    expect(result.text).toBe('raw-shape');
+  });
+
+  it('toToolHandlers() handler should use a fallback message for textless error results', async () => {
+    mockFetchResponse({
+      tools: [{ name: 'imgTool', description: 'i', inputSchema: { type: 'object' } }],
+    });
+    mockFetchResponse({
+      content: [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }],
+      isError: true,
+    });
+
+    const client = createMCPClient({ url: 'http://localhost:3001/mcp' });
+    const handlers = await client.toToolHandlers();
+
+    await expect(handlers[0].handler({})).rejects.toThrow('Tool call failed');
+  });
+
+  it('toToolHandlers() handler should not crash when the server omits content', async () => {
+    // listTools
+    mockFetchResponse({
+      tools: [{ name: 'odd', description: 'Malformed server', inputSchema: { type: 'object' } }],
+    });
+    // tools/call returns a malformed result with no content array
+    mockFetchResponse({});
+
+    const client = createMCPClient({ url: 'http://localhost:3001/mcp' });
+    const handlers = await client.toToolHandlers();
+
+    await expect(handlers[0].handler({})).resolves.toBe('');
+  });
+
   it('listTools() should return empty array when server returns no tools', async () => {
     mockFetchResponse({});
 
@@ -703,6 +899,280 @@ describe('MCP Server — template URI matching with regex special characters', (
   });
 });
 
+// ---------------------------------------------------------------------------
+// MCP Server — parameter validation gaps
+// ---------------------------------------------------------------------------
+
+describe('MCP Server — parameter validation', () => {
+  const server = createMCPServer({
+    name: 'validation-test',
+    tools: [
+      {
+        definition: { name: 'noop', description: 'n', inputSchema: { type: 'object' } },
+        handler: async () => ({ content: [{ type: 'text', text: 'ok' }] }),
+      },
+    ],
+    prompts: [
+      {
+        definition: { name: 'greet', description: 'g' },
+        handler: async () => ({ messages: [] }),
+      },
+    ],
+  });
+
+  it('rejects tools/call without a string name', async () => {
+    const res = await server.handleRequest({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 42 },
+    });
+    expect(res.error?.code).toBe(-32602);
+    expect(res.error?.message).toContain('string "name"');
+  });
+
+  it('rejects tools/call with array arguments', async () => {
+    const res = await server.handleRequest({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name: 'noop', arguments: [1, 2] },
+    });
+    expect(res.error?.code).toBe(-32602);
+    expect(res.error?.message).toContain('arguments must be an object');
+  });
+
+  it('rejects resources/read without a string uri', async () => {
+    const res = await server.handleRequest({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'resources/read',
+      params: { uri: 99 },
+    });
+    expect(res.error?.code).toBe(-32602);
+    expect(res.error?.message).toContain('string "uri"');
+  });
+
+  it('rejects prompts/get without a string name', async () => {
+    const res = await server.handleRequest({
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'prompts/get',
+      params: { name: null },
+    });
+    expect(res.error?.code).toBe(-32602);
+    expect(res.error?.message).toContain('string "name"');
+  });
+
+  it('rejects prompts/get for an unknown prompt', async () => {
+    const res = await server.handleRequest({
+      jsonrpc: '2.0',
+      id: 5,
+      method: 'prompts/get',
+      params: { name: 'nope' },
+    });
+    expect(res.error?.code).toBe(-32602);
+    expect(res.error?.message).toContain('Unknown prompt');
+  });
+
+  it('defaults tools/call and prompts/get arguments to {}', async () => {
+    const toolRes = await server.handleRequest({
+      jsonrpc: '2.0',
+      id: 6,
+      method: 'tools/call',
+      params: { name: 'noop' },
+    });
+    expect(toolRes.error).toBeUndefined();
+
+    const promptRes = await server.handleRequest({
+      jsonrpc: '2.0',
+      id: 7,
+      method: 'prompts/get',
+      params: { name: 'greet' },
+    });
+    expect(promptRes.error).toBeUndefined();
+  });
+
+  it('uses a null id for invalid requests without an id', async () => {
+    const res = await server.handleRequest({ jsonrpc: '1.0' } as never);
+    expect(res.id).toBeNull();
+    expect(res.error?.code).toBe(-32600);
+  });
+
+  it('defaults the error message when a handler throws a coded error without one', async () => {
+    const coded = createMCPServer({
+      name: 'coded',
+      tools: [
+        {
+          definition: { name: 'codedTool', description: 'c', inputSchema: { type: 'object' } },
+          handler: async () => {
+            throw { code: -32000 };
+          },
+        },
+      ],
+    });
+
+    const res = await coded.handleRequest({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'codedTool' },
+    });
+    expect(res.error).toEqual({ code: -32000, message: 'Error', data: undefined });
+  });
+
+  it('reports no capabilities for an empty server', async () => {
+    const empty = createMCPServer({ name: 'empty' });
+    const res = await empty.handleRequest({ jsonrpc: '2.0', id: 1, method: 'initialize' });
+    const caps = (res.result as { capabilities: Record<string, unknown> }).capabilities;
+    expect(caps.tools).toBeUndefined();
+    expect(caps.resources).toBeUndefined();
+    expect(caps.prompts).toBeUndefined();
+  });
+
+  it('reports only the capabilities the server actually has', async () => {
+    const toolsOnly = createMCPServer({
+      name: 'tools-only',
+      tools: [
+        {
+          definition: { name: 't', description: 't', inputSchema: { type: 'object' } },
+          handler: async () => ({ content: [] }),
+        },
+      ],
+    });
+
+    const res = await toolsOnly.handleRequest({ jsonrpc: '2.0', id: 1, method: 'initialize' });
+    const caps = (res.result as { capabilities: Record<string, unknown> }).capabilities;
+    expect(caps.tools).toEqual({});
+    expect(caps.resources).toBeUndefined();
+    expect(caps.prompts).toBeUndefined();
+  });
+
+  it('skips validation when a tool declares no usable schema', async () => {
+    const lax = createMCPServer({
+      name: 'lax',
+      tools: [
+        {
+          definition: { name: 'anything', description: 'a', inputSchema: null as never },
+          handler: async (args) => ({ content: [{ type: 'text', text: JSON.stringify(args) }] }),
+        },
+      ],
+    });
+
+    const res = await lax.handleRequest({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'anything', arguments: { whatever: true } },
+    });
+    expect(res.error).toBeUndefined();
+  });
+
+  it('validates number, integer, array, object and untyped properties', async () => {
+    const typed = createMCPServer({
+      name: 'typed',
+      tools: [
+        {
+          definition: {
+            name: 'typedTool',
+            description: 't',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                n: { type: 'number' },
+                i: { type: 'integer' },
+                arr: { type: 'array' },
+                obj: { type: 'object' },
+                s: { type: 'string' },
+                untyped: {} as never,
+                optional: { type: 'string' },
+              },
+            },
+          },
+          handler: async () => ({ content: [{ type: 'text', text: 'ok' }] }),
+        },
+      ],
+    });
+
+    const ok = await typed.handleRequest({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: {
+        name: 'typedTool',
+        arguments: { n: 1.5, i: 2, arr: [1], obj: { a: 1 }, s: 'x', untyped: 'anything' },
+      },
+    });
+    expect(ok.error).toBeUndefined();
+
+    const badArray = await typed.handleRequest({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name: 'typedTool', arguments: { arr: 'not-an-array' } },
+    });
+    expect(badArray.error?.code).toBe(-32602);
+    expect(badArray.error?.message).toContain('must be of type array');
+
+    const badObject = await typed.handleRequest({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: 'typedTool', arguments: { obj: [1, 2] } },
+    });
+    expect(badObject.error?.code).toBe(-32602);
+    expect(badObject.error?.message).toContain('must be of type object');
+
+    const badNumber = await typed.handleRequest({
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'tools/call',
+      params: { name: 'typedTool', arguments: { n: 'NaN' } },
+    });
+    expect(badNumber.error?.code).toBe(-32602);
+    expect(badNumber.error?.message).toContain('must be of type number');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MCP Handler — SSE keep-alive
+// ---------------------------------------------------------------------------
+
+describe('MCP Handler — SSE keep-alive', () => {
+  it('pings every 30s and stops when the client disconnects', async () => {
+    vi.useFakeTimers();
+    try {
+      const server = createTestServer();
+      const handler = createMCPHandler(server);
+
+      const req = new EventEmitter() as MockRequest;
+      req.method = 'GET';
+      req.url = '/sse';
+      req.headers = { host: 'localhost' };
+
+      const res = mockRes();
+      handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
+
+      // endpoint event sent immediately
+      expect(res.write).toHaveBeenCalledWith('event: endpoint\ndata: ./\n\n');
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(res.write).toHaveBeenCalledWith(': ping\n\n');
+      const writesAfterFirstPing = res.write.mock.calls.length;
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(res.write.mock.calls.length).toBe(writesAfterFirstPing + 1);
+
+      // client disconnects — the interval must be cleared
+      req.emit('close');
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(res.write.mock.calls.length).toBe(writesAfterFirstPing + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 // ===========================================================================
 // Security — MCP handler hardening
 // ===========================================================================
@@ -825,7 +1295,7 @@ describe('Security — CORS default', () => {
 
     // setHeader should NOT have been called with Access-Control-Allow-Origin
     const corsCall = res.setHeader.mock.calls.find(
-      (call: [string, string]) => call[0] === 'Access-Control-Allow-Origin',
+      (call: unknown[]) => call[0] === 'Access-Control-Allow-Origin',
     );
     expect(corsCall).toBeUndefined();
   });
@@ -846,7 +1316,7 @@ describe('Security — CORS default', () => {
     });
 
     const corsCall = res.setHeader.mock.calls.find(
-      (call: [string, string]) => call[0] === 'Access-Control-Allow-Origin',
+      (call: unknown[]) => call[0] === 'Access-Control-Allow-Origin',
     );
     expect(corsCall).toBeDefined();
     expect(corsCall![1]).toBe('https://example.com');

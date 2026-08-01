@@ -25,6 +25,9 @@ ruleTester.run('no-undecoded-entities', rule, {
     },
     // a component without a template block has nothing to scan.
     { code: '<script lang="ts">export const x = 1;</script>', filename: 'a.utopia' },
+    // an unparseable component (unclosed template) reports nothing here —
+    // the parser masks it out; the rule must not crash re-parsing it.
+    { code: '<template><p>&minus;</p>', filename: 'a.utopia' },
   ],
   invalid: [
     {

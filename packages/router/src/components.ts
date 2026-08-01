@@ -110,9 +110,14 @@ function createRouterViewNode(): Node {
       currentCleanup = syncResult.cleanup;
       currentMatch = initialMatch;
     }
+  } else {
+    // The initial URL matches nothing — show the 404 immediately. (The
+    // effect below skips its first run in this case, since the match is
+    // still null.)
+    showNotFound(container);
   }
 
-  effect(() => {
+  const dispose = effect(() => {
     const match = currentRoute();
 
     // If the same route instance, skip update (avoids unnecessary re-renders).
@@ -132,10 +137,7 @@ function createRouterViewNode(): Node {
         currentCleanup = null;
       }
       clearContainer(container);
-      const notFound = document.createElement('div');
-      notFound.setAttribute('data-utopia-not-found', '');
-      notFound.textContent = 'Page not found';
-      container.appendChild(notFound);
+      showNotFound(container);
       return;
     }
 
@@ -157,13 +159,79 @@ function createRouterViewNode(): Node {
     });
   });
 
+  // Attach cleanup so hosts can stop the effect when the view is removed
+  // (same contract as createLink). Without this, every discarded view keeps
+  // reloading route modules on each navigation for the rest of the app's life.
+  (container as unknown as { __dispose?: () => void }).__dispose = dispose;
+
   return container;
+}
+
+/** Append the "Page not found" placeholder to the container. */
+function showNotFound(container: HTMLElement): void {
+  const notFound = document.createElement('div');
+  notFound.setAttribute('data-utopia-not-found', '');
+  notFound.textContent = 'Page not found';
+  container.appendChild(notFound);
 }
 
 /** Result of loading a route component, ready for mounting. */
 interface LoadResult {
   node: Node;
   cleanup: () => void;
+}
+
+/**
+ * Wrap a rendered node in a LoadResult whose cleanup disposes the rendered
+ * component's effects and runs its onDestroy hooks before detaching it from
+ * the DOM. Without the `__cleanup` call a navigation leaks the outgoing page's
+ * effects and computeds against the long-lived router signals.
+ *
+ * `inner` is the page node when it has been wrapped in a layout: only the outer
+ * node is in the DOM, but both own effects, so both must be torn down.
+ */
+function toLoadResult(node: Node, inner?: Node): LoadResult {
+  return {
+    node,
+    cleanup: () => {
+      if (inner && inner !== node) {
+        (inner as DisposableNode).__cleanup?.();
+      }
+      (node as DisposableNode).__cleanup?.();
+      if (node.parentNode) {
+        node.parentNode.removeChild(node);
+      }
+    },
+  };
+}
+
+/**
+ * Render a matched route's page module, wrapped in its layout module when one
+ * is present (the page is passed to the layout as `children`).
+ */
+function renderMatch(
+  match: RouteMatch,
+  pageModule: Record<string, unknown>,
+  layoutModule: Record<string, unknown> | null,
+): LoadResult {
+  // Extract the default export (the component function or class).
+  const PageComponent = pageModule.default ?? pageModule;
+  const pageNode = renderComponent(PageComponent, {
+    params: match.params,
+    url: match.url,
+  });
+
+  let node: Node = pageNode;
+  if (layoutModule) {
+    const LayoutComponent = layoutModule.default ?? layoutModule;
+    node = renderComponent(LayoutComponent, {
+      params: match.params,
+      url: match.url,
+      children: pageNode,
+    });
+  }
+
+  return toLoadResult(node, pageNode);
 }
 
 /**
@@ -182,33 +250,7 @@ function tryRenderFromCache(match: RouteMatch): LoadResult | null {
   moduleCache.delete(match.route.component);
   if (match.route.layout) moduleCache.delete(match.route.layout);
 
-  const PageComponent = cachedPage.default ?? cachedPage;
-  const LayoutComponent = cachedLayout ? (cachedLayout.default ?? cachedLayout) : null;
-
-  const pageNode = renderComponent(PageComponent, {
-    params: match.params,
-    url: match.url,
-  });
-
-  let node: Node;
-  if (LayoutComponent) {
-    node = renderComponent(LayoutComponent, {
-      params: match.params,
-      url: match.url,
-      children: pageNode,
-    });
-  } else {
-    node = pageNode;
-  }
-
-  return {
-    node,
-    cleanup: () => {
-      if (node.parentNode) {
-        node.parentNode.removeChild(node);
-      }
-    },
-  };
+  return renderMatch(match, cachedPage, cachedLayout);
 }
 
 /**
@@ -222,16 +264,12 @@ function tryRenderFromCache(match: RouteMatch): LoadResult | null {
  */
 async function loadRouteComponent(match: RouteMatch): Promise<LoadResult | null> {
   try {
-    // Check the pre-load cache first.
-    const cachedPage = moduleCache.get(match.route.component);
-    const cachedLayout = match.route.layout ? moduleCache.get(match.route.layout) : undefined;
-
-    let pageModule: Record<string, unknown>;
+    // Check the pre-load cache first (consuming any entries).
+    let pageModule = moduleCache.get(match.route.component);
     let layoutModule: Record<string, unknown> | null = null;
 
-    if (cachedPage) {
-      pageModule = cachedPage;
-      layoutModule = cachedLayout ?? null;
+    if (pageModule) {
+      layoutModule = (match.route.layout && moduleCache.get(match.route.layout)) || null;
       moduleCache.delete(match.route.component);
       if (match.route.layout) moduleCache.delete(match.route.layout);
     } else {
@@ -251,42 +289,7 @@ async function loadRouteComponent(match: RouteMatch): Promise<LoadResult | null>
       return null;
     }
 
-    // Extract the default export (the component function or class).
-    const PageComponent = pageModule.default ?? pageModule;
-    const LayoutComponent = layoutModule ? (layoutModule.default ?? layoutModule) : null;
-
-    // Render the page component.
-    const pageNode = renderComponent(PageComponent, {
-      params: match.params,
-      url: match.url,
-    });
-
-    let node: Node;
-    if (LayoutComponent) {
-      // Render layout with the page as a child slot.
-      node = renderComponent(LayoutComponent, {
-        params: match.params,
-        url: match.url,
-        children: pageNode,
-      });
-    } else {
-      node = pageNode;
-    }
-
-    return {
-      node,
-      cleanup: () => {
-        // Dispose the page (and layout) effects + run onDestroy before removal.
-        (pageNode as DisposableNode).__cleanup?.();
-        if (node !== pageNode) {
-          (node as DisposableNode).__cleanup?.();
-        }
-        // Remove the node from DOM when cleaning up.
-        if (node.parentNode) {
-          node.parentNode.removeChild(node);
-        }
-      },
-    };
+    return renderMatch(match, pageModule, layoutModule);
   } catch (err) {
     // Loading failed — try to show an error component.
     if (match.route.error) {
@@ -298,29 +301,13 @@ async function loadRouteComponent(match: RouteMatch): Promise<LoadResult | null>
           params: match.params,
           url: match.url,
         });
-
-        return {
-          node: errorNode,
-          cleanup: () => {
-            (errorNode as DisposableNode).__cleanup?.();
-            if (errorNode.parentNode) {
-              errorNode.parentNode.removeChild(errorNode);
-            }
-          },
-        };
+        return toLoadResult(errorNode);
       } catch {
         // Error component also failed — show fallback.
-        return {
-          node: createFallbackErrorNode(err),
-          cleanup: () => {},
-        };
+        return { node: createFallbackErrorNode(err), cleanup: () => {} };
       }
-    } else {
-      return {
-        node: createFallbackErrorNode(err),
-        cleanup: () => {},
-      };
     }
+    return { node: createFallbackErrorNode(err), cleanup: () => {} };
   }
 }
 
@@ -539,18 +526,18 @@ function clearContainer(container: HTMLElement): void {
   }
 }
 
-export const AMPERSAND_RE = /&/g;
-export const LESS_THAN_RE = /</g;
-export const GREATER_THAN_RE = />/g;
-export const DOUBLE_QUOTE_RE = /"/g;
-export const SINGLE_QUOTE_RE = /'/g;
+/** Matches characters that must be entity-escaped in HTML. */
+const HTML_SPECIAL_RE = /[&<>"']/g;
+
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#x27;',
+};
 
 /** Escape HTML entities to prevent XSS in error messages. */
 function escapeHtml(str: string): string {
-  return str
-    .replace(AMPERSAND_RE, '&amp;')
-    .replace(LESS_THAN_RE, '&lt;')
-    .replace(GREATER_THAN_RE, '&gt;')
-    .replace(DOUBLE_QUOTE_RE, '&quot;')
-    .replace(SINGLE_QUOTE_RE, '&#x27;');
+  return str.replace(HTML_SPECIAL_RE, (c) => HTML_ESCAPES[c]);
 }

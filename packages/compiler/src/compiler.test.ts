@@ -8,6 +8,48 @@ import { compileTemplate, parseTemplate } from '@/template-compiler';
 import type { ElementNode, TemplateNode, TextNode } from '@/template-compiler';
 import { compileStyle, generateScopeId, preprocessStyle } from '@/style-compiler';
 import { compile } from '@/index';
+import * as runtime from '@matthesketh/utopia-runtime';
+import { signal, tick } from '@matthesketh/utopia-core';
+
+/**
+ * Execute a compiled render module against the real runtime helpers and
+ * return the root node it produces. Free identifiers referenced by template
+ * expressions are supplied via `scope`; `ctx` becomes the `_ctx` argument.
+ */
+function executeRender(
+  code: string,
+  scope: Record<string, unknown> = {},
+  ctx: Record<string, unknown> = {},
+): Node {
+  const importMatch = code.match(/^import \{ ([^}]+) \} from '@matthesketh\/utopia-runtime'\n\n/);
+  const helperNames = importMatch ? importMatch[1].split(', ') : [];
+  const body = importMatch ? code.slice(importMatch[0].length) : code;
+  const scopeNames = Object.keys(scope);
+  const factory = new Function(...helperNames, ...scopeNames, `${body}\nreturn __render;`);
+  const render = factory(
+    ...helperNames.map((n) => (runtime as unknown as Record<string, unknown>)[n]),
+    ...scopeNames.map((n) => scope[n]),
+  );
+  return render(ctx);
+}
+
+/**
+ * Render `code` and attach the result to a host inside the document, the way
+ * mount() does. A structural directive at the root of a template compiles to a
+ * bare comment anchor whose branches are inserted as SIBLINGS of that anchor,
+ * so the content only appears once the anchor has a parent — assertions must
+ * read the host, not the returned node.
+ */
+function executeRenderInto(
+  code: string,
+  scope: Record<string, unknown> = {},
+  ctx: Record<string, unknown> = {},
+): HTMLElement {
+  const host = document.createElement('main');
+  document.body.appendChild(host);
+  host.appendChild(executeRender(code, scope, ctx));
+  return host;
+}
 
 // ===========================================================================
 // 1. SFC Parser
@@ -1386,5 +1428,653 @@ describe('u-for row scope codegen', () => {
         `failed to parse: ${tpl}`,
       ).not.toThrow();
     }
+  });
+});
+
+// ===========================================================================
+// Structural directives — generated code must execute against the runtime
+// ===========================================================================
+
+describe('structural directive codegen — runtime execution', () => {
+  it('escapes newlines in static attribute values (emitted module stays valid JS)', () => {
+    const result = compileTemplate('<div title="line1\nline2">x</div>');
+    // A raw newline inside the quoted string would be a syntax error.
+    expect(result.code).toContain("'line1\\nline2'");
+    const el = executeRender(result.code) as HTMLElement;
+    expect(el.getAttribute('title')).toBe('line1\nline2');
+  });
+
+  it('escapes carriage returns in static attribute values', () => {
+    const result = compileTemplate('<div title="a\r\nb">x</div>');
+    expect(result.code).toContain("'a\\r\\nb'");
+    const el = executeRender(result.code) as HTMLElement;
+    expect(el.getAttribute('title')).toBe('a\r\nb');
+  });
+
+  it('u-if + u-for on the same element renders the list only when the condition holds', async () => {
+    const result = compileTemplate(
+      '<div><span u-if="cond()" u-for="i in list()">{{ i }}</span></div>',
+    );
+    // The u-for becomes the createIf's true branch, so the list is only ever
+    // built while the condition holds.
+    expect(result.code).toContain('createIf(');
+    expect(result.code).toContain('createFor(');
+    const shown = executeRenderInto(result.code, {
+      cond: () => true,
+      list: () => ['a', 'b'],
+    });
+    await tick();
+    expect(shown.textContent).toBe('ab');
+    const hidden = executeRenderInto(result.code, {
+      cond: () => false,
+      list: () => ['a', 'b'],
+    });
+    await tick();
+    expect(hidden.textContent).toBe('');
+  });
+
+  it('a u-for branch of an else-if chain renders only when its guard holds', async () => {
+    const result = compileTemplate(
+      '<div><p u-if="a()">A</p><li u-else-if="b()" u-for="i in list()">{{ i }}</li></div>',
+    );
+    const el = executeRenderInto(result.code, {
+      a: () => false,
+      b: () => true,
+      list: () => [1, 2, 3],
+    });
+    await tick();
+    expect(el.textContent).toBe('123');
+    const el2 = executeRenderInto(result.code, {
+      a: () => true,
+      b: () => true,
+      list: () => [1, 2, 3],
+    });
+    await tick();
+    expect(el2.textContent).toBe('A');
+  });
+
+  it('u-else-if chains react to signal changes', async () => {
+    const a = signal(true);
+    const b = signal(false);
+    const result = compileTemplate(
+      '<div><span u-if="a()">A</span><span u-else-if="b()">B</span><span u-else>C</span></div>',
+    );
+    const el = executeRenderInto(result.code, { a, b });
+    await tick();
+    expect(el.textContent).toBe('A');
+    a.set(false);
+    await tick();
+    expect(el.textContent).toBe('C');
+    b.set(true);
+    await tick();
+    expect(el.textContent).toBe('B');
+  });
+
+  it('renders a root-level u-if once its anchor is attached', async () => {
+    const result = compileTemplate('<div u-if="s()">hi</div>');
+    const root = executeRenderInto(result.code, { s: () => true });
+    await tick();
+    expect(root.textContent).toBe('hi');
+  });
+
+  it('renders a root-level u-for once its anchor is attached', async () => {
+    // createFor's first reconcile runs before the caller has attached the
+    // anchor; without its microtask retry the list rendered nothing at all.
+    const result = compileTemplate('<li u-for="i in list()">{{ i }}</li>');
+    const root = executeRenderInto(result.code, { list: () => ['x', 'y'] });
+    await tick();
+    expect(root.textContent).toBe('xy');
+  });
+
+  it('root-level u-if reacts to later signal changes', async () => {
+    const s = signal(false);
+    const result = compileTemplate('<div u-if="s()">hi</div>');
+    const root = executeRenderInto(result.code, { s });
+    await tick();
+    expect(root.textContent).toBe('');
+    s.set(true);
+    await tick();
+    expect(root.textContent).toBe('hi');
+  });
+
+  it('a structural directive inside a component slot still renders', async () => {
+    const result = compileTemplate('<div><Card><p u-if="x()">hi</p></Card></div>');
+    expect(result.code).toContain('createIf(');
+    const Card = {
+      render(ctx: Record<string, unknown>) {
+        const section = document.createElement('section');
+        const slots = ctx.$slots as Record<string, () => Node>;
+        section.appendChild(slots.default());
+        return section;
+      },
+    };
+    const host = executeRenderInto(result.code, { Card, x: () => true });
+    await tick();
+    expect(host.textContent).toBe('hi');
+  });
+
+  it('nested u-if inside u-for item still works', () => {
+    const result = compileTemplate(
+      '<ul><li u-for="i in list()"><b u-if="i.ok">{{ i.v }}</b></li></ul>',
+    );
+    const el = executeRender(result.code, {
+      list: () => [
+        { ok: true, v: 1 },
+        { ok: false, v: 2 },
+        { ok: true, v: 3 },
+      ],
+    }) as HTMLElement;
+    expect(el.textContent).toBe('13');
+  });
+
+  it('u-if/u-else toggles between branches', () => {
+    const s = signal(true);
+    const result = compileTemplate('<div><b u-if="s()">yes</b><i u-else>no</i></div>');
+    const el = executeRender(result.code, { s }) as HTMLElement;
+    expect(el.textContent).toBe('yes');
+    s.set(false);
+    expect(el.textContent).toBe('no');
+  });
+});
+
+// ===========================================================================
+// Event modifiers (u-on / @)
+// ===========================================================================
+
+describe('event modifier codegen', () => {
+  it('.prevent wraps the handler with preventDefault', () => {
+    const result = compileTemplate('<button @click.prevent="go">x</button>');
+    expect(result.code).toContain('_e.preventDefault()');
+    expect(result.code).toContain('(go)(_e)');
+  });
+
+  it('.stop wraps the handler with stopPropagation', () => {
+    const result = compileTemplate('<button @click.stop="go">x</button>');
+    expect(result.code).toContain('_e.stopPropagation()');
+  });
+
+  it('.self guards on event target', () => {
+    const result = compileTemplate('<div @click.self="go">x</div>');
+    expect(result.code).toContain('if (_e.target !== _e.currentTarget) return');
+  });
+
+  it('.once/.capture/.passive become addEventListener options', () => {
+    const result = compileTemplate('<button @click.once.capture.passive="go">x</button>');
+    expect(result.code).toContain('{ once: true, capture: true, passive: true }');
+    // No wrapper needed for a plain handler reference with only option mods.
+    expect(result.code).toContain("'click', go, {");
+  });
+
+  it('modifier-only handler without expression still emits guards', () => {
+    const result = compileTemplate('<form @submit.prevent>x</form>');
+    expect(result.code).toContain('(_e) => { _e.preventDefault() }');
+  });
+
+  it('inline expression with modifiers is wrapped and $event is replaced', () => {
+    const result = compileTemplate('<button @click.stop="count.set($event.detail)">x</button>');
+    expect(result.code).toContain('_e.stopPropagation()');
+    expect(result.code).toContain('count.set(_e.detail)');
+    expect(result.code).not.toContain('$event');
+  });
+
+  it('inline expression without modifiers is deferred in an arrow wrapper', () => {
+    const result = compileTemplate('<button @click="count.set(count() + 1)">x</button>');
+    expect(result.code).toContain('(_e) => { count.set(count() + 1) }');
+  });
+
+  it('an arrow-function handler is passed through unwrapped', () => {
+    const result = compileTemplate('<button @click="(e) => go(e)">x</button>');
+    expect(result.code).toContain("'click', (e) => go(e))");
+  });
+
+  it('executes: .prevent handler receives the event and prevents default', () => {
+    const result = compileTemplate('<button @click.prevent="onClick">x</button>');
+    const calls: Event[] = [];
+    const el = executeRender(result.code, {
+      onClick: (e: Event) => calls.push(e),
+    }) as HTMLElement;
+    const event = new Event('click', { cancelable: true });
+    el.dispatchEvent(event);
+    expect(calls).toHaveLength(1);
+    expect(event.defaultPrevented).toBe(true);
+  });
+});
+
+// ===========================================================================
+// Slots
+// ===========================================================================
+
+describe('slot codegen', () => {
+  it('renders the default slot from _ctx.$slots', () => {
+    const result = compileTemplate('<div><slot /></div>');
+    expect(result.code).toContain("_ctx.$slots['default']");
+    const el = executeRender(
+      result.code,
+      {},
+      { $slots: { default: () => document.createTextNode('slotted') } },
+    ) as HTMLElement;
+    expect(el.textContent).toBe('slotted');
+  });
+
+  it('falls back to _ctx.children for the default slot', () => {
+    const result = compileTemplate('<div><slot /></div>');
+    const child = document.createElement('span');
+    child.textContent = 'kid';
+    const el = executeRender(result.code, {}, { children: child }) as HTMLElement;
+    expect(el.textContent).toBe('kid');
+  });
+
+  it('renders a comment placeholder when no slot content is provided', () => {
+    const result = compileTemplate('<div><slot /></div>');
+    const el = executeRender(result.code) as HTMLElement;
+    expect(el.childNodes).toHaveLength(1);
+    expect(el.childNodes[0].nodeType).toBe(8); // comment
+  });
+
+  it('renders a named slot', () => {
+    const result = compileTemplate('<div><slot name="header" /></div>');
+    expect(result.code).toContain("_ctx.$slots['header']");
+    const el = executeRender(
+      result.code,
+      {},
+      { $slots: { header: () => document.createTextNode('H') } },
+    ) as HTMLElement;
+    expect(el.textContent).toBe('H');
+  });
+
+  it('a named slot without content renders a comment placeholder', () => {
+    const result = compileTemplate('<div><slot name="header" /></div>');
+    const el = executeRender(result.code) as HTMLElement;
+    expect(el.childNodes[0].nodeType).toBe(8);
+  });
+});
+
+// ===========================================================================
+// Component codegen
+// ===========================================================================
+
+describe('component codegen', () => {
+  it('passes boolean attributes as true props', () => {
+    const result = compileTemplate('<Widget flag />');
+    expect(result.code).toContain("'flag': true");
+  });
+
+  it('passes bound props as expressions', () => {
+    const result = compileTemplate('<Widget :count="n()" />');
+    expect(result.code).toContain("'count': n()");
+  });
+
+  it('compiles a single element child into a default slot factory', () => {
+    const result = compileTemplate('<Card><p>hello</p></Card>');
+    expect(result.code).toContain('{ default:');
+    expect(result.code).toContain("createElement('p')");
+  });
+
+  it('wraps multiple slot children in a div', () => {
+    const result = compileTemplate('<Card><p>a</p><p>b</p></Card>');
+    expect(result.code).toContain("createElement('div')");
+    expect(result.code).toContain('{ default:');
+  });
+
+  it('wraps interpolation-only slot content in a div', () => {
+    const result = compileTemplate('<Card>{{ msg() }}</Card>');
+    expect(result.code).toContain("createElement('div')");
+    expect(result.code).toContain('setText');
+  });
+
+  it('wraps text-only slot content in a div', () => {
+    const result = compileTemplate('<Card>hello</Card>');
+    expect(result.code).toContain("createElement('div')");
+    expect(result.code).toContain('createTextNode("hello")');
+  });
+
+  it('components without children get no slots argument', () => {
+    const result = compileTemplate('<Card title="x" />');
+    expect(result.code).toContain("createComponent(Card, { 'title': 'x' })");
+  });
+});
+
+// ===========================================================================
+// Template parser — error paths and rare syntax
+// ===========================================================================
+
+describe('template parser edge cases', () => {
+  it('throws on unterminated comment', () => {
+    expect(() => parseTemplate('<div><!-- oops</div>')).toThrow(/[Uu]nterminated comment/);
+  });
+
+  it('throws on unterminated quoted attribute value', () => {
+    expect(() => parseTemplate('<div class="foo>x</div>')).toThrow(/[Uu]nterminated attribute/);
+  });
+
+  it('parses unquoted attribute values', () => {
+    const ast = parseTemplate('<div class=foo>x</div>');
+    const el = ast[0] as ElementNode;
+    expect(el.attrs[0]).toEqual({ name: 'class', value: 'foo' });
+  });
+
+  it('throws with line/column info for errors after newlines', () => {
+    expect(() => parseTemplate('<div>\n{{ oops</div>')).toThrow(/at 2:/);
+  });
+
+  it('throws when attribute list hits a character that is not an attribute', () => {
+    expect(() => parseTemplate('<div "bad">x</div>')).toThrow(/Expected/);
+  });
+
+  it('throws when the source ends inside a tag', () => {
+    expect(() => parseTemplate('<div foo')).toThrow(/Expected/);
+  });
+
+  it('treats a stray < in text as literal text', () => {
+    const ast = parseTemplate('<p>a < b</p>');
+    const p = ast[0] as ElementNode;
+    expect((p.children[0] as TextNode).content).toBe('a < b');
+  });
+
+  it('ignores }} inside single-quoted strings in interpolations', () => {
+    const ast = parseTemplate("<p>{{ fn('}}') }}</p>");
+    const p = ast[0] as ElementNode;
+    expect(p.children[0]).toMatchObject({ type: 3, expression: "fn('}}')" });
+  });
+
+  it('ignores }} inside double-quoted strings in interpolations', () => {
+    const ast = parseTemplate('<p>{{ fn("}}") }}</p>');
+    const p = ast[0] as ElementNode;
+    expect(p.children[0]).toMatchObject({ type: 3, expression: 'fn("}}")' });
+  });
+
+  it('ignores }} inside template literals in interpolations', () => {
+    const ast = parseTemplate('<p>{{ fn(`}}`) }}</p>');
+    const p = ast[0] as ElementNode;
+    expect(p.children[0]).toMatchObject({ type: 3, expression: 'fn(`}}`)' });
+  });
+
+  it('handles escaped quotes inside interpolation strings', () => {
+    const ast = parseTemplate("<p>{{ fn('a\\'}}b') }}</p>");
+    const p = ast[0] as ElementNode;
+    expect(p.children[0]).toMatchObject({ type: 3, expression: "fn('a\\'}}b')" });
+  });
+
+  it('throws on an interpolation left open inside a string', () => {
+    // The single quote swallows the }} so the interpolation never terminates.
+    expect(() => parseTemplate("<p>{{ fn('}}oops</p>")).toThrow(/[Uu]nterminated/);
+  });
+
+  it('treats unknown u- names as plain attributes', () => {
+    const ast = parseTemplate('<div u-custom="x">y</div>');
+    const el = ast[0] as ElementNode;
+    expect(el.directives).toHaveLength(0);
+    expect(el.attrs).toContainEqual({ name: 'u-custom', value: 'x' });
+  });
+
+  it('u-bind without an argument defaults to the value attribute', () => {
+    const result = compileTemplate('<input u-bind="v()" />');
+    expect(result.code).toContain("setAttr(_el0, 'value', v())");
+  });
+});
+
+// ===========================================================================
+// Codegen edge cases
+// ===========================================================================
+
+describe('codegen edge cases', () => {
+  it('compiles an empty template to an empty div', () => {
+    const result = compileTemplate('');
+    expect(result.code).toContain("const _root = createElement('div')");
+    expect(result.code).toContain('return _root');
+  });
+
+  it('applies the scope id to the wrapper div for multi-root templates', () => {
+    const result = compileTemplate('<p>a</p><p>b</p>', { scopeId: 'data-u-x' });
+    const setScopeCalls = result.code.match(/setAttr\([^,]+, 'data-u-x', ''\)/g);
+    expect(setScopeCalls).toHaveLength(3); // wrapper + both roots
+  });
+
+  it('skips HTML comments inside elements', () => {
+    const result = compileTemplate('<div><!-- note --><span>x</span></div>');
+    expect(result.code).not.toContain('note');
+    expect(result.code).toContain("createElement('span')");
+  });
+
+  it('emits boolean attributes as empty-string setAttr calls', () => {
+    const result = compileTemplate('<input disabled />');
+    expect(result.code).toContain("setAttr(_el0, 'disabled', '')");
+  });
+
+  it('throws on an invalid u-for expression', () => {
+    expect(() => compileTemplate('<li u-for="wat">x</li>')).toThrow(/Invalid u-for expression/);
+  });
+
+  it('supports (item, index) destructuring in u-for', () => {
+    const result = compileTemplate('<li u-for="(item, i) in items()">{{ i }}: {{ item }}</li>');
+    expect(result.code).toContain('(item, i, ');
+  });
+
+  it('passes a :key binding through as the key function', () => {
+    const result = compileTemplate('<li u-for="item in items()" :key="item.id">{{ item.v }}</li>');
+    expect(result.code).toContain('(item, _index) => item.id)');
+    // :key must not be emitted as an attribute binding on the element.
+    expect(result.code).not.toContain("setAttr(_el1, 'key'");
+  });
+
+  it('an empty bound expression compiles to an empty string literal', () => {
+    const result = compileTemplate('<input :value="" />');
+    expect(result.code).toContain("setAttr(_el0, 'value', '')");
+  });
+});
+
+// ===========================================================================
+// Entity decoding — hex and named forms
+// ===========================================================================
+
+describe('entity decoding — hex and named', () => {
+  it('decodes hex entities', () => {
+    const result = compileTemplate('<p>&#x41;&#x62;</p>');
+    expect(result.code).toContain('"Ab"');
+  });
+
+  it('preserves out-of-range hex entities', () => {
+    const result = compileTemplate('<p>&#x110000;</p>');
+    expect(result.code).toContain('&#x110000;');
+  });
+
+  it('decodes known named entities', () => {
+    const result = compileTemplate('<p>&amp;&nbsp;&copy;</p>');
+    expect(result.code).toContain(JSON.stringify('& ©'));
+  });
+
+  it('preserves unknown named entities verbatim', () => {
+    const result = compileTemplate('<p>&doesnotexist;</p>');
+    expect(result.code).toContain('&doesnotexist;');
+  });
+});
+
+// ===========================================================================
+// Style compiler — preprocessing and edge cases
+// ===========================================================================
+
+describe('style preprocessing (scss/sass)', () => {
+  it('compiles scss nesting to plain css', () => {
+    const out = preprocessStyle('.a { .b { color: red; } }', 'scss', 'test.utopia');
+    expect(out).toContain('.a .b');
+    expect(out).toContain('color: red');
+  });
+
+  it('compiles indented sass syntax', () => {
+    const out = preprocessStyle('.a\n  color: red', 'sass', 'test.utopia');
+    expect(out).toContain('.a {');
+    expect(out).toContain('color: red');
+  });
+
+  it('passes through plain css and undefined lang unchanged', () => {
+    expect(preprocessStyle('.a { color: red; }', 'css', 'x')).toBe('.a { color: red; }');
+    expect(preprocessStyle('.a { color: red; }', undefined, 'x')).toBe('.a { color: red; }');
+  });
+
+  it('throws on unsupported style languages', () => {
+    expect(() => preprocessStyle('.a {}', 'less', 'x')).toThrow(/unsupported <style lang="less">/);
+  });
+
+  it('integrates with compile(): scoped scss styles', () => {
+    const source = `
+<template><div class="a"><span class="b">x</span></div></template>
+<style lang="scss" scoped>
+.a { .b { color: red; } }
+</style>
+`;
+    const result = compile(source, { scopeId: 'data-u-test' });
+    expect(result.css).toContain('.a .b[data-u-test]');
+  });
+});
+
+describe('style compiler edge cases', () => {
+  const scoped = (source: string) =>
+    compileStyle({ source, filename: 'test.utopia', scoped: true, scopeId: 'data-u-t' });
+
+  it('preserves an unterminated comment', () => {
+    expect(scoped('/* trailing comment').css).toBe('/* trailing comment');
+  });
+
+  it('keeps stray closing braces', () => {
+    expect(scoped('} .a { color: red; }').css).toContain('.a[data-u-t]');
+  });
+
+  it('passes statement at-rules through unchanged', () => {
+    expect(scoped('@import "base.css";\n.a { color: red; }').css).toContain('@import "base.css";');
+  });
+
+  it('returns a malformed at-rule without braces as-is', () => {
+    expect(scoped('@media (min-width: 600px)').css).toBe('@media (min-width: 600px)');
+  });
+
+  it('keeps trailing text after the last rule', () => {
+    expect(scoped('.a { color: red; } .b').css).toContain('.b');
+  });
+
+  it('does not lose the last character of an unterminated rule', () => {
+    expect(scoped('.a { color: red').css).toBe('.a[data-u-t] { color: red}');
+  });
+
+  it('does not lose the last character of an unterminated at-rule body', () => {
+    const out = scoped('@media x { .a { color: red }').css;
+    expect(out).toContain('color: red');
+  });
+
+  it('tracks nested braces inside a rule set', () => {
+    const out = scoped('.a { &:hover { color: red; } }').css;
+    expect(out).toContain('.a[data-u-t]');
+    expect(out).toContain('&:hover');
+  });
+
+  it('leaves empty selectors in a group untouched', () => {
+    const out = scoped('a, , b { color: red; }').css;
+    expect(out).toContain('a[data-u-t]');
+    expect(out).toContain('b[data-u-t]');
+  });
+
+  it('does not scope inside vendor-prefixed keyframes', () => {
+    const out = scoped('@-webkit-keyframes spin { from { opacity: 0; } }').css;
+    expect(out).not.toContain('from[data-u-t]');
+  });
+
+  it('scopes complex pseudo selectors correctly', () => {
+    expect(scoped('li:nth-child(2n) { color: red; }').css).toContain('li[data-u-t]:nth-child(2n)');
+  });
+});
+
+// ===========================================================================
+// compile() — remaining option branches
+// ===========================================================================
+
+describe('compile() option branches', () => {
+  it('compiles an SFC with no template block', () => {
+    const result = compile('<script>const x = 1</script>');
+    expect(result.code).toContain('const x = 1');
+    expect(result.code).toContain('export default { render: __render }');
+  });
+
+  it('treats a boolean lang attribute as plain css', () => {
+    const source = `
+<template><div class="a">x</div></template>
+<style lang scoped>
+.a { color: red; }
+</style>
+`;
+    const result = compile(source, { scopeId: 'data-u-test' });
+    expect(result.css).toContain('.a[data-u-test]');
+  });
+
+  it('accepts explicit a11y options', () => {
+    const result = compile('<template><img src="p.jpg"></template>', {
+      a11y: { disable: ['img-alt'] },
+    });
+    expect(result.a11y).toHaveLength(0);
+  });
+});
+
+// ===========================================================================
+// Degenerate directive combinations
+// ===========================================================================
+
+describe('degenerate directive combinations', () => {
+  it('u-on without an event argument defaults to click', () => {
+    const result = compileTemplate('<button u-on="h">x</button>');
+    expect(result.code).toContain("addEventListener(_el0, 'click', h)");
+  });
+
+  it('u-else combined with u-if compiles without leaking closure variables', () => {
+    // `<p u-else u-if="b()">` is a degenerate combination: the element is
+    // consumed as the else branch, and its own u-if compiles inside the else
+    // closure. The nested createIf call must stay inside that closure so the
+    // module remains semantically valid.
+    const result = compileTemplate('<div><p u-if="a()">A</p><p u-else u-if="b()">B</p></div>');
+    const nestedIfIdx = result.code.lastIndexOf('createIf(');
+    const outerIfIdx = result.code.indexOf('createIf(');
+    expect(nestedIfIdx).toBeGreaterThan(outerIfIdx);
+    // Executes without ReferenceError.
+    const el = executeRender(result.code, { a: () => true, b: () => true }) as HTMLElement;
+    expect(el.textContent).toBe('A');
+  });
+
+  it('u-else with both u-if and u-for routes through the flat chain', () => {
+    const result = compileTemplate(
+      '<div><p u-if="a()">A</p><p u-else u-if="b()" u-for="i in list()">{{ i }}</p></div>',
+    );
+    const el = executeRender(result.code, {
+      a: () => true,
+      b: () => true,
+      list: () => [1],
+    }) as HTMLElement;
+    expect(el.textContent).toBe('A');
+  });
+});
+
+// ===========================================================================
+// Remaining branch coverage
+// ===========================================================================
+
+describe('remaining branches', () => {
+  it('ignores unknown u-transition modifiers', () => {
+    const result = compileTemplate('<div u-transition:fade.slow>x</div>');
+    expect(result.code).toContain("createTransition(_el0, { name: 'fade' })");
+  });
+
+  it('non-empty text between u-if and u-else breaks the chain', () => {
+    const result = compileTemplate('<div><span u-if="a">A</span>mid<span u-else>B</span></div>');
+    // The u-else is orphaned by the intervening text and silently skipped.
+    const createIfCount = (result.code.match(/createIf\(/g) || []).length;
+    expect(createIfCount).toBe(1);
+    expect(result.code).not.toContain('"B"');
+    expect(result.code).toContain('"mid"');
+  });
+
+  it('a component @event becomes an onX callback prop', () => {
+    const result = compileTemplate('<Widget @select="h" />');
+    expect(result.code).toContain("'onSelect': h");
+  });
+
+  it('a non-bind, non-event directive on a component does not become a prop', () => {
+    const result = compileTemplate('<Widget u-show="vis()" />');
+    expect(result.code).toContain('createComponent(Widget, {})');
   });
 });

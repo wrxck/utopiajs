@@ -59,6 +59,9 @@ let navIndex = 0;
 /** Maximum number of scroll position entries to retain. */
 const MAX_SCROLL_ENTRIES = 50;
 
+/** Maximum depth of guard-driven redirects within a single navigation. */
+const MAX_REDIRECT_DEPTH = 10;
+
 /** Current redirect depth -- used to detect infinite redirect loops. */
 let redirectDepth = 0;
 
@@ -128,8 +131,7 @@ export function createRouter(routeTable: (Route | RouteConfig)[]): void {
       const targetIndex = state?._utopiaNavIndex ?? 0;
 
       // Save current scroll position before navigating.
-      scrollPositions.set(navIndex, { x: window.scrollX, y: window.scrollY });
-      capScrollPositions();
+      saveScrollPosition();
       navIndex = targetIndex;
 
       const url = new URL(window.location.href);
@@ -153,16 +155,9 @@ export function createRouter(routeTable: (Route | RouteConfig)[]): void {
         }
 
         if (typeof result === 'string') {
-          // apply the same same-origin guard as navigate()'s guard-result path:
-          // a redirect computed during back/forward must not send the user
+          // A redirect computed during back/forward must not send the user
           // cross-origin (e.g. a guard reading an attacker-controlled returnTo).
-          let safe = true;
-          try {
-            safe = new URL(result, window.location.origin).origin === window.location.origin;
-          } catch {
-            safe = false;
-          }
-          if (!safe) {
+          if (!isSafeRedirectTarget(result)) {
             console.error('[utopia] Cross-origin redirect blocked:', result);
             return;
           }
@@ -219,7 +214,7 @@ export function createRouter(routeTable: (Route | RouteConfig)[]): void {
       // skip external links and non-HTTP protocols. a protocol-relative href
       // (`//evil.com`) starts with `/` but is cross-origin, so exclude it first.
       if (href.startsWith('//')) return;
-      if (!href.startsWith('/') && !href.startsWith(window.location.origin)) return;
+      if (!href.startsWith('/') && !isSameOriginAbsoluteUrl(href)) return;
 
       event.preventDefault();
       navigate(href);
@@ -252,9 +247,13 @@ export async function navigate(url: string, options: { replace?: boolean } = {})
   if (typeof window === 'undefined') return;
 
   redirectDepth++;
-  if (redirectDepth > 10) {
+  if (redirectDepth > MAX_REDIRECT_DEPTH) {
     console.error('[utopia] Maximum navigation redirects exceeded');
-    redirectDepth = 0;
+    // Undo only this frame's increment: the callers unwinding beneath us each
+    // decrement their own in `finally`, restoring the counter to its baseline.
+    // (Resetting to 0 here drove the counter negative as the stack unwound,
+    // weakening the loop guard on every subsequent redirect loop.)
+    redirectDepth--;
     return;
   }
 
@@ -272,8 +271,7 @@ export async function navigate(url: string, options: { replace?: boolean } = {})
       fullUrl.search === currentUrl.search &&
       fullUrl.hash
     ) {
-      scrollPositions.set(navIndex, { x: window.scrollX, y: window.scrollY });
-      capScrollPositions();
+      saveScrollPosition();
       navIndex++;
       const state = { _utopiaNavIndex: navIndex };
       if (options.replace) {
@@ -296,15 +294,11 @@ export async function navigate(url: string, options: { replace?: boolean } = {})
     }
 
     if (typeof hookResult === 'string') {
-      // Only allow same-origin redirects.
-      try {
-        const redirectUrl = new URL(hookResult, window.location.origin);
-        if (redirectUrl.origin !== window.location.origin) {
-          console.error('[utopia] Cross-origin redirect blocked:', hookResult);
-          return;
-        }
-      } catch {
-        // relative path is fine, absolute invalid URL is not
+      // Only allow same-origin redirects. Unparseable targets are blocked too;
+      // letting them through would make the nested navigate() reject.
+      if (!isSafeRedirectTarget(hookResult)) {
+        console.error('[utopia] Cross-origin redirect blocked:', hookResult);
+        return;
       }
       // Redirect -- navigate to the new URL instead.
       await navigate(hookResult, options);
@@ -312,8 +306,7 @@ export async function navigate(url: string, options: { replace?: boolean } = {})
     }
 
     // Save current scroll position.
-    scrollPositions.set(navIndex, { x: window.scrollX, y: window.scrollY });
-    capScrollPositions();
+    saveScrollPosition();
 
     // Update history.
     navIndex++;
@@ -423,6 +416,34 @@ function findAnchorElement(target: Element | null): HTMLAnchorElement | null {
 }
 
 /**
+ * Whether an href is an absolute URL on the current origin. A plain prefix
+ * check is not sufficient: `https://example.com.evil.com` starts with
+ * `https://example.com` yet is cross-origin.
+ *
+ * Relative or unparseable hrefs return false — they are not handled here.
+ */
+function isSameOriginAbsoluteUrl(href: string): boolean {
+  try {
+    return new URL(href).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Same-origin check for guard-provided redirect targets (relative paths are
+ * resolved against the current origin). Cross-origin and unparseable targets
+ * are rejected.
+ */
+function isSafeRedirectTarget(target: string): boolean {
+  try {
+    return new URL(target, window.location.origin).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Run all registered beforeNavigate hooks in order.
  *
  * @returns false if cancelled, a string if redirecting, or void/true if allowed
@@ -448,9 +469,11 @@ async function runBeforeNavigateHooks(
 }
 
 /**
- * Evict the oldest scroll position entry if the map exceeds the size cap.
+ * Record the current scroll position under the current navigation index,
+ * evicting the oldest entry if the map exceeds the size cap.
  */
-function capScrollPositions(): void {
+function saveScrollPosition(): void {
+  scrollPositions.set(navIndex, { x: window.scrollX, y: window.scrollY });
   if (scrollPositions.size > MAX_SCROLL_ENTRIES) {
     const firstKey = scrollPositions.keys().next().value;
     if (firstKey !== undefined) scrollPositions.delete(firstKey);

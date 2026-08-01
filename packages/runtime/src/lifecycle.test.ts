@@ -1,12 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { signal } from '@matthesketh/utopia-core';
 import {
   mount,
   onMount,
   onDestroy,
   createComponent,
   createElement,
-  createTextNode,
   appendChild,
 } from '@matthesketh/utopia-runtime';
 import type { ComponentDefinition } from '@matthesketh/utopia-runtime';

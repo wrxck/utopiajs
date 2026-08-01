@@ -3,6 +3,7 @@ export {
   defineCollection,
   getCollection,
   getEntry,
+  getCollectionAdapter,
   listCollections,
   clearCollections,
 } from '@/collection';

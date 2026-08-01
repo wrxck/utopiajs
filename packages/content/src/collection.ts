@@ -47,16 +47,9 @@ export async function getCollection(name: string, options?: QueryOptions): Promi
   let entries = await collection.adapter.readEntries(collection.config);
 
   // Validate and apply defaults
-  if (collection.config.schema) {
-    entries = entries.map((entry) => {
-      entry.data = applyDefaults(entry.data, collection.config.schema!);
-      const errors = validateSchema(entry.data, collection.config.schema!);
-      if (errors.length > 0) {
-        const messages = errors.map((e) => e.message).join(', ');
-        throw new Error(`Validation error in "${entry.filePath}": ${messages}`);
-      }
-      return entry;
-    });
+  const schema = collection.config.schema;
+  if (schema) {
+    entries = entries.map((entry) => applySchemaOrThrow(entry, schema));
   }
 
   // Apply query options
@@ -76,11 +69,11 @@ export async function getCollection(name: string, options?: QueryOptions): Promi
     });
   }
 
-  if (options?.offset) {
+  if (options?.offset !== undefined) {
     entries = entries.slice(options.offset);
   }
 
-  if (options?.limit) {
+  if (options?.limit !== undefined) {
     entries = entries.slice(0, options.limit);
   }
 
@@ -100,14 +93,20 @@ export async function getEntry(name: string, slug: string): Promise<ContentEntry
   if (!entry) return null;
 
   if (collection.config.schema) {
-    entry.data = applyDefaults(entry.data, collection.config.schema);
-    const errors = validateSchema(entry.data, collection.config.schema);
-    if (errors.length > 0) {
-      const messages = errors.map((e) => e.message).join(', ');
-      throw new Error(`Validation error in "${entry.filePath}": ${messages}`);
-    }
+    applySchemaOrThrow(entry, collection.config.schema);
   }
 
+  return entry;
+}
+
+/** apply schema defaults to an entry's data, throwing on validation failure. */
+function applySchemaOrThrow(entry: ContentEntry, schema: CollectionSchema): ContentEntry {
+  entry.data = applyDefaults(entry.data, schema);
+  const errors = validateSchema(entry.data, schema);
+  if (errors.length > 0) {
+    const messages = errors.map((e) => e.message).join(', ');
+    throw new Error(`Validation error in "${entry.filePath}": ${messages}`);
+  }
   return entry;
 }
 
