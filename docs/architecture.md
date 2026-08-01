@@ -74,7 +74,7 @@ Key aspects:
 - **All DOM operations are imported helpers** — never direct `document.*` or `.appendChild()` calls
 - **Reactive bindings use `createEffect()`** — wraps signal reads so the DOM updates when signals change
 - **Scoped styles** use data attributes (`data-u-xxxx`) applied to each element
-- **Expression resolution** — template references are prefixed with `_ctx.` to access the component context; `u-for` item variables are bare (local scope)
+- **Expression resolution** — template references are emitted bare: script variables are reachable by closure from module scope, and `u-for` item variables are parameters of the row's render function (see [The `u-for` row scope](#the-u-for-row-scope))
 
 ## Reactivity System (`@matthesketh/utopia-core`)
 
@@ -84,14 +84,17 @@ The signals system provides five primitives:
 |-----------|---------|
 | `signal(value)` | Writable reactive cell. Read via `count()` or `count.value`, write via `count.set(v)` or `count.update(fn)`. |
 | `computed(fn)` | Lazy derived value. Recomputes only when dependencies change and the value is read. |
-| `effect(fn)` | Eager side-effect. Re-runs when dependencies change. Returns a dispose function. |
+| `effect(fn, opts?)` | Eager side-effect. Re-runs when dependencies change. Returns a dispose function. `opts.scheduler` sends re-runs somewhere instead of running them inline — the DOM bindings pass `queueJob`. |
 | `batch(fn)` | Groups multiple writes — effects only run once after the batch completes. |
 | `untrack(fn)` | Reads signals inside `fn` without creating dependency subscriptions. |
+| `tick()` | Promise resolving once pending DOM updates have been applied. |
+| `flushSync(fn)` | Runs `fn` and applies the DOM updates it causes before returning. |
 
 Implementation details:
 - **Diamond dependency handling** — each subscriber is notified at most once per batch
 - **Conditional tracking** — subscriptions are rebuilt on each execution, so `if` branches only track what they actually read
 - **Auto-batching** — a single `signal.set()` call automatically batches its downstream notifications
+- **Synchronous notification** — `signal.set()` notifies its subscribers *inside* the call, before it returns. A plain `effect` therefore re-runs partway through whatever function did the write. Anything the effect reads that is not itself reactive (a persisted copy, a global default, a DOM attribute) must be updated BEFORE the write, or use a scheduler so the effect runs after the synchronous work finishes.
 
 ## Template Directives
 
@@ -101,8 +104,38 @@ Implementation details:
 | `@click="handler"` | Event binding | `addEventListener(el, 'click', _ctx.handler)` |
 | `:attr="expr"` | Dynamic attribute | `createEffect(() => setAttr(el, 'attr', _ctx.expr))` |
 | `u-if="cond"` | Conditional | `createComment('u-if')` + `createIf(anchor, () => cond, renderTrue)` |
-| `u-for="item in list()"` | List rendering | `createComment('u-for')` + `createFor(anchor, () => list, renderFn)` |
+| `u-for="item in list()"` | List rendering | `createComment('u-for')` + `createFor(anchor, () => list, renderFn, key?)` |
 | `u-model="sig"` | Two-way binding | `createEffect(() => setAttr(el, 'value', sig()))` + `addEventListener(el, 'input', ...)` |
+
+### The `u-for` row scope
+
+`createFor` reconciles by key and reuses a row's DOM node when its key survives
+a list update — which is the point of `:key`, and why focus, caret and scroll
+inside a row are preserved. The row therefore has to be told that it now holds a
+*different* item, because a plain `item.name` read subscribes to nothing.
+
+The loop variable stays an ordinary parameter of the row's render function, so
+templates are written exactly as before. `createFor` passes a third argument, a
+`ForItemScope`, and the codegen uses both halves of it:
+
+- `scope.onUpdate(fn)` registers a rebinder the compiler emits at the top of the
+  row; `createFor` calls it with the current item and index every time it reuses
+  the row, reassigning the author's own parameter names.
+- `scope.track()` is called in front of every expression the runtime evaluates
+  inside an effect — interpolations, `:bindings`, `u-if`/`u-show`/`u-html`, and a
+  nested `u-for`'s list expression — subscribing those effects to the row's
+  version cell, which `createFor` bumps after rebinding.
+
+`:key` and event handlers are deliberately *not* tracked: the key is evaluated
+against the item being placed, and a handler is not run in an effect — it reads
+the rebound parameter when it fires, so it always acts on the item its row
+currently shows.
+
+One gap remains, and it is the general props rule rather than anything specific
+to lists: props are passed to a child component **as values**, evaluated once
+when the row is created. `<Child :item="item" />` inside a `u-for` therefore
+keeps the item the row was first rendered with. Pass a signal uncalled and read
+it in the child, or keep the per-row markup in the row itself.
 
 ## File-Based Routing (`@matthesketh/utopia-router`)
 
@@ -140,4 +173,20 @@ Summary: The Vite plugin swaps `@matthesketh/utopia-runtime` for `@matthesketh/u
 
 ## Scheduler
 
-The scheduler (`queueJob`, `nextTick`) batches DOM updates into microtasks. Multiple signal writes within the same synchronous block produce a single flush. On the server, the scheduler is a no-op.
+The scheduler (`queueJob`, `tick`, exported from core and re-exported by the runtime as `nextTick`) batches DOM updates into microtasks. Every `{{ }}` interpolation and `:binding` the compiler emits goes through `createEffect`, which schedules its re-runs here, so multiple signal writes within one synchronous block produce a single DOM pass.
+
+Two rules make this safe:
+
+- **The first pass is synchronous.** Effects always run once inline on creation, so an element paints its initial value on mount rather than a microtask later.
+- **Structural work is not scheduled.** `u-if` and `u-for` reconcile inline. Mounting a branch runs its own bindings' first pass, so a newly shown subtree is complete the moment it appears, and node identity, focus and caret preservation stay out of the queue. A microtask still precedes the frame, so nothing partial is ever painted.
+
+User-authored `effect()` in a component `<script>` is deliberately *not* scheduled: it is application logic rather than rendering, and its ordering is something authors reason about directly.
+
+Reading the DOM straight after a write therefore sees the previous frame. Await `tick()`, or wrap the write in `flushSync()` when you need it applied immediately:
+
+```ts
+flushSync(() => open.set(true));
+panel.scrollTop = 0;              // the panel exists
+```
+
+On the server the scheduler runs jobs immediately — SSR is synchronous and the markup is serialised the moment it is built, so there is no microtask window to defer into.

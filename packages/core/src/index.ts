@@ -17,6 +17,8 @@
 // Internal error types
 // ---------------------------------------------------------------------------
 
+import { flushJobsSync } from '@/scheduler';
+
 /** Thrown by flushPendingEffects when an infinite effect re-queue is detected. */
 class FlushGuardError extends Error {
   constructor(message: string) {
@@ -141,11 +143,36 @@ const MAX_COMPUTE_DEPTH = 100;
 /** Maximum allowed iterations for flushing pending effects. */
 const MAX_FLUSH_ITERATIONS = 100;
 
+/**
+ * Maximum synchronous nesting of effect executions.
+ *
+ * `flushPendingEffects` guards the batched path, but effects also run
+ * synchronously outside a flush: on creation, and from `notify()` whenever
+ * `batchDepth === 0`. Nothing bounded that, so a cascade in which running one
+ * effect synchronously causes another to run — the real case was an effect
+ * dispatching a DOM event whose listeners wrote a signal it had just been made
+ * to depend on — recursed with no error and no warning until the main thread
+ * melted.
+ *
+ * The ceiling is the same 100 as MAX_FLUSH_ITERATIONS and MAX_COMPUTE_DEPTH,
+ * deliberately: it is a runaway detector, not a design constraint, and one
+ * number is easier to reason about than three. Legitimate synchronous nesting
+ * is bounded by how deeply a UI nests reactive scopes — a component tree inside
+ * nested `u-for` lists reaches tens at the very worst, and each level costs a
+ * real render — whereas a runaway cascade blows past 100 in microseconds. Note
+ * the counter measures DEPTH, not total runs: a flush that runs a thousand
+ * sibling effects in sequence never exceeds 1.
+ */
+const MAX_SYNC_RUN_DEPTH = 100;
+
 /** Queue of effects waiting to run after the current batch completes. */
 let pendingEffects: Set<EffectNode> = new Set();
 
 /** Re-entrancy depth counter for flushPendingEffects — detects effect-triggered infinite flush loops. */
 let flushDepth = 0;
+
+/** Synchronous nesting depth of EffectNode._run — detects unbatched runaway cascades. */
+let syncRunDepth = 0;
 
 // ---------------------------------------------------------------------------
 // pushSubscriber / popSubscriber
@@ -413,13 +440,29 @@ class EffectNode implements Subscriber {
   dependencies: Set<SignalNode<any>> = new Set();
 
   /**
+   * Optional scheduler. When set, a NOTIFIED effect is handed to it instead of
+   * running inline — the DOM bindings use this to defer their re-render to a
+   * microtask, so a binding never renders halfway through the function that
+   * wrote the signal. The first run (on creation) is always synchronous, so
+   * mounting is unaffected.
+   */
+  _scheduler: ((run: () => void) => void) | undefined;
+
+  /**
+   * Stable bound `_run`, so a scheduler that de-duplicates by function identity
+   * (queueJob's Set) collapses repeated notifications within a tick into one.
+   */
+  _runBound: () => void = () => this._run();
+
+  /**
    * Flag to prevent re-entrant notification. When an effect is already
    * queued (or currently executing), additional notifications are ignored.
    */
   _queued: boolean = false;
 
-  constructor(fn: () => void | (() => void)) {
+  constructor(fn: () => void | (() => void), scheduler?: (run: () => void) => void) {
     this._fn = fn;
+    this._scheduler = scheduler;
   }
 
   /** Subscriber interface — called when an upstream dependency changes. */
@@ -431,6 +474,8 @@ class EffectNode implements Subscriber {
 
     if (batchDepth > 0) {
       pendingEffects.add(this);
+    } else if (this._scheduler) {
+      this._scheduler(this._runBound);
     } else {
       this._run();
     }
@@ -443,32 +488,77 @@ class EffectNode implements Subscriber {
       return;
     }
 
-    // Run previous cleanup function (like React useEffect cleanup).
-    if (this._cleanupFn) {
-      try {
-        this._cleanupFn();
-      } catch (err) {
-        reportEffectError('Error in effect cleanup:', err);
-      }
-      this._cleanupFn = undefined;
+    // runaway-cascade guard. _run is reached synchronously outside the batched
+    // flush path in two places — on creation, and from notify() when
+    // batchDepth is 0 — and neither is covered by the flushPendingEffects
+    // guards, so an effect whose execution synchronously causes further effect
+    // executions could recurse unbounded with nothing reported. throw before
+    // touching any state so there is nothing to unwind.
+    if (syncRunDepth > MAX_SYNC_RUN_DEPTH) {
+      this._queued = false;
+      pendingEffects.clear();
+      throw new FlushGuardError(
+        'Maximum synchronous effect cascade depth exceeded (possible infinite loop: running an effect synchronously runs more effects)',
+      );
     }
 
-    // Unsubscribe from all previous dependencies so conditional tracking
-    // is correct on re-execution.
-    this._unsubscribe();
-
-    pushSubscriber(this);
+    syncRunDepth++;
     try {
-      const result = this._fn();
-      this._cleanupFn = typeof result === 'function' ? result : undefined;
-    } catch (err) {
-      if (err instanceof FlushGuardError) {
-        throw err;
+      // Run previous cleanup function (like React useEffect cleanup).
+      if (this._cleanupFn) {
+        try {
+          this._cleanupFn();
+        } catch (err) {
+          reportEffectError('Error in effect cleanup:', err);
+        }
+        this._cleanupFn = undefined;
       }
-      reportEffectError('Error in effect:', err);
+
+      // Snapshot the current dependencies before dropping them. Unsubscribing
+      // first is what makes conditional tracking correct, but it also means a
+      // body that throws BEFORE its first signal read leaves this effect
+      // subscribed to nothing — and because the error is reported rather than
+      // rethrown, the effect object survives with an empty dependency set and
+      // can never be notified again. It is dead for the lifetime of the page,
+      // silently. Restoring the snapshot in that one case gives a later change
+      // the chance to retry it.
+      const prevDeps = this.dependencies.size > 0 ? Array.from(this.dependencies) : null;
+
+      // Unsubscribe from all previous dependencies so conditional tracking
+      // is correct on re-execution.
+      this._unsubscribe();
+
+      pushSubscriber(this);
+      let threw = false;
+      try {
+        const result = this._fn();
+        this._cleanupFn = typeof result === 'function' ? result : undefined;
+      } catch (err) {
+        threw = true;
+        if (err instanceof FlushGuardError) {
+          throw err;
+        }
+        reportEffectError('Error in effect:', err);
+      } finally {
+        popSubscriber();
+        this._queued = false;
+        // Only the captured-NOTHING case restores. A run that threw after
+        // reading some signals has legitimately-partial dependencies: it is
+        // indistinguishable from a conditional branch that stopped reading the
+        // rest, it is still reachable from what it did read, and re-adding the
+        // dependencies it no longer touches would resurrect subscriptions the
+        // reactive graph is meant to drop. A successful run that captured
+        // nothing is also left alone — that is an effect deliberately opting
+        // out of tracking, not an orphan.
+        if (threw && prevDeps !== null && !this._disposed && this.dependencies.size === 0) {
+          for (const dep of prevDeps) {
+            dep._subscribers.add(this);
+            this.dependencies.add(dep);
+          }
+        }
+      }
     } finally {
-      popSubscriber();
-      this._queued = false;
+      syncRunDepth--;
     }
   }
 
@@ -500,6 +590,19 @@ class EffectNode implements Subscriber {
 // effect()
 // ---------------------------------------------------------------------------
 
+export interface EffectOptions {
+  /**
+   * Where a re-run goes instead of executing inline. Receives the effect's
+   * runner; call it whenever the work should happen. `queueJob` defers to the
+   * next microtask, which is what the DOM bindings use.
+   *
+   * The runner has a stable identity per effect, so a scheduler that
+   * de-duplicates by function reference collapses a burst of notifications
+   * into a single run.
+   */
+  scheduler?: (run: () => void) => void;
+}
+
 /**
  * Creates a reactive side-effect that re-runs when its dependencies change.
  *
@@ -517,10 +620,15 @@ class EffectNode implements Subscriber {
  * dispose(); // stop watching
  * ```
  */
-export function effect(fn: () => void | (() => void)): () => void {
-  const node = new EffectNode(fn);
+export function effect(
+  fn: () => void | (() => void),
+  options?: EffectOptions,
+): () => void {
+  const node = new EffectNode(fn, options?.scheduler);
 
-  // Run synchronously on creation to establish initial subscriptions.
+  // Run synchronously on creation to establish initial subscriptions. This is
+  // deliberately NOT scheduled even when a scheduler is given: a binding must
+  // paint its initial value on mount, not a microtask later.
   node._run();
 
   const dispose = (): void => node._dispose();
@@ -627,7 +735,13 @@ function flushPendingEffects(): void {
       const effects = Array.from(pendingEffects);
       pendingEffects.clear();
       for (let i = 0; i < effects.length; i++) {
-        effects[i]._run();
+        const node = effects[i];
+        // a scheduled effect keeps its scheduler even when it was queued by a
+        // batch: the point of a DOM binding's scheduler is that its updates
+        // ALWAYS land in one place, so batch() must not smuggle one back onto
+        // the synchronous path.
+        if (node._scheduler) node._scheduler(node._runBound);
+        else node._run();
       }
     }
   } finally {
@@ -657,6 +771,33 @@ export function untrack<T>(fn: () => T): T {
     popSubscriber();
   }
 }
+
+// ---------------------------------------------------------------------------
+// Scheduler
+// ---------------------------------------------------------------------------
+
+/**
+ * Run `fn` and apply every DOM update it causes before returning.
+ *
+ * Bindings normally defer to a microtask, so reading the DOM straight after a
+ * signal write sees the previous frame. Wrap the write when you genuinely need
+ * it applied now — measuring layout, moving focus, setting scroll:
+ *
+ * ```ts
+ * flushSync(() => open.set(true));
+ * panel.scrollTop = 0;               // the panel exists
+ * ```
+ *
+ * Prefer `await tick()` where you can; this forces work the scheduler was
+ * deliberately coalescing.
+ */
+export function flushSync<T>(fn: () => T): T {
+  const result = batch(fn);
+  flushJobsSync();
+  return result;
+}
+
+export { queueJob, tick } from '@/scheduler';
 
 // ---------------------------------------------------------------------------
 // Shared signals (cross-tab sync via BroadcastChannel)

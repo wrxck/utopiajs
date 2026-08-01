@@ -537,6 +537,24 @@ function increment() { count.update(n => n + 1) }
 </ul>
 ```
 
+Use `(item, index)` for the index, and `:key` to keep a row's DOM node — and the
+focus, caret or scroll position inside it — across a list update:
+
+```html
+<ul>
+  <li u-for="(row, i) in rows()" :key="row.id">
+    {{ i }}: {{ row.name }}
+    <input :value="row.grams" />
+    <button @click="() => remove(row)">x</button>
+  </li>
+</ul>
+```
+
+A kept row re-evaluates its bindings against the item it now holds, so the
+idiomatic immutable update (`rows.set(rows().map((r) => ({ ...r, name })))`)
+shows through, and `remove(row)` receives the record that row currently
+displays.
+
 ### Two-way input binding
 
 ```html

@@ -67,7 +67,7 @@ Key behavioral differences from the client runtime:
 | `addEventListener(el, 'click', fn)` | Attaches listener | No-op, returns `() => {}` |
 | `effect(fn)` / `createEffect(fn)` | Tracks dependencies, re-runs on change | Runs `fn` once synchronously via `untrack()` |
 | `createIf(anchor, cond, true, false?)` | Reactive — toggles branches on signal change | Evaluates once, inserts the matching branch |
-| `createFor(anchor, list, render)` | Reactive — re-renders on list change | Evaluates once, renders all items |
+| `createFor(anchor, list, render, key?)` | Reactive — reconciles by key on list change, and rebinds a reused row's loop variables through the scope it passes to `render` | Evaluates once, renders all items, and passes an inert scope (nothing is ever reused, so the markup matches a first client render) |
 | `queueJob(fn)` / `nextTick()` | Microtask scheduler | No-op |
 | Signals (`signal`, `computed`, `batch`, `untrack`) | Fully reactive | Same — signals work normally on server |
 

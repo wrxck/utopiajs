@@ -535,10 +535,28 @@ function isDirectiveKind(s: string): s is DirectiveKind {
 // ===========================================================================
 
 /**
- * A set of variable names that are "local" (i.e. function parameters from
- * u-for).  This set is threaded through recursive codegen calls.
+ * The lexical scope a template expression is generated in. Threaded through
+ * the recursive codegen calls.
+ *
+ * `vars` are the names bound locally (the loop variables of the enclosing
+ * u-for directives, which become parameters of the row's render function).
+ *
+ * `tracks` names the per-row track function each of those loops emits,
+ * outermost first. Every expression the runtime evaluates inside an effect
+ * calls them, which is what makes a loop variable reactive: the effect
+ * subscribes to "this row now holds a different item", so a REUSED row
+ * re-evaluates its bindings against the rebound loop variables instead of
+ * keeping the ones it first rendered with.
  */
-type LocalScope = Set<string>;
+interface LocalScope {
+  vars: Set<string>;
+  tracks: string[];
+}
+
+/** The scope at the top of a template — nothing local, no enclosing loop. */
+function rootScope(): LocalScope {
+  return { vars: new Set(), tracks: [] };
+}
 
 class CodeGenerator {
   private code: string[] = [];
@@ -552,7 +570,7 @@ class CodeGenerator {
   }
 
   generate(ast: TemplateNode[]): TemplateCompileResult {
-    const scope: LocalScope = new Set();
+    const scope: LocalScope = rootScope();
 
     // Find substantive root nodes (non-whitespace-only text, elements, interp).
     const rootElements = ast.filter(
@@ -693,7 +711,7 @@ class CodeGenerator {
     this.helpers.add('setText');
 
     const textVar = this.freshVar();
-    const expr = this.resolveExpression(node.expression, scope);
+    const expr = this.resolveExpression(node.expression, scope, true);
     this.emit(`const ${textVar} = createTextNode('')`);
     this.emit(`createEffect(() => setText(${textVar}, String(${expr})))`);
     return textVar;
@@ -801,7 +819,7 @@ class CodeGenerator {
     this.helpers.add('setAttr');
     this.helpers.add('createEffect');
     const attrName = dir.arg ?? 'value';
-    const expr = this.resolveExpression(dir.expression, scope);
+    const expr = this.resolveExpression(dir.expression, scope, true);
     if (attrName === 'class' && staticClass != null) {
       this.helpers.add('mergeClass');
       this.emit(
@@ -830,7 +848,7 @@ class CodeGenerator {
   // ---- u-html ---------------------------------------------------------------
 
   private genHtml(elVar: string, dir: Directive, scope: LocalScope): void {
-    const expr = this.resolveExpression(dir.expression, scope);
+    const expr = this.resolveExpression(dir.expression, scope, true);
     if (dir.modifiers.includes('raw')) {
       this.helpers.add('setHtml');
       this.emit(`setHtml(${elVar}, () => ${expr})`);
@@ -848,7 +866,7 @@ class CodeGenerator {
   // showing restores exactly what the author set.
   private genShow(elVar: string, dir: Directive, scope: LocalScope): void {
     this.helpers.add('setShow');
-    const expr = this.resolveExpression(dir.expression, scope);
+    const expr = this.resolveExpression(dir.expression, scope, true);
     this.emit(`setShow(${elVar}, () => ${expr})`);
   }
 
@@ -888,7 +906,7 @@ class CodeGenerator {
     this.helpers.add('createComment');
     this.emit(`const ${anchorVar} = createComment('u-if')`);
 
-    const condition = this.resolveExpression(dir.expression, scope);
+    const condition = this.resolveExpression(dir.expression, scope, true);
 
     // Strip the u-if/u-else-if directive and generate the element in a nested function.
     const strippedNode: ElementNode = {
@@ -975,11 +993,20 @@ class CodeGenerator {
     }
     const itemName = forMatch[1] ?? forMatch[3];
     const indexName = forMatch[2] ?? '_index';
-    const listExpr = this.resolveExpression(forMatch[4].trim(), scope);
+    const listExpr = this.resolveExpression(forMatch[4].trim(), scope, true);
 
-    // Create a new scope that includes the item variable.
-    const innerScope: LocalScope = new Set(scope);
-    innerScope.add(itemName);
+    // The row scope createFor hands to the render function: `track` is called
+    // by every reactive expression in the row, `onUpdate` takes the rebinder
+    // for the loop variables. Named up front because the row's expressions
+    // are generated against them.
+    const scopeVar = this.freshVar('_scope');
+    const trackVar = this.freshVar('_track');
+
+    // Create a new scope that includes the item variable and this row's track.
+    const innerScope: LocalScope = {
+      vars: new Set(scope.vars).add(itemName),
+      tracks: [...scope.tracks, trackVar],
+    };
 
     // Look for a :key binding to pass as key function.
     const keyDir = node.directives.find((d) => d.kind === 'bind' && d.arg === 'key');
@@ -999,7 +1026,20 @@ class CodeGenerator {
     this.code = savedCode;
 
     const renderFnVar = this.freshVar();
-    this.emit(`const ${renderFnVar} = (${itemName}, ${indexName}) => {`);
+    const itemArg = this.freshVar('_item');
+    const indexArg = this.freshVar('_idx');
+    this.emit(`const ${renderFnVar} = (${itemName}, ${indexName}, ${scopeVar}) => {`);
+    // The loop variables stay ordinary parameters, so the author's expressions
+    // (and any handler that closes over them) are emitted untouched — but they
+    // are REASSIGNED here whenever createFor reuses this row for another item,
+    // and the row's reactive expressions re-run because they call `track`.
+    // Both halves are guarded: a caller that passes no scope (a hand-written
+    // renderItem, an older runtime) keeps the previous render-once behaviour
+    // rather than throwing.
+    this.emit(`  const ${trackVar} = ${scopeVar} ? ${scopeVar}.track : () => {}`);
+    this.emit(
+      `  if (${scopeVar}) ${scopeVar}.onUpdate((${itemArg}, ${indexArg}) => { ${itemName} = ${itemArg}; ${indexName} = ${indexArg} })`,
+    );
     for (const line of innerLines) {
       this.emit(`  ${line}`);
     }
@@ -1008,6 +1048,8 @@ class CodeGenerator {
 
     let keyArg = '';
     if (keyDir) {
+      // The key runs against the item createFor is placing, not the row's
+      // current one, so it takes the raw parameters and is never tracked.
       const keyExpr = this.resolveExpression(keyDir.expression, innerScope);
       keyArg = `, (${itemName}, ${indexName}) => ${keyExpr}`;
     }
@@ -1216,18 +1258,32 @@ class CodeGenerator {
    * Resolve a template expression to a JS expression.
    *
    * All identifiers are emitted as bare references — user script variables
-   * live at module scope and are accessible via closure.
+   * live at module scope and are accessible via closure, and u-for loop
+   * variables are parameters of the row's render function.
+   *
+   * `reactive` marks an expression the runtime evaluates inside an effect
+   * (an interpolation, a binding, a u-if condition, a u-for list). Inside a
+   * u-for row those are prefixed with a call to each enclosing row's track
+   * function, so the effect subscribes to the row's item and re-runs when
+   * createFor rebinds it. A plain property read like `item.name` registers no
+   * dependency of its own, so without this the effect would run exactly once
+   * and a reused row would render the item it was first given, forever.
+   *
+   * The track calls sit in a comma expression, so the value and the syntax of
+   * the author's expression are untouched; outside a u-for, or for a
+   * non-reactive site (an event handler, a `:key`), nothing is added at all.
    */
-  private resolveExpression(expr: string, _scope: LocalScope): string {
+  private resolveExpression(expr: string, scope: LocalScope, reactive: boolean = false): string {
     const trimmed = expr.trim();
     if (!trimmed) return "''";
-    return trimmed;
+    if (!reactive || scope.tracks.length === 0) return trimmed;
+    return `(${scope.tracks.map((t) => `${t}(), `).join('')}${trimmed})`;
   }
 
   // ---- Utilities ----------------------------------------------------------
 
-  private freshVar(): string {
-    return `_el${this.varCounter++}`;
+  private freshVar(prefix: string = '_el'): string {
+    return `${prefix}${this.varCounter++}`;
   }
 
   private emit(line: string): void {

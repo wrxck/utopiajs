@@ -1,55 +1,21 @@
 /**
- * @matthesketh/utopia-runtime — Microtask-based update scheduler
+ * @matthesketh/utopia-runtime — update scheduler (re-export)
  *
- * Batches DOM update jobs so that multiple signal changes within the same
- * synchronous tick only trigger a single DOM update pass.
+ * The scheduler moved to `@matthesketh/utopia-core`, where the reactivity it
+ * schedules lives: `effect(fn, { scheduler })` and `flushSync()` both need it,
+ * and core cannot import downstream. Re-exported here unchanged so anything
+ * already importing `queueJob` / `nextTick` from the runtime keeps working.
  */
 
-const queue: Set<() => void> = new Set();
-let isFlushing = false;
-let isFlushPending = false;
-let resolvedPromise: Promise<void> = Promise.resolve();
+export { queueJob, tick, tick as nextTick } from '@matthesketh/utopia-core';
 
 /**
- * Queue a job for the next microtask flush. Duplicate references to the same
- * function are automatically de-duplicated because we store them in a Set.
+ * The scheduler the DOM bindings pass to `effect`.
+ *
+ * A bound effect paints its initial value synchronously (effects always run
+ * once inline on creation) and defers every later update to a microtask. That
+ * is what turns a handler writing five signals into one DOM pass instead of
+ * five — and what stops a binding rendering halfway through the function that
+ * wrote the signal, against a world only partly updated.
  */
-export function queueJob(job: () => void): void {
-  queue.add(job);
-
-  if (!isFlushPending && !isFlushing) {
-    isFlushPending = true;
-    resolvedPromise.then(flushJobs);
-  }
-}
-
-/**
- * Returns a promise that resolves after the current pending flush completes.
- * Useful for tests and any code that needs to wait for DOM updates.
- */
-export function nextTick(): Promise<void> {
-  return resolvedPromise.then();
-}
-
-function flushJobs(): void {
-  isFlushPending = false;
-  isFlushing = true;
-
-  try {
-    // Snapshot and clear the queue before iterating. Jobs added during
-    // this flush will be picked up in the subsequent pass (not re-executed
-    // within the same iteration).
-    const jobs = Array.from(queue);
-    queue.clear();
-    for (let i = 0; i < jobs.length; i++) {
-      jobs[i]();
-    }
-  } finally {
-    isFlushing = false;
-    // If new jobs were queued during flush, schedule another pass.
-    if (queue.size > 0) {
-      isFlushPending = true;
-      resolvedPromise.then(flushJobs);
-    }
-  }
-}
+export { queueJob as domScheduler } from '@matthesketh/utopia-core';

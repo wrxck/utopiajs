@@ -7,7 +7,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { signal, effect as coreEffect, type ReadonlySignal } from '@matthesketh/utopia-core';
+import {
+  signal,
+  effect as coreEffect,
+  tick as flushDom,
+  type ReadonlySignal,
+} from '@matthesketh/utopia-core';
 
 import {
   createElement,
@@ -789,7 +794,7 @@ describe('Directives', () => {
       expect(clicks).toEqual(['food', 'food']);
     });
 
-    it('disposes effects of removed items but leaves kept items running', () => {
+    it('disposes effects of removed items but leaves kept items running', async () => {
       // motivation: a removed list row's `:class="x()"` binding must stop
       // firing — otherwise it tries to mutate a detached node forever.
       // a kept row's binding must keep firing — otherwise reactive bindings
@@ -830,6 +835,7 @@ describe('Directives', () => {
       // remove 'a'; tick should now only re-run 'b's effect.
       items.set([{ id: 'b' }]);
       tick.set(tick() + 1);
+      await flushDom();
       expect(renders.a).toBe(baseA);
       expect(renders.b).toBeGreaterThan(baseB);
     });
@@ -861,6 +867,235 @@ describe('Directives', () => {
       const after = parent.querySelector('#input-a') as HTMLInputElement;
       expect(after).toBe(inputA);
       expect(after.value).toBe('typed');
+    });
+
+    // -----------------------------------------------------------------
+    // reactive loop variable (ForItemScope)
+    // -----------------------------------------------------------------
+    // reuse alone left a row rendering the item it was FIRST given: keying
+    // by `item.id` means the canonical immutable update
+    // (items.map(x => ({ ...x, name }))) arrives as a new object under an
+    // existing key, and a binding that closed over the old object had no
+    // signal to re-run on. the row scope closes that: createFor rebinds the
+    // loop variables and bumps the row's version, and the row's effects —
+    // which called scope.track — re-run against the new item on the SAME
+    // node. these renderItem functions are written in the shape the compiler
+    // emits (see the codegen tests in the compiler package).
+
+    it('rebinds a reused row to the item it now holds', async () => {
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+
+      const items = signal([{ id: 'a', name: 'alpha' }]);
+
+      createFor(
+        anchor,
+        () => items(),
+        (item, _index, scope) => {
+          const track = scope.track;
+          scope.onUpdate((nextItem) => {
+            item = nextItem;
+          });
+          const li = createElement('li');
+          createEffect(() => {
+            track();
+            li.textContent = item.name;
+          });
+          return li;
+        },
+        (item) => item.id,
+      );
+
+      const li = parent.querySelector('li') as HTMLElement;
+      expect(li.textContent).toBe('alpha');
+
+      items.set([{ id: 'a', name: 'alpha-2' }]);
+      expect(parent.querySelector('li')).toBe(li);
+      await flushDom();
+      expect(li.textContent).toBe('alpha-2');
+    });
+
+    it('rebinds the index of a reused row after a reorder', async () => {
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+
+      const a = { id: 'a' };
+      const b = { id: 'b' };
+      const items = signal([a, b]);
+
+      createFor(
+        anchor,
+        () => items(),
+        (item, index, scope) => {
+          const track = scope.track;
+          scope.onUpdate((nextItem, nextIndex) => {
+            item = nextItem;
+            index = nextIndex;
+          });
+          const li = createElement('li');
+          li.id = `reorder-${item.id}`;
+          createEffect(() => {
+            track();
+            li.textContent = `${index}:${item.id}`;
+          });
+          return li;
+        },
+        (item) => item.id,
+      );
+
+      const rowA = parent.querySelector('#reorder-a') as HTMLElement;
+      expect(rowA.textContent).toBe('0:a');
+
+      // same objects, reversed — the nodes are moved, not rebuilt.
+      items.set([b, a]);
+      expect(parent.querySelector('#reorder-a')).toBe(rowA);
+      await flushDom();
+      expect(rowA.textContent).toBe('1:a');
+      expect((parent.querySelector('#reorder-b') as HTMLElement).textContent).toBe('0:b');
+    });
+
+    it('wakes a reused row even when the item is the identical object', async () => {
+      // the row cannot tell an in-place mutation from a replacement, so the
+      // version bump is unconditional: a list update always re-evaluates the
+      // rows it kept.
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+
+      const only = { id: 'a', name: 'alpha' };
+      const items = signal([only]);
+
+      createFor(
+        anchor,
+        () => items(),
+        (item, _index, scope) => {
+          const track = scope.track;
+          scope.onUpdate((nextItem) => {
+            item = nextItem;
+          });
+          const li = createElement('li');
+          createEffect(() => {
+            track();
+            li.textContent = item.name;
+          });
+          return li;
+        },
+        (item) => item.id,
+      );
+
+      only.name = 'mutated';
+      items.set([only]);
+      await flushDom();
+      expect((parent.querySelector('li') as HTMLElement).textContent).toBe('mutated');
+    });
+
+    it('does not refresh a row it removed', () => {
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+
+      const items = signal([{ id: 'a' }, { id: 'b' }]);
+      const refreshes: Record<string, number> = { a: 0, b: 0 };
+
+      createFor(
+        anchor,
+        () => items(),
+        (item, _index, scope) => {
+          scope.onUpdate((nextItem) => {
+            refreshes[nextItem.id] = (refreshes[nextItem.id] ?? 0) + 1;
+          });
+          return createElement('li');
+        },
+        (item) => item.id,
+      );
+
+      items.set([{ id: 'a' }]);
+      expect(refreshes).toEqual({ a: 1, b: 0 });
+      items.set([{ id: 'a' }]);
+      expect(refreshes).toEqual({ a: 2, b: 0 });
+    });
+
+    it('still renders a renderItem that ignores the scope', () => {
+      // hand-written callers (and code compiled before the scope existed)
+      // pass a two-parameter renderItem — it must keep working, unchanged.
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+
+      const items = signal([{ id: 'a', name: 'alpha' }]);
+
+      createFor(
+        anchor,
+        () => items(),
+        (item) => {
+          const li = createElement('li');
+          li.textContent = item.name;
+          return li;
+        },
+        (item) => item.id,
+      );
+
+      const li = parent.querySelector('li') as HTMLElement;
+      items.set([{ id: 'a', name: 'alpha-2' }]);
+      // reused, so still the original node and the original text — the
+      // pre-scope behaviour, not a crash.
+      expect(parent.querySelector('li')).toBe(li);
+      expect(li.textContent).toBe('alpha');
+    });
+
+    it('keeps focus and caret in a reused row while its value updates', async () => {
+      // the case the fix exists for: a grams input inside a row whose list is
+      // rebuilt immutably on every keystroke. the row is reused, so the input
+      // keeps focus and caret — and the row's bindings still update.
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+
+      const items = signal([
+        { id: 'a', grams: '10' },
+        { id: 'b', grams: '20' },
+      ]);
+
+      createFor(
+        anchor,
+        () => items(),
+        (item, _index, scope) => {
+          const track = scope.track;
+          scope.onUpdate((nextItem) => {
+            item = nextItem;
+          });
+          const input = createElement('input') as HTMLInputElement;
+          input.id = `grams-${item.id}`;
+          createEffect(() => {
+            track();
+            setAttr(input, 'value', item.grams);
+          });
+          return input;
+        },
+        (item) => item.id,
+      );
+
+      const first = parent.querySelector('#grams-a') as HTMLInputElement;
+      first.focus();
+      first.setSelectionRange(1, 1);
+      expect(document.activeElement).toBe(first);
+
+      items.set([
+        { id: 'a', grams: '10' },
+        { id: 'b', grams: '99' },
+      ]);
+
+      // node identity, focus and caret survive the reconcile immediately (it is
+      // synchronous); the VALUE binding lands on the microtask.
+      expect(parent.querySelector('#grams-a')).toBe(first);
+      expect(document.activeElement).toBe(first);
+      expect(first.selectionStart).toBe(1);
+      await flushDom();
+      expect(document.activeElement).toBe(first);
+      expect(first.selectionStart).toBe(1);
+      expect((parent.querySelector('#grams-b') as HTMLInputElement).value).toBe('99');
     });
   });
 
@@ -1288,7 +1523,7 @@ describe('Style deduplication', () => {
 // =========================================================================
 
 describe('Effect disposal on unmount', () => {
-  it('stops reactive effects after unmount', () => {
+  it('stops reactive effects after unmount', async () => {
     const target = container();
     const count = signal(0);
     const effectRunCount = vi.fn();
@@ -1321,6 +1556,7 @@ describe('Effect disposal on unmount', () => {
 
     // Update the signal — the effect should re-run.
     count.set(1);
+    await flushDom();
     expect(effectRunCount).toHaveBeenCalledTimes(2);
     expect(target.querySelector('div')!.textContent).toBe('1');
 

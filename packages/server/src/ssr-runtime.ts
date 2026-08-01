@@ -263,9 +263,19 @@ export function removeNode(node: VNode): void {
 // Effects — SSR runs them once synchronously, without tracking
 // ---------------------------------------------------------------------------
 
-export function effect(fn: () => void | (() => void)): () => void {
+// the second parameter mirrors core's EffectOptions so compiled output that
+// passes a scheduler type-checks against the SSR shim; on the server an effect
+// runs exactly once, so there is nothing to schedule.
+export function effect(
+  fn: () => void | (() => void),
+  _options?: { scheduler?: (run: () => void) => void },
+): () => void {
   untrack(() => fn());
   return () => {};
+}
+
+export function flushSync<T>(fn: () => T): T {
+  return fn();
 }
 
 export function createEffect(fn: () => void | (() => void)): () => void {
@@ -298,10 +308,16 @@ export function createIf(
   return () => {};
 }
 
+/** Mirrors the runtime's ForItemScope — the row handle compiled templates take. */
+export interface ForItemScope<T> {
+  track(): void;
+  onUpdate(fn: (item: T, index: number) => void): void;
+}
+
 export function createFor<T>(
   anchor: VComment,
   list: () => T[],
-  renderItem: (item: T, index: number) => VNode,
+  renderItem: (item: T, index: number, scope: ForItemScope<T>) => VNode,
   _key?: (item: T, index: number) => string | number,
 ): () => void {
   const parent = anchor._parent;
@@ -309,8 +325,17 @@ export function createFor<T>(
 
   const items = untrack(list);
 
+  // server render is a single pass: no row is ever reused, so nothing rebinds
+  // a row's loop variables and nothing needs to observe them. the inert scope
+  // is what keeps the markup identical to a first client render — the rows
+  // evaluate the same expressions against the same items.
+  const scope: ForItemScope<T> = {
+    track() {},
+    onUpdate() {},
+  };
+
   for (let i = 0; i < items.length; i++) {
-    const node = untrack(() => renderItem(items[i], i));
+    const node = untrack(() => renderItem(items[i], i, scope));
     insertBefore(parent, node, anchor);
   }
 
@@ -453,13 +478,26 @@ export function defineLazy(
 export function createTransition(_el: VNode, _opts: unknown): void {}
 
 // ---------------------------------------------------------------------------
-// Scheduler — no-op on server
+// Scheduler — immediate on server
 // ---------------------------------------------------------------------------
 
-export function queueJob(_fn: () => void): void {}
+/**
+ * Rendering on the server is synchronous and the markup is serialised the
+ * moment it is built: there is no microtask window before the output is read.
+ * So a scheduled job has to run NOW.
+ *
+ * This used to discard the job entirely, which was silent data loss waiting to
+ * happen — anything routed through the scheduler simply never ran during SSR.
+ * Nothing did yet, but the DOM bindings do now.
+ */
+export function queueJob(fn: () => void): void {
+  fn();
+}
 export function nextTick(): Promise<void> {
   return Promise.resolve();
 }
+export const tick = nextTick;
+export const domScheduler = queueJob;
 
 // ---------------------------------------------------------------------------
 // Form validation — static stubs for SSR

@@ -27,4 +27,6 @@ The recommended config targets `**/*.utopia`, wires up the parser, and enables t
 
 | Rule | Description |
 | --- | --- |
+| `utopia/no-tdz-effect-read` | Flags a top-level `effect()` whose callback reads a module-scope `const`/`let`/`class` declared **below** it. `effect()` runs its callback immediately, so the read hits the temporal dead zone and throws while the module is still evaluating — and because a body that throws before its first signal read captures no dependencies, the effect is left subscribed to nothing and silently never fires again. |
 | `utopia/no-undecoded-entities` | Flags named HTML entities in the `<template>` that the Utopia compiler does not decode (e.g. `&middot;`, `&minus;`), since they would render as literal text. Numeric references (`&#183;`) and the literal character are always safe. |
+| `utopia/no-untracked-global-listener` | Flags a `window`/`document`/`globalThis` `addEventListener` in a `defineProps()` component that nothing removes. Those components get a per-instance `setup()`, so the listener is registered again on every mount and accumulates. Use `useEventListener()` from `@matthesketh/utopia-runtime`, pair it with `removeEventListener()` in `onDestroy()`, or pass `{ once: true }` / `{ signal }`. |

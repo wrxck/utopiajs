@@ -305,6 +305,38 @@ describe('SSR runtime helpers', () => {
       expect(((parent.children[0] as VElement).children[0] as VText).text).toBe('0: a');
       expect(((parent.children[2] as VElement).children[0] as VText).text).toBe('2: c');
     });
+
+    it('hands each row an inert scope', () => {
+      // compiled rows take a third argument: on the client it carries the
+      // reactivity that lets a REUSED row rebind its loop variables. a server
+      // render is a single pass and reuses nothing, so the scope has to be
+      // present (the row calls it) but do nothing — that is what keeps the
+      // markup identical to a first client render.
+      const parent = createElement('ul');
+      const anchor = createComment('u-for');
+      appendChild(parent, anchor);
+
+      let rebindsRun = 0;
+
+      createFor(
+        anchor,
+        () => ['a', 'b'],
+        (item, _index, scope) => {
+          expect(scope).toBeTruthy();
+          scope.track();
+          scope.onUpdate(() => {
+            rebindsRun++;
+          });
+          const li = createElement('li');
+          appendChild(li, createTextNode(item));
+          return li;
+        },
+      );
+
+      expect(rebindsRun).toBe(0);
+      expect(((parent.children[0] as VElement).children[0] as VText).text).toBe('a');
+      expect(((parent.children[1] as VElement).children[0] as VText).text).toBe('b');
+    });
   });
 
   describe('createComponent', () => {

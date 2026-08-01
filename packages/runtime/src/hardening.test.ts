@@ -4,7 +4,7 @@
 // forwarded to the surrounding scope.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { signal } from '@matthesketh/utopia-core';
+import { signal, tick } from '@matthesketh/utopia-core';
 
 import { createComponentInstance, onDestroy } from '@/component';
 import type { ComponentDefinition } from '@/component';
@@ -105,7 +105,7 @@ describe('setSafeHtml effect is disposed on unmount', () => {
 });
 
 describe('child component cleanup on parent unmount', () => {
-  it('runs onDestroy and disposes child effects when the parent unmounts', () => {
+  it('runs onDestroy and disposes child effects when the parent unmounts', async () => {
     const sig = signal(0);
     let effectRuns = 0;
     let destroyed = 0;
@@ -139,6 +139,7 @@ describe('child component cleanup on parent unmount', () => {
     instance.mount(document.body);
     expect(effectRuns).toBe(1);
     sig.set(1);
+    await tick();
     expect(effectRuns).toBe(2);
 
     instance.unmount();
@@ -146,6 +147,7 @@ describe('child component cleanup on parent unmount', () => {
 
     const before = effectRuns;
     sig.set(2);
+    await tick();
     expect(effectRuns).toBe(before); // disposed — no leaked subscription
   });
 });
@@ -214,7 +216,7 @@ describe('createFor reuses nodes when reordering a primitive list', () => {
 });
 
 describe('createIf disposes branch bindings on toggle', () => {
-  it('stops the old branch effect after switching branches', () => {
+  it('stops the old branch effect after switching branches', async () => {
     const parent = document.createElement('div');
     const anchor = document.createComment('if');
     parent.appendChild(anchor);
@@ -240,11 +242,15 @@ describe('createIf disposes branch bindings on toggle', () => {
 
     expect(trueRuns).toBe(1);
     sig.set(1);
+    // bindings render on the microtask (createEffect is scheduled), so the
+    // count settles after a tick rather than inside set().
+    await tick();
     expect(trueRuns).toBe(2);
 
     cond.set(false); // toggle away — true branch must be torn down
     const before = trueRuns;
     sig.set(2);
+    await tick();
     expect(trueRuns).toBe(before); // disposed — no leaked subscription
     parent.remove();
   });

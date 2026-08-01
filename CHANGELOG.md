@@ -4,10 +4,32 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.12.0] - 2026-07-27
+
+Every package moves to 0.12.0 together. The versions had drifted three ways
+(most at 0.8.2, the core group at 0.9.0, the vite plugin at 0.11.0 with two
+feature releases that never reached npm), which made "which versions work
+together" a question nobody could answer from the registry. From here the answer
+is: the same one.
 
 ### Added
 
+- `@matthesketh/eslint-plugin-utopia` — **two rules for traps the type checker
+  cannot see**, both `error` in `recommended`.
+  `no-tdz-effect-read` flags a top-level `effect()` whose body references a
+  module-scope binding declared *below* it. That is a temporal dead zone error
+  at registration, and because an effect that throws before reading a signal
+  loses its dependencies, it leaves the effect permanently dead rather than
+  merely erroring once. Built on scope analysis rather than name matching, so a
+  shadowed name or a property key of the same name does not false-positive; a
+  reference inside a nested closure (a returned cleanup, a `setTimeout`) is
+  skipped, since it does not run at registration.
+  `no-untracked-global-listener` flags `window`/`document`/`globalThis`
+  `addEventListener` inside a component that calls `defineProps()`. The compiler
+  wraps such a script in a per-instance setup function called on every node
+  creation, and teardown only disposes what went through `pushDisposer` /
+  `onDestroy` — so the listener is registered again on every mount and never
+  removed. `{ once: true }` and `{ signal }` are exempt.
 - `@matthesketh/utopia-vite-plugin` (0.11.0) — **compile-time template fragments
   via `<include src>`**. `<include src="./part.uhtml" />` inside a `<template>`
   splices the referenced fragment in place *before* compilation, so it is
@@ -80,6 +102,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- `@matthesketh/utopia-core` — **an effect that threw before reading a signal was
+  left permanently dead.** `_run()` unsubscribes from every dependency *before*
+  invoking the body, and an error is reported rather than rethrown — so a body
+  that threw early ended up subscribed to nothing while still alive. Nothing
+  could ever notify it again, silently, for the lifetime of the page. The
+  dependency set is now snapshotted and restored when a run throws having
+  captured none. A run that threw *after* reading some signals keeps its partial
+  set, because that is indistinguishable from a conditional branch that stopped
+  reading — and a *successful* run that captured nothing is an effect opting out
+  of tracking, not an orphan. Note this cannot rescue a throw on the FIRST run
+  (there is nothing to restore); that case is preventable only, which is what
+  `no-tdz-effect-read` below is for.
+- `@matthesketh/utopia-core` — **a runaway effect cascade outside a batch ran
+  unbounded and silently.** The existing flush guard only covers the batched
+  path, so a synchronous re-entrant cascade had no ceiling and no error — it
+  simply consumed the main thread. `_run()` now carries a depth guard at the
+  same limit as the flush and compute guards. It measures depth, not total runs,
+  so a flush executing a thousand sibling effects never trips it, and the
+  threshold is set so the existing flush guard still fires first on a cyclic
+  cascade. A cascade re-entered across ticks is a *rate* problem rather than a
+  depth one and is deliberately not covered.
+- `@matthesketh/utopia-compiler` + `@matthesketh/utopia-runtime` +
+  `@matthesketh/utopia-server` — **the `u-for` loop variable is now reactive**, so
+  a reused keyed row updates its bindings instead of rendering the item it was
+  first given. `:key` deliberately keeps a row across a list update, and because
+  keys are usually `item.id`, the canonical immutable update
+  (`items.map(x => ({ ...x, name }))`) arrived as a new object under an existing
+  key — a row whose bindings had closed over the first object showed it forever
+  (and a `@click` handler fired on it). `createFor` now hands each row a scope:
+  it rebinds the row's loop variables and bumps a per-row version cell, and the
+  codegen calls that scope's `track()` in front of every expression the runtime
+  evaluates inside an effect (interpolations, `:bindings`, `u-if`, `u-show`,
+  `u-html`, and a nested `u-for`'s list expression). Template syntax is
+  unchanged — `item.name`, `(item, index)`, `:key="item.id"` and
+  `@click="() => f(item)"` all keep working, and a handler now acts on the item
+  its row currently shows. The row's DOM node is still reused, so focus, caret
+  and scroll position survive; `:key` keeps its Vue-like semantics rather than
+  becoming referential. A `renderItem` written by hand (or emitted by an older
+  compiler) ignores the third argument and behaves exactly as before, SSR passes
+  an inert scope so server markup is byte-for-byte unchanged, and a template
+  with no `u-for` compiles to identical output.
 - `@matthesketh/utopia-runtime` (0.9.0) — effect disposers created during a
   per-instance `setup()` (via `createEffect`/`use*`) are now captured and torn
   down when the instance unmounts. Previously the disposer window only wrapped

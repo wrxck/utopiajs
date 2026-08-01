@@ -36,6 +36,7 @@ export { applyModel } from '@/model';
 // Directives (used by compiled control-flow constructs)
 // ---------------------------------------------------------------------------
 export { createIf, createFor, createComponent } from '@/directives';
+export type { ForItemScope } from '@/directives';
 
 // ---------------------------------------------------------------------------
 // Component lifecycle
@@ -83,9 +84,28 @@ export { signal, computed, effect, batch, untrack, createRoot } from '@mattheske
 // ---------------------------------------------------------------------------
 import { effect as _coreEffect } from '@matthesketh/utopia-core';
 import { pushDisposer } from '@/component';
+import { domScheduler } from '@/scheduler';
 
+/**
+ * The compiler wraps every `{{ }}` interpolation and `:binding` in one of
+ * these, so this is where compiled output meets reactivity.
+ *
+ * Updates are scheduled onto the microtask queue rather than run inline. A
+ * signal write notifies its subscribers *inside* `set()`, so an inline binding
+ * re-renders partway through whatever function did the write — against a world
+ * that function has not finished updating. Deferring moves every binding to
+ * after the synchronous work, which also collapses a handler that writes five
+ * signals into a single DOM pass.
+ *
+ * The first run is still synchronous (effects always run once inline on
+ * creation), so an element paints its initial value on mount.
+ *
+ * User-authored `effect()` in a component `<script>` is deliberately NOT
+ * scheduled: it is application logic rather than rendering, and its ordering is
+ * something authors reason about directly.
+ */
 export function createEffect(fn: () => void | (() => void)): () => void {
-  const dispose = _coreEffect(fn);
+  const dispose = _coreEffect(fn, { scheduler: domScheduler });
   pushDisposer(dispose);
   return dispose;
 }
