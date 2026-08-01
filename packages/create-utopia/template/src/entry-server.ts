@@ -1,6 +1,7 @@
-import { renderToString } from '@matthesketh/utopia-server'
-import App from './App.utopia'
+import { renderToString } from '@matthesketh/utopia-server';
+
+import App from './App.utopia';
 
 export function render(_url: string): { html: string; css: string } {
-  return renderToString(App)
+  return renderToString(App);
 }
