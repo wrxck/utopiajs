@@ -1214,11 +1214,17 @@ class CodeGenerator {
       const slotFnVar = this.freshVar();
       const savedCode = this.code;
       this.code = [];
+      // a structural directive among the slot children emits a deferred
+      // createIf/createFor that references variables declared in THIS closure.
+      // give it its own frame so it is flushed inside the closure — otherwise
+      // it lands in the surrounding function, where those variables are not in
+      // scope, and every such component crashed with a ReferenceError.
+      this.deferredCallsStack.push([]);
 
       // Generate a wrapper for slot children.
+      let slotReturnVar: string | null;
       if (substantiveChildren.length === 1 && substantiveChildren[0].type === NodeType.Element) {
-        const innerVar = this.genNode(substantiveChildren[0], scope);
-        this.emit(`return ${innerVar}`);
+        slotReturnVar = this.genNode(substantiveChildren[0], scope);
       } else {
         this.helpers.add('createElement');
         this.helpers.add('appendChild');
@@ -1230,8 +1236,14 @@ class CodeGenerator {
             this.emit(`appendChild(${fragVar}, ${childVar})`);
           }
         }
-        this.emit(`return ${fragVar}`);
+        slotReturnVar = fragVar;
       }
+
+      const slotDeferred = this.deferredCallsStack.pop()!;
+      for (const line of slotDeferred) {
+        this.emit(line);
+      }
+      this.emit(`return ${slotReturnVar}`);
 
       const slotLines = [...this.code];
       this.code = savedCode;
@@ -1316,8 +1328,17 @@ function eventPropName(event: string): string {
   return 'on' + camel.charAt(0).toUpperCase() + camel.slice(1);
 }
 
+/**
+ * Escape a string for embedding in a single-quoted JS string literal.
+ * Newlines must be escaped too — an attribute value may span lines, and a raw
+ * line break inside a string literal is a syntax error in the emitted module.
+ */
 function escapeStr(s: string): string {
-  return s.replace(BACKSLASH_RE, '\\\\').replace(SINGLE_QUOTE_RE, "\\'");
+  return s
+    .replace(BACKSLASH_RE, '\\\\')
+    .replace(SINGLE_QUOTE_RE, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r');
 }
 
 /**

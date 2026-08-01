@@ -10,11 +10,23 @@ import type { EmailAdapter, EmailMessage, EmailResult, SmtpConfig } from '@/type
  * Requires `nodemailer` as a peer dependency.
  */
 export function smtpAdapter(config: SmtpConfig): EmailAdapter {
-  let transporter: import('nodemailer').Transporter | null = null;
+  // Cache the in-flight promise (not the resolved transporter) so concurrent
+  // sends share one lazily-created transport instead of racing past the null
+  // check and each constructing their own connection pool.
+  let transporterPromise: Promise<import('nodemailer').Transporter> | null = null;
 
-  async function getTransporter(): Promise<import('nodemailer').Transporter> {
-    if (transporter) return transporter;
+  function getTransporter(): Promise<import('nodemailer').Transporter> {
+    if (!transporterPromise) {
+      transporterPromise = createTransporter().catch((err: unknown) => {
+        // Allow a later send to retry after a failed initialisation.
+        transporterPromise = null;
+        throw err;
+      });
+    }
+    return transporterPromise;
+  }
 
+  async function createTransporter(): Promise<import('nodemailer').Transporter> {
     let nodemailer: typeof import('nodemailer');
     try {
       nodemailer = await import('nodemailer');
@@ -25,14 +37,12 @@ export function smtpAdapter(config: SmtpConfig): EmailAdapter {
       );
     }
 
-    transporter = nodemailer.createTransport({
+    return nodemailer.createTransport({
       host: config.host,
       port: config.port,
       secure: config.secure ?? config.port === 465,
       auth: config.auth,
     });
-
-    return transporter;
   }
 
   return {

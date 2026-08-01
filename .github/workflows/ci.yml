@@ -24,6 +24,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # eslint.config.js and format:check load the workspace eslint/prettier
+      # plugins from their dist/ output, so the workspace must be built first.
+      - run: pnpm build
+
       - run: pnpm lint
 
       - run: pnpm format:check

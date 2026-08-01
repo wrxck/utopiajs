@@ -98,14 +98,12 @@ export function createContentMCPServer(config: ContentMCPServerConfig): ContentM
 
       case 'resources/list':
         return {
-          resources: Array.from(collectionMap.keys()).flatMap((name) => [
-            {
-              uri: `content://${name}`,
-              name: `${name} collection`,
-              description: `List all entries in the ${name} collection`,
-              mimeType: 'application/json',
-            },
-          ]),
+          resources: Array.from(collectionMap.keys()).map((name) => ({
+            uri: `content://${name}`,
+            name: `${name} collection`,
+            description: `List all entries in the ${name} collection`,
+            mimeType: 'application/json',
+          })),
         };
 
       case 'resources/read': {

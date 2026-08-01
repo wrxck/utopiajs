@@ -193,6 +193,27 @@ describe('sharedSignal', () => {
     s.close();
   });
 
+  it('broadcasts a write made by an effect reacting to a remote update', () => {
+    // a local set() issued from inside an effect that reacts to a remote
+    // update (e.g. clamping/normalising) is a genuine local change and must
+    // be broadcast to the other tabs — not swallowed by the echo guard.
+    const tab1 = sharedSignal('test-clamp', 0);
+    const tab2 = sharedSignal('test-clamp', 0);
+
+    const dispose = effect(() => {
+      const v = tab2();
+      if (v > 10) tab2.set(10);
+    });
+
+    tab1.set(99);
+    expect(tab2()).toBe(10); // clamped locally
+    expect(tab1()).toBe(10); // and the clamp was broadcast back
+
+    dispose();
+    tab1.close();
+    tab2.close();
+  });
+
   it('syncs across 3+ tabs', () => {
     const tab1 = sharedSignal('test-multi', 0);
     const tab2 = sharedSignal('test-multi', 0);

@@ -14,38 +14,29 @@ export type VirtualCollections = Record<string, VirtualEntry[]>;
  * (typically sourced from the virtual:utopia-content Vite module).
  */
 export function createVirtualAdapter(collections: VirtualCollections): ContentAdapter {
+  function toContentEntry(collection: string, entry: VirtualEntry): ContentEntry {
+    return {
+      slug: entry.slug,
+      collection,
+      data: entry.data,
+      body: entry.body ?? '',
+      html: entry.html,
+      format: 'md' as ContentFormat,
+      filePath: `virtual:${collection}/${entry.slug}`,
+    };
+  }
+
   return {
     async readEntries(config: CollectionConfig): Promise<ContentEntry[]> {
       const entries = collections[config.name];
       if (!entries) return [];
-
-      return entries.map((entry) => ({
-        slug: entry.slug,
-        collection: config.name,
-        data: entry.data,
-        body: entry.body ?? '',
-        html: entry.html,
-        format: 'md' as ContentFormat,
-        filePath: `virtual:${config.name}/${entry.slug}`,
-      }));
+      return entries.map((entry) => toContentEntry(config.name, entry));
     },
 
     async readEntry(config: CollectionConfig, slug: string): Promise<ContentEntry | null> {
-      const entries = collections[config.name];
-      if (!entries) return null;
-
-      const entry = entries.find((e) => e.slug === slug);
+      const entry = collections[config.name]?.find((e) => e.slug === slug);
       if (!entry) return null;
-
-      return {
-        slug: entry.slug,
-        collection: config.name,
-        data: entry.data,
-        body: entry.body ?? '',
-        html: entry.html,
-        format: 'md' as ContentFormat,
-        filePath: `virtual:${config.name}/${entry.slug}`,
-      };
+      return toContentEntry(config.name, entry);
     },
 
     async writeEntry(): Promise<void> {

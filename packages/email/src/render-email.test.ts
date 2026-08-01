@@ -186,4 +186,15 @@ describe('renderEmail', () => {
     expect(result.html).toContain('-webkit-text-size-adjust');
     expect(result.html).toContain('border-collapse');
   });
+
+  it('escapes </style> sequences in component CSS so they cannot close the style block', () => {
+    const Component = {
+      render: () => createElement('div'),
+      styles: 'div { color: red; } /* </style><script>alert(1)</script> */',
+    };
+
+    const result = renderEmail(Component, undefined, { skipInlining: true });
+    expect(result.html).not.toContain('</style><script>');
+    expect(result.html).toContain('<\\/style>');
+  });
 });

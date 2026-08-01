@@ -299,53 +299,46 @@ export function buildRouteTable(
   }
 
   // Sort routes by specificity:
-  // 1. Static segments are more specific than dynamic ones
-  // 2. Dynamic params (:param) are more specific than catch-alls (*rest)
-  // 3. Longer paths (more segments) are more specific when all else is equal
-  routes.sort((a, b) => {
-    const scoreA = routeSpecificity(a.path);
-    const scoreB = routeSpecificity(b.path);
-
-    // Higher score = more specific = should come first.
-    if (scoreA !== scoreB) {
-      return scoreB - scoreA;
-    }
-
-    // Tie-break by alphabetical order for determinism.
-    return a.path.localeCompare(b.path);
-  });
+  // 1. At each segment position (left to right): static beats dynamic
+  //    (:param), which beats catch-all (*rest)
+  // 2. Longer paths (more segments) are more specific when all else is equal
+  routes.sort(compareRouteSpecificity);
 
   return routes;
 }
 
+/** Rank a single path segment. Higher = more specific. */
+function segmentRank(segment: string): number {
+  if (segment.startsWith('*')) return 1; // catch-all
+  if (segment.startsWith(':')) return 2; // dynamic param
+  return 3; // static
+}
+
 /**
- * Calculate a specificity score for a route path. Higher = more specific.
+ * Compare two routes so the more specific one sorts first.
  *
- * Scoring:
- * - Each static segment: +3
- * - Each dynamic param segment (:param): +2
- * - Each catch-all segment (*rest): +1
- * - Base score from segment count to prefer longer exact matches
+ * Segments are compared position by position, left to right — a route that is
+ * static earlier wins. A summed score is not enough: '/a/:x' and '/:y/b'
+ * score identically, yet '/a/b' should match '/a/:x' (static first segment),
+ * not whichever happens to sort first alphabetically.
  */
-function routeSpecificity(path: string): number {
-  if (path === '/') {
-    return 10; // Root is maximally specific for its own URL.
+function compareRouteSpecificity(a: Route, b: Route): number {
+  const segmentsA = a.path.split('/').filter(Boolean);
+  const segmentsB = b.path.split('/').filter(Boolean);
+
+  const shared = Math.min(segmentsA.length, segmentsB.length);
+  for (let i = 0; i < shared; i++) {
+    const diff = segmentRank(segmentsB[i]) - segmentRank(segmentsA[i]);
+    if (diff !== 0) return diff;
   }
 
-  const segments = path.split('/').filter(Boolean);
-  let score = 0;
-
-  for (const segment of segments) {
-    if (segment.startsWith('*')) {
-      score += 1;
-    } else if (segment.startsWith(':')) {
-      score += 2;
-    } else {
-      score += 3;
-    }
+  // Same ranks over the shared prefix — the longer (more exact) path first.
+  if (segmentsA.length !== segmentsB.length) {
+    return segmentsB.length - segmentsA.length;
   }
 
-  return score;
+  // Tie-break by alphabetical order for determinism.
+  return a.path.localeCompare(b.path);
 }
 
 /**

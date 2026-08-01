@@ -22,8 +22,7 @@ import type {
   ToolDefinition,
 } from '@/types';
 
-/** Monotonic counter for generating unique tool call IDs. */
-let toolCallCounter = 0;
+import { messageContentToText, missingPeerDepError, nextToolCallId } from './shared';
 
 /**
  * Create a Google Gemini adapter.
@@ -48,10 +47,7 @@ export function googleAdapter(config: GoogleConfig): AIAdapter {
       const mod = await import('@google/generative-ai');
       GoogleGenerativeAI = mod.GoogleGenerativeAI;
     } catch {
-      throw new Error(
-        '@matthesketh/utopia-ai: "@google/generative-ai" package is required for the Google adapter. ' +
-          'Install it with: npm install @google/generative-ai',
-      );
+      throw missingPeerDepError('@google/generative-ai', 'Google');
     }
 
     genAI = new GoogleGenerativeAI(config.apiKey);
@@ -99,7 +95,7 @@ export function googleAdapter(config: GoogleConfig): AIAdapter {
         const fc = (p as { functionCall: { name: string; args?: Record<string, unknown> } })
           .functionCall;
         return {
-          id: `call_${++toolCallCounter}_${Date.now().toString(36)}`,
+          id: nextToolCallId(),
           name: fc.name,
           arguments: fc.args ?? {},
         };
@@ -220,7 +216,7 @@ function toGeminiContents(messages: ChatMessage[]): { system?: string; contents:
 
   for (const msg of messages) {
     if (msg.role === 'system') {
-      system = typeof msg.content === 'string' ? msg.content : '';
+      system = messageContentToText(msg.content);
       continue;
     }
 
