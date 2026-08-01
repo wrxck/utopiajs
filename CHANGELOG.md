@@ -14,6 +14,19 @@ is: the same one.
 
 ### Added
 
+- **New package: `@matthesketh/utopia-ts-plugin`** — a TypeScript
+  language-service plugin that puts `.utopia` components into the compilation,
+  so moving or renaming a module in the editor updates the imports inside
+  components instead of silently rotting them. Without it a `.utopia` file is
+  invisible to TypeScript and every such import is left behind by a rename.
+  It masks everything outside the `<script>` block to whitespace and hands the
+  result to the language service — the same technique
+  `@matthesketh/eslint-plugin-utopia` uses. Because the masked text is the same
+  length as the file, every offset, line and column maps by identity, so the
+  edits that come back apply to the `.utopia` file unchanged. Opt in via
+  `compilerOptions.plugins` in `tsconfig.json`; `typescript` is a peer
+  dependency and the editor must use the workspace TypeScript version, since
+  plugins only load in the version that owns them.
 - `@matthesketh/eslint-plugin-utopia` — **two rules for traps the type checker
   cannot see**, both `error` in `recommended`.
   `no-tdz-effect-read` flags a top-level `effect()` whose body references a

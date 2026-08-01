@@ -1,0 +1,41 @@
+{
+  "name": "@matthesketh/utopia-ts-plugin",
+  "version": "0.12.0",
+  "description": "TypeScript language-service plugin for UtopiaJS .utopia single-file components",
+  "license": "MIT",
+  "author": "Matt <matt@matthesketh.pro>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wrxck/utopiajs.git",
+    "directory": "packages/ts-plugin"
+  },
+  "homepage": "https://github.com/wrxck/utopiajs/tree/main/packages/ts-plugin",
+  "keywords": [
+    "typescript",
+    "tsserver",
+    "language-service",
+    "plugin",
+    "refactoring",
+    "utopiajs",
+    "sfc"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -w -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.4.0 || ^6.0.0"
+  }
+}
