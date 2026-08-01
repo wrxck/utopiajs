@@ -5,7 +5,15 @@
 // template compilation, and style compilation into a single result.
 // ---------------------------------------------------------------------------
 
-export { parse, type SFCDescriptor, type SFCBlock, SFCParseError } from '@/parser';
+export { type A11yOptions, type A11yWarning, checkA11y } from '@/a11y';
+export { parse, type SFCBlock, type SFCDescriptor, SFCParseError } from '@/parser';
+export {
+  compileStyle,
+  generateScopeId,
+  preprocessStyle,
+  type StyleCompileOptions,
+  type StyleCompileResult,
+} from '@/style-compiler';
 export {
   compileTemplate,
   KNOWN_NAMED_ENTITIES,
@@ -13,19 +21,11 @@ export {
   type TemplateCompileOptions,
   type TemplateCompileResult,
 } from '@/template-compiler';
-export {
-  compileStyle,
-  preprocessStyle,
-  generateScopeId,
-  type StyleCompileOptions,
-  type StyleCompileResult,
-} from '@/style-compiler';
-export { checkA11y, type A11yWarning, type A11yOptions } from '@/a11y';
 
+import { type A11yOptions, type A11yWarning, checkA11y } from '@/a11y';
 import { parse } from '@/parser';
-import { compileTemplate, parseTemplate } from '@/template-compiler';
 import { compileStyle, preprocessStyle } from '@/style-compiler';
-import { checkA11y, type A11yWarning, type A11yOptions } from '@/a11y';
+import { compileTemplate, parseTemplate } from '@/template-compiler';
 
 // ---- Public types ----------------------------------------------------------
 

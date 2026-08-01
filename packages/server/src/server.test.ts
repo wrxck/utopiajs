@@ -2,42 +2,43 @@
 // @matthesketh/utopia-server — Test suite
 // ============================================================================
 
-import { describe, it, expect } from 'vitest';
 import { signal } from '@matthesketh/utopia-core';
-import type { VElement, VText, VComment, VNode } from '@/vnode';
+import { describe, expect, it } from 'vitest';
+
+import { renderToStream } from '@/render-to-stream';
+import { renderToString, serializeHead, serializeVNode } from '@/render-to-string';
+import { createServerRouter } from '@/server-router';
 import {
-  createElement,
-  createTextNode,
-  createComment,
-  setText,
-  setAttr,
   addEventListener,
   appendChild,
-  insertBefore,
-  removeNode,
-  effect,
-  createEffect,
-  createIf,
-  createFor,
+  createComment,
   createComponent,
-  flushStyles,
+  createEffect,
+  createElement,
+  createFor,
   createForm,
-  required,
-  minLength,
+  createIf,
+  createTextNode,
+  effect,
+  email,
+  flushStyles,
+  insertBefore,
+  max,
   maxLength,
   min,
-  max,
-  email,
+  minLength,
   pattern,
-  validate,
   pushDisposer,
+  removeNode,
+  required,
+  setAttr,
+  setText,
   startCapturingDisposers,
   stopCapturingDisposers,
   useHead,
+  validate,
 } from '@/ssr-runtime';
-import { renderToString, serializeVNode, serializeHead } from '@/render-to-string';
-import { renderToStream } from '@/render-to-stream';
-import { createServerRouter } from '@/server-router';
+import type { VElement, VNode, VText } from '@/vnode';
 
 // =========================================================================
 // VNode creation

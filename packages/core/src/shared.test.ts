@@ -2,9 +2,10 @@
 // shared.test.ts — Tests for sharedSignal (cross-tab state sync)
 // ============================================================================
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { effect } from '@/index';
-import { sharedSignal, type SharedSignal } from '@/shared';
+import { sharedSignal } from '@/shared';
 
 // ---------------------------------------------------------------------------
 // BroadcastChannel mock

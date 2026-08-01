@@ -3,16 +3,16 @@
 // effect keeps firing / onDestroy never runs) and passes once disposers are
 // forwarded to the surrounding scope.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { flushSync, signal, tick } from '@matthesketh/utopia-core';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { createComponentInstance, onDestroy } from '@/component';
 import type { ComponentDefinition } from '@/component';
-import { createComponent, createIf, createFor } from '@/directives';
+import { createComponentInstance, onDestroy } from '@/component';
+import { createComponent, createFor, createIf } from '@/directives';
 import { createTextNode, setAttr, setSafeHtml, setText } from '@/dom';
 import { hydrate } from '@/hydration';
-import { defineLazy } from '@/lazy';
 import { createEffect } from '@/index';
+import { defineLazy } from '@/lazy';
 
 describe('setAttr URL-scheme + event-handler guards', () => {
   it('drops javascript: in href', () => {

@@ -1,13 +1,13 @@
+import { createFilesystemAdapter } from '@/adapters/filesystem';
+import { applyDefaults, validateSchema } from '@/schema';
 import type {
+  Collection,
   CollectionConfig,
   CollectionSchema,
-  Collection,
-  ContentEntry,
   ContentAdapter,
+  ContentEntry,
   QueryOptions,
 } from '@/types';
-import { validateSchema, applyDefaults } from '@/schema';
-import { createFilesystemAdapter } from '@/adapters/filesystem';
 
 /** Registry of defined collections */
 const collections = new Map<string, Collection>();

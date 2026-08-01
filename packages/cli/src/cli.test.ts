@@ -3,8 +3,9 @@
 // @matthesketh/utopia-cli — Test suite (real module, mocked Vite)
 // ============================================================================
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PassThrough } from 'node:stream';
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Mocks — declared before importing the module under test.
@@ -40,27 +41,29 @@ vi.mock('vitest/node', () => ({
 }));
 
 import { existsSync } from 'node:fs';
-import { createServer, build as viteBuild, preview as vitePreview } from 'vite';
+
+import { build as viteBuild, createServer, preview as vitePreview } from 'vite';
+
 import {
-  parseArgs,
-  buildInlineConfig,
-  hasViteConfig,
-  findContentConfig,
-  dev,
   build,
-  preview,
-  test as testCommand,
+  buildInlineConfig,
   createMcpRequestHandler,
-  runStdioLoop,
-  loadContentTools,
-  mcpServe,
+  dev,
   findClaude,
-  mcpInstall,
-  printVersion,
-  main,
+  findContentConfig,
+  hasViteConfig,
   isDirectInvocation,
-  type ParsedArgs,
+  loadContentTools,
+  main,
+  mcpInstall,
+  mcpServe,
   type McpTool,
+  parseArgs,
+  type ParsedArgs,
+  preview,
+  printVersion,
+  runStdioLoop,
+  test as testCommand,
 } from './index';
 
 // ---------------------------------------------------------------------------

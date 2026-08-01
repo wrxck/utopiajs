@@ -16,20 +16,21 @@
 
 // @vitest-environment happy-dom
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { filePathToRoute, compilePattern, matchRoute, buildRouteTable } from '@/matcher';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { createLink } from '@/components';
+import { buildRouteTable, compilePattern, filePathToRoute, matchRoute } from '@/matcher';
 import {
+  back,
+  beforeNavigate,
   createRouter,
   currentRoute,
+  destroy,
+  forward,
   isNavigating,
   navigate,
-  back,
-  forward,
-  beforeNavigate,
-  destroy,
 } from '@/router';
-import { createLink } from '@/components';
-import type { Route, RouteMatch } from '@/types';
+import type { Route } from '@/types';
 
 /** Extended anchor type exposing the dispose function attached by createLink. */
 interface LinkWithDispose extends HTMLAnchorElement {

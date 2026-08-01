@@ -1,11 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
-import { createMailer } from '@/mailer';
 import {
+  appendChild,
   createElement,
   createTextNode,
-  appendChild,
   setAttr,
 } from '@matthesketh/utopia-server/ssr-runtime';
+import { describe, expect, it, vi } from 'vitest';
+
+import { createMailer } from '@/mailer';
 import type { EmailAdapter, EmailMessage, EmailResult } from '@/types';
 
 // Simple test component

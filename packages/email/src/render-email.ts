@@ -3,9 +3,10 @@
 // ============================================================================
 
 import { renderToString } from '@matthesketh/utopia-server';
+
 import { inlineCSS } from '@/css-inliner';
-import { htmlToText } from '@/html-to-text';
 import { wrapEmailDocument } from '@/email-document';
+import { htmlToText } from '@/html-to-text';
 import type { RenderEmailOptions, RenderEmailResult } from '@/types';
 
 /**

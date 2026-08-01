@@ -2,33 +2,31 @@
 // @matthesketh/utopia-ai — Public API
 // ============================================================================
 
+export type { AI, CreateAIOptions, RunOptions, ToolHandler } from '@/ai';
 export { createAI } from '@/ai';
-export { streamSSE, collectStream, parseSSEStream } from '@/streaming';
-
-export type { AI, ToolHandler, RunOptions, CreateAIOptions } from '@/ai';
-
+export { collectStream, parseSSEStream, streamSSE } from '@/streaming';
 export type {
   AIAdapter,
-  ChatRequest,
-  ChatResponse,
+  AIHooks,
+  AnthropicConfig,
   ChatChunk,
   ChatMessage,
-  MessageRole,
-  MessageContent,
-  TextContent,
-  ImageContent,
-  ToolCallContent,
-  ToolResultContent,
-  ToolDefinition,
-  ToolCall,
-  TokenUsage,
-  JsonSchema,
+  ChatRequest,
+  ChatResponse,
   EmbeddingRequest,
   EmbeddingResponse,
-  OpenAIConfig,
-  AnthropicConfig,
   GoogleConfig,
+  ImageContent,
+  JsonSchema,
+  MessageContent,
+  MessageRole,
   OllamaConfig,
-  AIHooks,
+  OpenAIConfig,
   RetryConfig,
+  TextContent,
+  TokenUsage,
+  ToolCall,
+  ToolCallContent,
+  ToolDefinition,
+  ToolResultContent,
 } from '@/types';

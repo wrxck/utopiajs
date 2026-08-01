@@ -1,6 +1,6 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
 import { Linter } from 'eslint';
+import { describe, expect, it } from 'vitest';
 
 import plugin, { parser } from './index';
 

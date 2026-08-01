@@ -1,13 +1,13 @@
 // regression tests for the v0.8 email hardening pass: css-inliner redos and
 // mailer header (crlf) injection.
 
-import { describe, it, expect } from 'vitest';
 import { renderToString } from '@matthesketh/utopia-server';
+import { describe, expect, it } from 'vitest';
 
-import { inlineCSS } from '@/css-inliner';
-import { createMailer } from '@/mailer';
 import { EmailButton } from '@/components/email-button';
 import { EmailImage } from '@/components/email-image';
+import { inlineCSS } from '@/css-inliner';
+import { createMailer } from '@/mailer';
 import type { EmailAdapter, EmailMessage } from '@/types';
 
 describe('email components drop dangerous URL schemes', () => {

@@ -2,19 +2,20 @@
 // @matthesketh/utopia-core — Reactivity system test suite
 // ============================================================================
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
 import {
-  signal,
-  computed,
-  effect,
   batch,
-  untrack,
+  computed,
   createRoot,
-  queueJob,
-  tick,
+  effect,
   flushSync,
   onEffectError,
+  queueJob,
   type ReadonlySignal,
+  signal,
+  tick,
+  untrack,
 } from '@/index';
 
 // ---------------------------------------------------------------------------

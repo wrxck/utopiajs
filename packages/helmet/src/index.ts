@@ -8,27 +8,26 @@
 // ============================================================================
 
 // Types
-export type { HeadConfig, MetaDescriptor, LinkDescriptor, FaviconConfig } from '@/types';
-
 export type { ManifestIcon, WebManifest } from '@/favicon';
+export type { FaviconConfig, HeadConfig, LinkDescriptor, MetaDescriptor } from '@/types';
 
 // Head management
 export {
-  setTitle,
-  setMeta,
-  setLink,
-  setHtmlLang,
-  setHtmlDir,
-  setHead,
-  useHead,
   resetHead,
+  setHead,
+  setHtmlDir,
+  setHtmlLang,
+  setLink,
+  setMeta,
+  setTitle,
+  useHead,
 } from '@/head';
 
 // Favicon generation
 export {
-  generateFaviconSvg,
-  generateStaticSvg,
-  generateMaskSvg,
-  generateManifest,
   faviconLinks,
+  generateFaviconSvg,
+  generateManifest,
+  generateMaskSvg,
+  generateStaticSvg,
 } from '@/favicon';

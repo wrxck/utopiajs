@@ -1,7 +1,7 @@
 // regression tests for the v0.8 router hardening pass: malformed percent-escape
 // handling in route matching.
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { compilePattern, matchRoute } from '@/matcher';
 import type { Route } from '@/types';

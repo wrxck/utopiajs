@@ -1,8 +1,9 @@
-import type { Plugin, UserConfig, ModuleNode, HmrContext } from 'vite';
-import { compile, parse, type SFCBlock } from '@matthesketh/utopia-compiler';
-import { createFilter, type FilterPattern } from 'vite';
-import path from 'node:path';
 import fs from 'node:fs';
+import path from 'node:path';
+
+import { compile, parse, type SFCBlock } from '@matthesketh/utopia-compiler';
+import type { HmrContext, ModuleNode, Plugin, UserConfig } from 'vite';
+import { createFilter, type FilterPattern } from 'vite';
 
 // ---------------------------------------------------------------------------
 // Types

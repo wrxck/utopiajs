@@ -5,10 +5,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 
-import { escapeAttr, escapeStyleContent } from '@/html-utils';
-import type { HeadConfig } from '@/ssr-runtime';
-import { serializeHead } from '@/render-to-string';
 import { buildApiRoutes, handleApiRequest } from '@/api-handler';
+import { escapeAttr, escapeStyleContent } from '@/html-utils';
+import { serializeHead } from '@/render-to-string';
+import type { HeadConfig } from '@/ssr-runtime';
 
 export interface HandlerOptions {
   /** The HTML template with <!--ssr-outlet--> and <!--ssr-head--> markers. */

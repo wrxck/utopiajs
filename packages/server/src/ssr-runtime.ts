@@ -7,8 +7,9 @@
 // server — only the runtime import is swapped via a Vite alias.
 // ============================================================================
 
-import { signal, computed, batch, untrack } from '@matthesketh/utopia-core';
-import type { VElement, VText, VComment, VNode } from '@/vnode';
+import { batch, computed, signal, untrack } from '@matthesketh/utopia-core';
+
+import type { VComment, VElement, VNode, VText } from '@/vnode';
 
 const UPPER_CASE_RE = /([A-Z])/g;
 
@@ -60,7 +61,7 @@ function isDangerousUrlValue(attr: string, value: string): boolean {
 }
 
 // re-export reactivity primitives (these work identically on the server).
-export { signal, computed, batch, untrack };
+export { batch, computed, signal, untrack };
 
 // ---------------------------------------------------------------------------
 // Collected styles — SSR components push their scoped CSS here.

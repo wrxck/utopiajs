@@ -3,16 +3,26 @@
 // @matthesketh/utopia-vite-plugin — Test suite
 // ============================================================================
 
-import { describe, it, expect, vi } from 'vitest';
-import utopiaPlugin, { defineConfig } from '@/index';
-import { compile } from '@matthesketh/utopia-compiler';
-import type { HmrContext, ModuleNode, Plugin } from 'vite';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { compile } from '@matthesketh/utopia-compiler';
+import type { HmrContext, ModuleNode, Plugin } from 'vite';
+import { describe, expect, it, vi } from 'vitest';
+
+import utopiaPlugin, { defineConfig } from '@/index';
+
 /** Loosely-typed view of a plugin hook so tests can invoke it directly. */
 type AnyHook = (this: unknown, ...args: any[]) => any;
+
+/**
+ * Call signatures for the two hooks the tests invoke through `.call()`. Vite
+ * declares them as object-hook unions, so they need narrowing before use — but
+ * narrowing to `Function` throws away the argument and return types with it.
+ */
+type TransformHook = (this: unknown, code: string, id: string) => { code: string } | null;
+type LoadHook = (this: unknown, id: string) => string | null;
 
 // Helper to extract the plugin hooks from the returned plugin object.
 function getPlugin(options?: Parameters<typeof utopiaPlugin>[0]): Plugin {
@@ -516,7 +526,9 @@ describe('<style src> external stylesheet', () => {
     const code =
       `<template><div class="card">hi</div></template>\n` +
       `<style src="./styles.css" scoped></style>`;
-    const out = (plugin.transform as Function).call(c, code, id) as { code: string };
+    const out = (plugin.transform as unknown as TransformHook).call(c, code, id) as {
+      code: string;
+    };
 
     // The component module imports its virtual CSS module.
     expect(out.code).toContain(JSON.stringify(id + '.css'));
@@ -524,7 +536,7 @@ describe('<style src> external stylesheet', () => {
     expect(c.watched).toContain(cssPath);
 
     // The virtual CSS module serves the SCOPED external rules.
-    const css = (plugin.load as Function).call(null, '\0' + id + '.css') as string;
+    const css = (plugin.load as unknown as LoadHook).call(null, '\0' + id + '.css') as string;
     expect(css).toMatch(/\.card\[data-u-[0-9a-f]+\]/);
     expect(css).toContain('color: red');
   });
@@ -533,12 +545,12 @@ describe('<style src> external stylesheet', () => {
     const { id } = fixture('.card { color: red; }');
     const plugin = getPlugin();
 
-    (plugin.transform as Function).call(
+    (plugin.transform as unknown as TransformHook).call(
       ctx(),
       `<template><div class="card">hi</div></template>\n<style src="./styles.css" scoped></style>`,
       id,
     );
-    const external = (plugin.load as Function).call(null, '\0' + id + '.css') as string;
+    const external = (plugin.load as unknown as LoadHook).call(null, '\0' + id + '.css') as string;
 
     // Compiling the same rules inline under the same filename must yield byte-identical CSS.
     const inline = compile(
@@ -553,9 +565,9 @@ describe('<style src> external stylesheet', () => {
     const plugin = getPlugin();
     const c = ctx();
     const code = `<template><div class="x">hi</div></template>\n<style scoped>.x { color: blue; }</style>`;
-    const out = (plugin.transform as Function).call(c, code, id) as { code: string };
+    (plugin.transform as unknown as TransformHook).call(c, code, id);
     expect(c.watched).toHaveLength(0);
-    const css = (plugin.load as Function).call(null, '\0' + id + '.css') as string;
+    const css = (plugin.load as unknown as LoadHook).call(null, '\0' + id + '.css') as string;
     expect(css).toContain('color: blue');
   });
 
@@ -563,7 +575,9 @@ describe('<style src> external stylesheet', () => {
     const id = path.join(os.tmpdir(), 'Missing.utopia');
     const plugin = getPlugin();
     const code = `<template><div>x</div></template>\n<style src="./does-not-exist.css" scoped></style>`;
-    expect(() => (plugin.transform as Function).call(ctx(), code, id)).toThrow(/could not be read/);
+    expect(() => (plugin.transform as unknown as TransformHook).call(ctx(), code, id)).toThrow(
+      /could not be read/,
+    );
   });
 });
 
@@ -594,7 +608,9 @@ describe('<include src> template fragments', () => {
 
     const plugin = getPlugin();
     const c = ctx();
-    const out = (plugin.transform as Function).call(c, includeSrc, id) as { code: string };
+    const out = (plugin.transform as unknown as TransformHook).call(c, includeSrc, id) as {
+      code: string;
+    };
 
     // the fragment is compiled into the parent's own render function.
     expect(out.code).toBe(compile(inlineSrc, { filename: id }).code);
@@ -609,7 +625,9 @@ describe('<include src> template fragments', () => {
     const src = `<template><div><include src="./frag.uhtml"></include></div></template>${SCRIPT}`;
     const inlineSrc = `<template><div><b>x</b></div></template>${SCRIPT}`;
     const plugin = getPlugin();
-    const out = (plugin.transform as Function).call(ctx(), src, id) as { code: string };
+    const out = (plugin.transform as unknown as TransformHook).call(ctx(), src, id) as {
+      code: string;
+    };
     expect(out.code).toBe(compile(inlineSrc, { filename: id }).code);
   });
 
@@ -626,7 +644,7 @@ describe('<include src> template fragments', () => {
     const inlineSrc = `<template><section><div class="o"><i>deep</i></div></section></template>${SCRIPT}`;
     const plugin = getPlugin();
     const c = ctx();
-    const out = (plugin.transform as Function).call(c, src, id) as { code: string };
+    const out = (plugin.transform as unknown as TransformHook).call(c, src, id) as { code: string };
     expect(out.code).toBe(compile(inlineSrc, { filename: id }).code);
     expect(c.watched).toContain(path.join(dir, 'outer.uhtml'));
     expect(c.watched).toContain(path.join(dir, 'parts', 'inner.uhtml'));
@@ -639,14 +657,18 @@ describe('<include src> template fragments', () => {
     const id = path.join(dir, 'Card.utopia');
     const src = `<template><include src="./a.uhtml" /></template>${SCRIPT}`;
     const plugin = getPlugin();
-    expect(() => (plugin.transform as Function).call(ctx(), src, id)).toThrow(/circular/);
+    expect(() => (plugin.transform as unknown as TransformHook).call(ctx(), src, id)).toThrow(
+      /circular/,
+    );
   });
 
   it('throws a clear error when a fragment cannot be read', () => {
     const id = path.join(os.tmpdir(), 'Missing.utopia');
     const src = `<template><include src="./nope.uhtml" /></template>${SCRIPT}`;
     const plugin = getPlugin();
-    expect(() => (plugin.transform as Function).call(ctx(), src, id)).toThrow(/could not be read/);
+    expect(() => (plugin.transform as unknown as TransformHook).call(ctx(), src, id)).toThrow(
+      /could not be read/,
+    );
   });
 
   it('leaves components without includes untouched', () => {
@@ -655,7 +677,7 @@ describe('<include src> template fragments', () => {
     const src = `<template><div>plain</div></template>${SCRIPT}`;
     const plugin = getPlugin();
     const c = ctx();
-    const out = (plugin.transform as Function).call(c, src, id) as { code: string };
+    const out = (plugin.transform as unknown as TransformHook).call(c, src, id) as { code: string };
     expect(out.code).toBe(compile(src, { filename: id }).code);
     expect(c.watched).toHaveLength(0);
   });

@@ -3,9 +3,8 @@
  * normalizeClass / normalizeStyle value normalisers used by :class / :style.
  */
 
-import { describe, expect, it } from 'vitest';
-
 import { signal } from '@matthesketh/utopia-core';
+import { describe, expect, it } from 'vitest';
 
 import { applyModel, normalizeClass, normalizeStyle, setAttr, setShow } from '@/index';
 import { nextTick } from '@/scheduler';

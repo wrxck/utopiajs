@@ -2,17 +2,18 @@
 // form.test.ts — Tests for createForm reactive form validation
 // ============================================================================
 
-import { describe, it, expect, vi } from 'vitest';
 import { effect } from '@matthesketh/utopia-core';
+import { describe, expect, it, vi } from 'vitest';
+
 import {
   createForm,
-  required,
-  minLength,
+  email,
+  max,
   maxLength,
   min,
-  max,
-  email,
+  minLength,
   pattern,
+  required,
   validate,
 } from '@/form';
 

@@ -7,24 +7,25 @@
 // Wraps Vite and auto-injects the UtopiaJS plugin when no vite.config exists.
 // ---------------------------------------------------------------------------
 
+import { execFileSync } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
+import { fileURLToPath } from 'node:url';
+
+import { utopiaTestPlugin } from '@matthesketh/utopia-test/plugin';
+import utopia from '@matthesketh/utopia-vite-plugin';
 import {
-  createServer,
   build as viteBuild,
-  preview as vitePreview,
+  createServer,
   type InlineConfig,
   type Plugin,
-  type ServerOptions,
+  preview as vitePreview,
   type PreviewOptions,
+  type ServerOptions,
 } from 'vite';
-import utopia from '@matthesketh/utopia-vite-plugin';
-import { utopiaTestPlugin } from '@matthesketh/utopia-test/plugin';
 
 // ---- Argument parsing -------------------------------------------------------
 

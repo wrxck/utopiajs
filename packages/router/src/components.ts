@@ -18,7 +18,7 @@ import {
   stopCapturingLifecycle,
 } from '@matthesketh/utopia-runtime';
 
-import { currentRoute, navigate } from '@/router';
+import { currentRoute } from '@/router';
 import type { RouteMatch } from '@/types';
 
 /** A DOM node with the runtime's optional teardown hook attached. */

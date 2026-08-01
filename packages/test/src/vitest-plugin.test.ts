@@ -3,10 +3,11 @@
 // @matthesketh/utopia-test/plugin — Test suite (real FS in a temp dir)
 // ============================================================================
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
+
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { utopiaTestPlugin } from './vitest-plugin';
 

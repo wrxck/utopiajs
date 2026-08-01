@@ -2,32 +2,30 @@
 // @matthesketh/utopia-email — Public API
 // ============================================================================
 
-export { renderEmail } from '@/render-email';
-export { createMailer } from '@/mailer';
-export { inlineCSS } from '@/css-inliner';
-export { htmlToText } from '@/html-to-text';
-
 export {
-  EmailLayout,
   EmailButton,
   EmailCard,
+  EmailColumns,
   EmailDivider,
   EmailHeading,
-  EmailText,
   EmailImage,
-  EmailColumns,
+  EmailLayout,
   EmailSpacer,
+  EmailText,
 } from '@/components/index';
-
+export { inlineCSS } from '@/css-inliner';
+export { htmlToText } from '@/html-to-text';
+export { createMailer } from '@/mailer';
+export { renderEmail } from '@/render-email';
 export type {
-  RenderEmailOptions,
-  RenderEmailResult,
   EmailAdapter,
+  EmailAttachment,
   EmailMessage,
   EmailResult,
-  EmailAttachment,
   MailerSendOptions,
-  SmtpConfig,
+  RenderEmailOptions,
+  RenderEmailResult,
   ResendConfig,
   SendGridConfig,
+  SmtpConfig,
 } from '@/types';

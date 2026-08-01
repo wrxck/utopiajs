@@ -2,33 +2,34 @@
 // @matthesketh/utopia-server — SSR runtime tests (stubs, instances, edge cases)
 // ============================================================================
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+import { serializeVNode } from './render-to-string';
 import {
-  createElement,
-  createTextNode,
-  createComment,
-  setAttr,
   appendChild,
-  insertBefore,
-  removeNode,
-  createIf,
-  createFor,
-  effect,
+  createComment,
   createComponentInstance,
+  createElement,
+  createErrorBoundary,
+  createFor,
+  createIf,
+  createTextNode,
+  createTransition,
+  effect,
+  flushStyles,
+  insertBefore,
   mount,
-  onMount,
+  nextTick,
   onDestroy,
+  onMount,
+  queueJob,
+  removeNode,
+  setAttr,
   useEventListener,
   useInterval,
   useTimeout,
-  createTransition,
-  queueJob,
-  nextTick,
-  createErrorBoundary,
-  flushStyles,
 } from './ssr-runtime';
 import type { VComment, VElement } from './vnode';
-import { serializeVNode } from './render-to-string';
 
 describe('setAttr — edge cases', () => {
   it('removes class when value is null or false', () => {

@@ -7,8 +7,8 @@
 // with signal tracking and event listeners attached.
 // ============================================================================
 
-import { createComponentInstance, runSetupAndRender } from '@/component';
 import type { ComponentDefinition, ComponentInstance } from '@/component';
+import { createComponentInstance, runSetupAndRender } from '@/component';
 
 // ---------------------------------------------------------------------------
 // Hydration state — module-level so dom.ts helpers can check it
