@@ -2,14 +2,15 @@
 // compiler.test.ts — Tests for the @matthesketh/utopia-compiler package
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect } from 'vitest';
-import { parse, SFCParseError } from '@/parser';
-import { compileTemplate, parseTemplate } from '@/template-compiler';
-import type { ElementNode, TemplateNode, TextNode } from '@/template-compiler';
-import { compileStyle, generateScopeId, preprocessStyle } from '@/style-compiler';
-import { compile } from '@/index';
-import * as runtime from '@matthesketh/utopia-runtime';
 import { signal, tick } from '@matthesketh/utopia-core';
+import * as runtime from '@matthesketh/utopia-runtime';
+import { describe, expect, it } from 'vitest';
+
+import { compile } from '@/index';
+import { parse, SFCParseError } from '@/parser';
+import { compileStyle, generateScopeId, preprocessStyle } from '@/style-compiler';
+import type { ElementNode, TemplateNode, TextNode } from '@/template-compiler';
+import { compileTemplate, parseTemplate } from '@/template-compiler';
 
 /**
  * Execute a compiled render module against the real runtime helpers and
@@ -126,6 +127,19 @@ const x = 1
   it('throws on unclosed blocks', () => {
     const source = `<template><div></div>`;
     expect(() => parse(source)).toThrow(/[Uu]nclosed/);
+  });
+
+  it('throws SFCParseError instances carrying filename and position', () => {
+    try {
+      parse('\n<template><div></div>', 'Broken.utopia');
+      expect.unreachable('parse should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(SFCParseError);
+      const err = e as SFCParseError;
+      expect(err.filename).toBe('Broken.utopia');
+      expect(err.position).toEqual({ line: 2, column: 0 });
+      expect(err.message).toContain('Broken.utopia:2:0');
+    }
   });
 
   it('handles multiline template content', () => {

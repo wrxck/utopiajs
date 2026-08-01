@@ -1,14 +1,14 @@
 // unit tests for the seo generators: sitemap, robots, og-image, meta tags,
 // json-ld, asset extraction, and amp branches.
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { generateSitemap } from './seo/sitemap';
-import { generateRobots } from './seo/robots';
-import { generateOgSvg, svgToPng } from './seo/og-image';
-import { generateMetaTags, generateJsonLd } from './seo/meta';
-import { extractAssetTags, generatePrerenderedPage } from './seo/prerender';
 import { generateAmpPage } from './seo/amp';
+import { generateJsonLd, generateMetaTags } from './seo/meta';
+import { generateOgSvg, svgToPng } from './seo/og-image';
+import { extractAssetTags, generatePrerenderedPage } from './seo/prerender';
+import { generateRobots } from './seo/robots';
+import { generateSitemap } from './seo/sitemap';
 import type { SeoConfig, SeoEntry } from './seo/types';
 
 const config: SeoConfig = {

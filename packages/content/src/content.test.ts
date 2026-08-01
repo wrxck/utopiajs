@@ -2,31 +2,32 @@
 // @matthesketh/utopia-content — Tests
 // ============================================================================
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { validateSchema, applyDefaults } from '@/schema';
-import { parseFrontmatter, serializeFrontmatter } from '@/frontmatter';
-import { renderMarkdown } from '@/markdown';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
 import { createFilesystemAdapter } from '@/adapters/filesystem';
 import { createVirtualAdapter } from '@/adapters/virtual';
-import { generateRssFeed, generateAtomFeed } from '@/feed';
 import {
+  clearCollections,
   createContent,
   defineCollection,
   getCollection,
   getEntry,
   listCollections,
-  clearCollections,
 } from '@/collection';
-import { createContentMCPServer } from '@/mcp/index';
-import type { CollectionSchema } from '@/types';
 import type { FeedEntry, FeedOptions } from '@/feed';
+import { generateAtomFeed, generateRssFeed } from '@/feed';
+import { parseFrontmatter, serializeFrontmatter } from '@/frontmatter';
+import { renderMarkdown } from '@/markdown';
+import { createContentMCPServer } from '@/mcp/index';
+import { applyDefaults, validateSchema } from '@/schema';
 import { generatePrerenderedPage } from '@/seo/prerender';
-import type { SeoEntry, SeoConfig } from '@/seo/types';
+import type { SeoConfig, SeoEntry } from '@/seo/types';
+import type { CollectionSchema } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Schema validation

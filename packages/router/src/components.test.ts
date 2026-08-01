@@ -12,9 +12,12 @@
 //
 // ============================================================================
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createRouter, currentRoute, navigate, destroy } from './router';
-import { createRouterView, createLink, preloadRoute } from './components';
+import { effect, signal } from '@matthesketh/utopia-core';
+import { onDestroy } from '@matthesketh/utopia-runtime';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { createLink, createRouterView, preloadRoute } from './components';
+import { createRouter, currentRoute, destroy, navigate } from './router';
 import type { RouteConfig } from './types';
 
 /** Flush pending microtasks and timers so fire-and-forget loads settle. */
@@ -515,5 +518,127 @@ describe('createLink rendering', () => {
 
     await navigate('/nowhere');
     expect(link.classList.contains('active')).toBe(false);
+  });
+});
+
+// ============================================================================
+// 7. Page teardown on navigation
+// ============================================================================
+//
+// renderComponent attaches the page's captured teardown as `node.__cleanup`,
+// and the LoadResult cleanup that runs on navigation is what invokes it. Both
+// halves are needed: drop the `__cleanup?.()` call and the outgoing page's
+// effects keep firing against the long-lived router signals for the life of
+// the page, and its onDestroy hooks never run — silently, with the DOM swap
+// still looking correct. These tests fail if that call goes missing.
+// ============================================================================
+
+describe('page teardown on navigation', () => {
+  /**
+   * A page whose setup subscribes to `source` and registers onDestroy, so the
+   * test can observe whether navigating away actually tore the page down.
+   */
+  const trackedPage = (
+    name: string,
+    source: () => number,
+    counters: { runs: number; destroyed: number },
+  ) => ({
+    default: {
+      setup(): Record<string, unknown> {
+        onDestroy(() => {
+          counters.destroyed++;
+        });
+        effect(() => {
+          source();
+          counters.runs++;
+        });
+        return {};
+      },
+      render(): Node {
+        const el = document.createElement('div');
+        el.setAttribute('data-page', name);
+        return el;
+      },
+    },
+  });
+
+  it('disposes the outgoing page effects and runs onDestroy', async () => {
+    const source = signal(0);
+    const counters = { runs: 0, destroyed: 0 };
+    createRouter([
+      { path: '/', component: () => Promise.resolve(trackedPage('home', source, counters)) },
+      { path: '/about', component: () => Promise.resolve(pageModule('about')) },
+    ]);
+    const container = renderView();
+    await flush();
+    expect(container.querySelector('[data-page="home"]')).not.toBeNull();
+    expect(counters.runs).toBe(1);
+
+    // still mounted — the page's effect reacts.
+    source.set(1);
+    expect(counters.runs).toBe(2);
+
+    await navigate('/about');
+    await flush();
+    expect(container.querySelector('[data-page="about"]')).not.toBeNull();
+    expect(counters.destroyed).toBe(1);
+
+    // navigated away — the effect must be dead, not merely detached.
+    const runsAtUnmount = counters.runs;
+    source.set(2);
+    source.set(3);
+    expect(counters.runs).toBe(runsAtUnmount);
+  });
+
+  it('disposes a page wrapped in a layout, not just the layout node', async () => {
+    const source = signal(0);
+    const counters = { runs: 0, destroyed: 0 };
+    createRouter([
+      {
+        path: '/',
+        component: () => Promise.resolve(trackedPage('home', source, counters)),
+        layout: () => Promise.resolve(layoutModule('root')),
+      },
+      { path: '/about', component: () => Promise.resolve(pageModule('about')) },
+    ]);
+    const container = renderView();
+    await flush();
+    // only the layout node is in the DOM, but the page node owns the effects.
+    expect(container.querySelector('[data-layout="root"]')).not.toBeNull();
+    expect(counters.runs).toBe(1);
+
+    await navigate('/about');
+    await flush();
+    expect(counters.destroyed).toBe(1);
+
+    const runsAtUnmount = counters.runs;
+    source.set(1);
+    expect(counters.runs).toBe(runsAtUnmount);
+  });
+
+  it('disposes a rendered error component when navigating away from it', async () => {
+    const source = signal(0);
+    const counters = { runs: 0, destroyed: 0 };
+    createRouter([
+      {
+        path: '/broken',
+        component: () => Promise.reject(new Error('boom')),
+        error: () => Promise.resolve(trackedPage('boom', source, counters)),
+      },
+      { path: '/about', component: () => Promise.resolve(pageModule('about')) },
+    ]);
+    const container = renderView();
+    await navigate('/broken');
+    await flush();
+    expect(container.querySelector('[data-page="boom"]')).not.toBeNull();
+    expect(counters.runs).toBe(1);
+
+    await navigate('/about');
+    await flush();
+    expect(counters.destroyed).toBe(1);
+
+    const runsAtUnmount = counters.runs;
+    source.set(1);
+    expect(counters.runs).toBe(runsAtUnmount);
   });
 });

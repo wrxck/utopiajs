@@ -6,39 +6,38 @@
  * so no build step is required.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  signal,
   effect as coreEffect,
   flushSync,
-  tick as flushDom,
   type ReadonlySignal,
+  signal,
+  tick as flushDom,
 } from '@matthesketh/utopia-core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  createElement,
-  createTextNode,
-  setText,
-  setAttr,
-  addEventListener,
-  insertBefore,
-  removeNode,
-  appendChild,
-  createComment,
-  mergeClass,
-} from '@/dom';
-
-import { createIf, createFor, createComponent } from '@/directives';
+import type { ComponentDefinition } from '@/component';
 import {
   createComponentInstance,
   mount,
   startCapturingDisposers,
   stopCapturingDisposers,
 } from '@/component';
-import type { ComponentDefinition } from '@/component';
-import { queueJob, nextTick } from '@/scheduler';
+import { createComponent, createFor, createIf } from '@/directives';
+import {
+  addEventListener,
+  appendChild,
+  createComment,
+  createElement,
+  createTextNode,
+  insertBefore,
+  mergeClass,
+  removeNode,
+  setAttr,
+  setText,
+} from '@/dom';
 import { hydrate } from '@/hydration';
 import { createEffect } from '@/index';
+import { nextTick, queueJob } from '@/scheduler';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -2043,8 +2042,8 @@ describe('mergeClass', () => {
 // Coverage: error paths, cleanup paths, and rarely-taken branches
 // =========================================================================
 
+import { onDestroy, stopCapturingLifecycle } from './component';
 import { setHtml, setSafeHtml } from './dom';
-import { stopCapturingLifecycle, onDestroy } from './component';
 
 describe('useHead — full config and cleanup', () => {
   it('sets title/meta/link/script and removes them all on unmount', () => {

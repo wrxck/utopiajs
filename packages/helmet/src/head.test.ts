@@ -1,14 +1,15 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '@matthesketh/utopia-core';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import {
-  setTitle,
-  setMeta,
-  setLink,
-  setHead,
-  useHead,
   resetHead,
-  setHtmlLang,
+  setHead,
   setHtmlDir,
+  setHtmlLang,
+  setLink,
+  setMeta,
+  setTitle,
+  useHead,
 } from '@/head';
 
 beforeEach(() => {

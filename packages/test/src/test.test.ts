@@ -2,23 +2,24 @@
  * Tests for @matthesketh/utopia-test
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
-import { mount, render, fireEvent, nextTick } from '@/index';
 import { signal } from '@matthesketh/utopia-core';
 import type { ComponentDefinition } from '@matthesketh/utopia-runtime';
 import {
-  createElement,
-  createTextNode,
-  setText,
-  appendChild,
   addEventListener,
-  setAttr,
-  createEffect,
+  appendChild,
   createComponent,
+  createEffect,
+  createElement,
   createIf,
-  provide,
+  createTextNode,
   inject,
+  provide,
+  setAttr,
+  setText,
 } from '@matthesketh/utopia-runtime';
+import { afterEach, describe, expect, it } from 'vitest';
+
+import { fireEvent, mount, nextTick, render } from '@/index';
 
 // ---------------------------------------------------------------------------
 // Test fixtures — manually-defined ComponentDefinitions

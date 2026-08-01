@@ -6,7 +6,8 @@
  */
 
 import { effect, signal } from '@matthesketh/utopia-core';
-import { insertBefore, removeNode } from '@/dom';
+
+import type { ComponentDefinition } from '@/component';
 import {
   createComponentInstance,
   pushDisposer,
@@ -14,7 +15,7 @@ import {
   startCapturingDisposers,
   stopCapturingDisposers,
 } from '@/component';
-import type { ComponentDefinition } from '@/component';
+import { insertBefore, removeNode } from '@/dom';
 
 /** A DOM Node with optional cleanup/dispose callbacks attached by the runtime. */
 interface DisposableNode extends Node {

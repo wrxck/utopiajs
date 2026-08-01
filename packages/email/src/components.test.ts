@@ -1,22 +1,23 @@
-import { describe, it, expect } from 'vitest';
+import type { VElement, VNode } from '@matthesketh/utopia-server';
 import { renderToString } from '@matthesketh/utopia-server';
 import {
-  createElement,
-  createTextNode,
   appendChild,
   createComponent,
+  createElement,
+  createTextNode,
 } from '@matthesketh/utopia-server/ssr-runtime';
-import type { VElement, VNode } from '@matthesketh/utopia-server';
+import { describe, expect, it } from 'vitest';
+
 import {
-  EmailLayout,
   EmailButton,
   EmailCard,
+  EmailColumns,
   EmailDivider,
   EmailHeading,
-  EmailText,
   EmailImage,
-  EmailColumns,
+  EmailLayout,
   EmailSpacer,
+  EmailText,
 } from '@/components/index';
 
 describe('Email Components', () => {

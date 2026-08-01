@@ -10,10 +10,9 @@
 
 import { effect } from '@matthesketh/utopia-core';
 
-import { domScheduler } from '@/scheduler';
-
 import { pushDisposer } from '@/component';
-import { isHydrating, claimNode, unclaimNode, enterNode, exitNode } from '@/hydration';
+import { claimNode, enterNode, exitNode, isHydrating, unclaimNode } from '@/hydration';
+import { domScheduler } from '@/scheduler';
 
 // ---------------------------------------------------------------------------
 // SVG support

@@ -3,10 +3,11 @@
 // create-utopia — Smoke test (FS-only, no npm install or dev server)
 // ============================================================================
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
+
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const TEMPLATE_DIR = path.resolve(__dirname, '..', 'template');
 

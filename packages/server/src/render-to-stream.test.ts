@@ -2,20 +2,22 @@
 // @matthesketh/utopia-server — renderToStream tests
 // ============================================================================
 
-import { describe, it, expect } from 'vitest';
 import type { Readable } from 'node:stream';
-import type { VElement } from './vnode';
+
+import { describe, expect, it } from 'vitest';
+
+import { renderToStream } from './render-to-stream';
+import { renderToString } from './render-to-string';
 import {
+  appendChild,
+  createComment,
   createElement,
   createTextNode,
-  createComment,
-  appendChild,
+  flushHead,
   setAttr,
   useHead,
-  flushHead,
 } from './ssr-runtime';
-import { renderToString } from './render-to-string';
-import { renderToStream } from './render-to-stream';
+import type { VElement } from './vnode';
 
 async function readAll(stream: Readable): Promise<string> {
   const chunks: string[] = [];

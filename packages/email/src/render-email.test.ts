@@ -1,11 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { renderEmail } from '@/render-email';
 import {
+  appendChild,
   createElement,
   createTextNode,
-  appendChild,
   setAttr,
 } from '@matthesketh/utopia-server/ssr-runtime';
+import { describe, expect, it } from 'vitest';
+
+import { renderEmail } from '@/render-email';
 
 describe('renderEmail', () => {
   it('renders a simple component to email HTML', () => {

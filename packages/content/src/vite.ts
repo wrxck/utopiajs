@@ -1,18 +1,20 @@
-import type { Plugin } from 'vite';
-import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join, extname, basename, resolve, sep } from 'node:path';
 import { existsSync } from 'node:fs';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { basename, extname, join, resolve, sep } from 'node:path';
+
+import type { Plugin } from 'vite';
+
+import type { FeedOptions } from '@/feed';
+import { generateAtomFeed, generateRssFeed } from '@/feed';
 import { parseFrontmatter } from '@/frontmatter';
 import { renderMarkdown } from '@/markdown';
-import { generateRssFeed, generateAtomFeed } from '@/feed';
-import type { FeedOptions } from '@/feed';
-import type { SeoOptions, SeoConfig, SeoEntry } from '@/seo/types';
-import { extractAssetTags, generatePrerenderedPage } from '@/seo/prerender';
 import { generateAmpPage } from '@/seo/amp';
 import { generateOgSvg, svgToPng } from '@/seo/og-image';
-import { generateSitemap } from '@/seo/sitemap';
+import { extractAssetTags, generatePrerenderedPage } from '@/seo/prerender';
 import { generateRobots } from '@/seo/robots';
+import { generateSitemap } from '@/seo/sitemap';
+import type { SeoConfig, SeoEntry, SeoOptions } from '@/seo/types';
 
 export interface ContentPluginOptions {
   /** Base directory for content files (default: 'content') */

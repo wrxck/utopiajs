@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+
+import { bold, cyan, dim, green, red, yellow } from 'kolorist';
 import prompts from 'prompts';
-import { green, cyan, yellow, bold, red, dim } from 'kolorist';
 
 // ---------------------------------------------------------------------------
 // Types

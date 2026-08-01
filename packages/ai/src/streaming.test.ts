@@ -2,9 +2,11 @@
 // @matthesketh/utopia-ai — Streaming helper edge cases
 // ============================================================================
 
-import { describe, it, expect, vi } from 'vitest';
 import type { ServerResponse } from 'node:http';
-import { streamSSE, parseSSEStream } from './streaming';
+
+import { describe, expect, it, vi } from 'vitest';
+
+import { parseSSEStream, streamSSE } from './streaming';
 import type { ChatChunk } from './types';
 
 describe('parseSSEStream edge cases', () => {

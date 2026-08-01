@@ -1,10 +1,10 @@
 // tests for the auto-cleanup lifecycle helpers: each must tear down its
 // side-effect when the surrounding component scope unmounts.
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { createComponentInstance } from '@/component';
 import type { ComponentDefinition } from '@/component';
+import { createComponentInstance } from '@/component';
 import { useEventListener, useInterval, useTimeout } from '@/use';
 
 function mountWith(render: () => Node): { unmount: () => void } {

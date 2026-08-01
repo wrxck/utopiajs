@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
+
 import {
-  generateFaviconSvg,
-  generateStaticSvg,
-  generateMaskSvg,
-  generateManifest,
   faviconLinks,
+  generateFaviconSvg,
+  generateManifest,
+  generateMaskSvg,
+  generateStaticSvg,
 } from '@/favicon';
 
 // ---------------------------------------------------------------------------

@@ -5,9 +5,9 @@
  */
 
 import {
-  createComponentInstance,
   type ComponentDefinition,
   type ComponentInstance,
+  createComponentInstance,
 } from '@matthesketh/utopia-runtime';
 
 // ---------------------------------------------------------------------------
