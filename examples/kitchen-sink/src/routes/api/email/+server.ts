@@ -1,9 +1,10 @@
 // API route: POST /api/email
 // Demonstrates @matthesketh/utopia-email with SMTP adapter
 
-import { createMailer } from '@matthesketh/utopia-email'
-import { smtpAdapter } from '@matthesketh/utopia-email/smtp'
-import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http';
+
+import { createMailer } from '@matthesketh/utopia-email';
+import { smtpAdapter } from '@matthesketh/utopia-email/smtp';
 
 const mailer = createMailer(
   smtpAdapter({
@@ -15,16 +16,18 @@ const mailer = createMailer(
       pass: process.env.SMTP_PASS ?? '',
     },
   }),
-)
+);
 
 export async function POST(req: IncomingMessage, res: ServerResponse) {
   const body = await new Promise<string>((resolve) => {
-    let data = ''
-    req.on('data', (chunk: Buffer) => { data += chunk.toString() })
-    req.on('end', () => resolve(data))
-  })
+    let data = '';
+    req.on('data', (chunk: Buffer) => {
+      data += chunk.toString();
+    });
+    req.on('end', () => resolve(data));
+  });
 
-  const { to, subject } = JSON.parse(body)
+  const { to, subject } = JSON.parse(body);
 
   try {
     // In a real app, you'd use a .utopia email component here
@@ -39,12 +42,13 @@ export async function POST(req: IncomingMessage, res: ServerResponse) {
         styles: [],
       },
       props: {},
-    })
+    });
 
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(result))
-  } catch (err: any) {
-    res.writeHead(500, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ success: false, error: err.message }))
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(result));
+  } catch (err) {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    const error = err instanceof Error ? err.message : String(err);
+    res.end(JSON.stringify({ success: false, error }));
   }
 }

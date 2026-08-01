@@ -1,8 +1,9 @@
 // API route: POST /api/mcp
 // Demonstrates @matthesketh/utopia-ai MCP server with tools, resources, and prompts
 
-import { createMCPServer, createMCPHandler } from '@matthesketh/utopia-ai/mcp'
-import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http';
+
+import { createMCPHandler, createMCPServer } from '@matthesketh/utopia-ai/mcp';
 
 const mcp = createMCPServer({
   name: 'kitchen-sink-mcp',
@@ -17,21 +18,27 @@ const mcp = createMCPServer({
           type: 'object',
           properties: {
             city: { type: 'string', description: 'City name' },
-            units: { type: 'string', enum: ['celsius', 'fahrenheit'], description: 'Temperature units' },
+            units: {
+              type: 'string',
+              enum: ['celsius', 'fahrenheit'],
+              description: 'Temperature units',
+            },
           },
           required: ['city'],
         },
       },
       handler: async (args) => {
-        const city = args.city as string
-        const units = (args.units as string) ?? 'celsius'
-        const temp = units === 'celsius' ? 22 : 72
+        const city = args.city as string;
+        const units = (args.units as string) ?? 'celsius';
+        const temp = units === 'celsius' ? 22 : 72;
         return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({ city, temperature: temp, units, condition: 'Sunny' }),
-          }],
-        }
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({ city, temperature: temp, units, condition: 'Sunny' }),
+            },
+          ],
+        };
       },
     },
     {
@@ -47,19 +54,21 @@ const mcp = createMCPServer({
         },
       },
       handler: async (args) => {
-        const query = args.query as string
+        const query = args.query as string;
         return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              results: [
-                { title: 'Signals — signal(), computed(), effect()', url: '/docs/architecture' },
-                { title: 'SSR — renderToString, hydrate', url: '/docs/ssr' },
-                { title: 'AI — createAI, adapters, MCP', url: '/docs/ai' },
-              ].filter(r => r.title.toLowerCase().includes(query.toLowerCase())),
-            }),
-          }],
-        }
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                results: [
+                  { title: 'Signals — signal(), computed(), effect()', url: '/docs/architecture' },
+                  { title: 'SSR — renderToString, hydrate', url: '/docs/ssr' },
+                  { title: 'AI — createAI, adapters, MCP', url: '/docs/ai' },
+                ].filter((r) => r.title.toLowerCase().includes(query.toLowerCase())),
+              }),
+            },
+          ],
+        };
       },
     },
   ],
@@ -89,9 +98,7 @@ const mcp = createMCPServer({
       definition: {
         name: 'explain_feature',
         description: 'Explain a UtopiaJS feature',
-        arguments: [
-          { name: 'feature', description: 'Feature name', required: true },
-        ],
+        arguments: [{ name: 'feature', description: 'Feature name', required: true }],
       },
       handler: async (args) => ({
         messages: [
@@ -106,15 +113,15 @@ const mcp = createMCPServer({
       }),
     },
   ],
-})
+});
 
-const handler = createMCPHandler(mcp)
+const handler = createMCPHandler(mcp);
 
 export async function POST(req: IncomingMessage, res: ServerResponse) {
-  handler(req, res)
+  handler(req, res);
 }
 
 export async function GET(req: IncomingMessage, res: ServerResponse) {
   // SSE transport for MCP
-  handler(req, res)
+  handler(req, res);
 }
