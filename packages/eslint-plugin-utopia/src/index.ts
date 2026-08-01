@@ -7,7 +7,7 @@ import noTdzEffectRead from '@/rules/no-tdz-effect-read';
 import noUndecodedEntities from '@/rules/no-undecoded-entities';
 import noUntrackedGlobalListener from '@/rules/no-untracked-global-listener';
 
-const meta = { name: '@matthesketh/eslint-plugin-utopia', version: '0.12.0' };
+const meta = { name: '@matthesketh/eslint-plugin-utopia', version: '0.12.1' };
 
 const rules = {
   'no-tdz-effect-read': noTdzEffectRead,

@@ -4,6 +4,59 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2026-08-01
+
+A quality release: no new functionality, no public API changes. A repository-
+wide review fixed 56 bugs — every one reproduced by a failing test before the
+fix — and raised test coverage from 66% to 99.8% of statements (1009 → 1900+
+tests). Highlights by package:
+
+### Fixed
+
+- **compiler** — `u-else-if` chains, `u-if` + `u-for` on one element, and
+  structural directives as component slot children crashed at mount (generated
+  code referenced out-of-scope locals); root-level `u-if`/`u-for` rendered
+  nothing; newlines in static attribute values emitted invalid JS; the style
+  compiler dropped the last character of an unterminated rule.
+- **core** — a flush-guard abort left innocently-queued effects permanently
+  deaf to notifications; persisted and shared signals suppressed writes made
+  by effects reacting to cross-tab/remote updates, letting tabs diverge.
+- **runtime** — unmounting a hydrated instance disposed nothing (effects,
+  `onDestroy`, injected styles all leaked); `setup()` effects leaked at root
+  mount and in the lazy-component path.
+- **router** — the same-origin click check was fooled by origin-prefix hosts
+  (`https://site.example.evil.com`); the redirect-loop guard weakened itself
+  after every tripped loop; a static route segment could lose to a dynamic one;
+  RouterView leaked its route effect and rendered blank for an unmatched
+  initial URL.
+- **server** — API route handlers received requests with no headers and no
+  body; streamed renders leaked `useHead()` entries; the CSP nonce was not
+  attribute-escaped; `renderToStream` now honors backpressure.
+- **email** — the resend adapter reported failed sends as success; concurrent
+  first sends constructed duplicate SMTP pools; quotes in inlined CSS values
+  and `</style>` in component CSS could break out of their context; astral
+  numeric entities decoded to lone surrogates.
+- **ai** — ollama stream readers leaked on early exit; assistant tool calls
+  were dropped from multi-round history and from the chat()-based stream
+  fallback; the MCP handler hung on a malformed Host header.
+- **content** — `.yml` entries were unreadable by slug and duplicated on
+  update; `readEntries` followed symlinks that `readEntry` refused;
+  `limit: 0` was ignored; `getCollectionAdapter` was missing from the root
+  export although the CLI calls it.
+- **tooling** — the Prettier plugin truncated components containing a native
+  `<template>` element (data loss on format); the test plugin wrote generated
+  files into the source tree from dev servers and never removed stale ones;
+  six create-utopia scaffolding defects incl. a broken `build:server` script
+  for JS + SSR projects.
+
+### Changed
+
+- Internal refactors only: duplicated logic consolidated within packages,
+  provably dead code removed, `cli`/`create-utopia` entrypoints made testable
+  (bin behavior verified against built artifacts). CI builds the workspace
+  before lint and the audit gate's `brace-expansion` override moved to
+  `>=5.0.8`.
+
 ## [0.12.0] - 2026-07-27
 
 Every package moves to 0.12.0 together. The versions had drifted three ways
