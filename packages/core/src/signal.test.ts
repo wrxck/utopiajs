@@ -1566,3 +1566,108 @@ describe('flushSync', () => {
     expect(runs).toBe(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Effect teardown — the dependency-unsubscribe call path
+// ---------------------------------------------------------------------------
+//
+// EffectNode drops its dependency subscriptions in two places: before every
+// re-run (so conditional tracking is correct) and once on disposal. Both go
+// through the same helper. A refactor that renames or removes that helper on
+// one side of a merge, while a call site on the other side still invokes it,
+// breaks every teardown route at once — so each route is pinned here by name
+// rather than only incidentally by the tests that happen to dispose.
+// ---------------------------------------------------------------------------
+
+describe('effect teardown unsubscribes from dependencies', () => {
+  it('drops stale dependencies before each re-run', () => {
+    const useA = signal(true);
+    const a = signal('a');
+    const b = signal('b');
+    let runs = 0;
+
+    const stop = effect(() => {
+      runs++;
+      if (useA()) {
+        a();
+      } else {
+        b();
+      }
+    });
+    expect(runs).toBe(1);
+
+    // switch the branch: `a` must be unsubscribed, `b` subscribed.
+    useA.set(false);
+    expect(runs).toBe(2);
+
+    a.set('a2');
+    expect(runs).toBe(2); // the abandoned branch no longer notifies
+
+    b.set('b2');
+    expect(runs).toBe(3);
+
+    stop();
+  });
+
+  it('unsubscribes when the returned dispose function is called', () => {
+    const s = signal(0);
+    let runs = 0;
+    const stop = effect(() => {
+      s();
+      runs++;
+    });
+    expect(runs).toBe(1);
+
+    expect(() => stop()).not.toThrow();
+    s.set(1);
+    s.set(2);
+    expect(runs).toBe(1);
+
+    // disposing twice must stay a no-op, not throw on an already-cleared set.
+    expect(() => stop()).not.toThrow();
+  });
+
+  it('unsubscribes an effect disposed through its owning root', () => {
+    const s = signal(0);
+    let runs = 0;
+    let dispose!: () => void;
+
+    createRoot((disposeRoot) => {
+      dispose = disposeRoot;
+      effect(() => {
+        s();
+        runs++;
+      });
+    });
+    expect(runs).toBe(1);
+
+    expect(() => dispose()).not.toThrow();
+    s.set(1);
+    expect(runs).toBe(1);
+  });
+
+  it('unsubscribes an effect that also registered a cleanup function', () => {
+    const s = signal(0);
+    let cleanups = 0;
+    let runs = 0;
+
+    const stop = effect(() => {
+      s();
+      runs++;
+      return () => {
+        cleanups++;
+      };
+    });
+    expect(runs).toBe(1);
+
+    s.set(1);
+    expect(runs).toBe(2);
+    expect(cleanups).toBe(1);
+
+    // dispose runs the pending cleanup AND unsubscribes, in that order.
+    expect(() => stop()).not.toThrow();
+    expect(cleanups).toBe(2);
+    s.set(2);
+    expect(runs).toBe(2);
+  });
+});
