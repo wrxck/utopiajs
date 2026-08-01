@@ -38,12 +38,23 @@ const OPEN_TAG_RE = /<(template|script|style|test)(\s[^>]*)?>/g;
 function findBlockEnd(source: string, name: BlockName, from: number): number {
   const openRe = new RegExp(`<${name}(\\s[^>]*)?>`, 'g');
   const closeTag = `</${name}>`;
+
+  const firstClose = source.indexOf(closeTag, from);
+  if (firstClose === -1) return -1;
+
   let depth = 1;
   let cursor = from;
 
   while (depth > 0) {
     const closeIndex = source.indexOf(closeTag, cursor);
-    if (closeIndex === -1) return -1;
+    if (closeIndex === -1) {
+      // an opening tag counted above never gets its own closing tag — the usual
+      // cause is the mandatory `<\/script>` escape inside a string, which hides
+      // the close from a plain text scan. unwinding is impossible, so fall back
+      // to the first closing tag. that is also where the compiler's parser ends
+      // the block, so the formatter and the compiler always agree on the split.
+      return firstClose + closeTag.length;
+    }
 
     openRe.lastIndex = cursor;
     const openMatch = openRe.exec(source);
@@ -61,6 +72,27 @@ function findBlockEnd(source: string, name: BlockName, from: number): number {
   return cursor;
 }
 
+/**
+ * the printer only ever emits the blocks this splitter returns, so anything the
+ * splitter fails to claim would be silently deleted from the formatted file. a
+ * formatter must never lose source: refuse the file instead, which surfaces as
+ * a prettier parse error and leaves the file on disk untouched.
+ */
+function assertLossless(source: string, blocks: UtopiaBlock[]): void {
+  let cursor = 0;
+
+  for (const block of blocks) {
+    if (source.slice(cursor, block.start).trim()) {
+      throw new SyntaxError(`Unexpected content before <${block.name}> — only blocks are allowed`);
+    }
+    cursor = block.end;
+  }
+
+  if (source.slice(cursor).trim()) {
+    throw new SyntaxError('Unexpected content after the last block — only blocks are allowed');
+  }
+}
+
 export function splitBlocks(source: string): UtopiaRoot {
   const blocks: UtopiaBlock[] = [];
 
@@ -76,7 +108,11 @@ export function splitBlocks(source: string): UtopiaRoot {
     const bodyStart = start + match[0].length;
 
     const end = findBlockEnd(source, name, bodyStart);
-    if (end === -1) continue; // unclosed block: ignore it, keep scanning.
+    // resuming the scan inside an unclosed block would promote tags found in
+    // its body to blocks of their own and drop the body itself, so refuse.
+    if (end === -1) {
+      throw new SyntaxError(`Unclosed <${name}> block — expected </${name}>`);
+    }
 
     blocks.push({
       type: 'block',
@@ -89,6 +125,8 @@ export function splitBlocks(source: string): UtopiaRoot {
 
     OPEN_TAG_RE.lastIndex = end;
   }
+
+  assertLossless(source, blocks);
 
   return { type: 'root', blocks, start: 0, end: source.length };
 }

@@ -49,9 +49,35 @@ describe('splitBlocks', () => {
     expect(root.blocks[0].content).toBe('<pre>&lt;x&gt;<style>.fake{}</style></pre>');
   });
 
-  it('ignores an unclosed block', () => {
-    const root = splitBlocks('<template><p>hi</p>');
-    expect(root.blocks).toHaveLength(0);
+  it('refuses an unclosed block instead of dropping its contents', () => {
+    // the printer only emits the blocks returned here, so returning none would
+    // have prettier rewrite the whole component to an empty file.
+    expect(() => splitBlocks('<template><p>hi</p>')).toThrow(/Unclosed <template>/);
+  });
+
+  it('refuses content that sits outside every block', () => {
+    expect(() => splitBlocks('<template><p>hi</p></template>\nstray text')).toThrow(
+      /Unexpected content after/,
+    );
+    expect(() => splitBlocks('stray text\n<template><p>hi</p></template>')).toThrow(
+      /Unexpected content before/,
+    );
+  });
+
+  it('ends a script block at its real closing tag despite an escaped inner one', () => {
+    // `<\/script>` is the mandatory escape for a closing tag inside a string, so
+    // the inner `<script>` never gets a literal close. counting depth alone would
+    // run off the end of the file and swallow the block.
+    const source = [
+      '<script>',
+      'const s = `<script>x<\\/script>`;',
+      'const keep = 1;',
+      '</script>',
+    ].join('\n');
+    const root = splitBlocks(source);
+    expect(root.blocks.map((b) => b.name)).toEqual(['script']);
+    expect(root.blocks[0].content).toContain('const keep = 1;');
+    expect(root.blocks[0].end).toBe(source.length);
   });
 
   it('returns blocks in source order', () => {
