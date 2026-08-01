@@ -77,6 +77,9 @@ export const STYLE_ATTR_RE = /style="[^"]*"/;
 /** Matches trailing CSS attribute selector operator chars (~, |, ^, $, *). */
 export const ATTR_OPERATOR_SUFFIX_RE = /[~|^$*]$/;
 
+/** Matches double quotes (escaped when writing style attribute values). */
+export const DOUBLE_QUOTE_RE = /"/g;
+
 // ---------------------------------------------------------------------------
 
 interface CSSRule {
@@ -559,8 +562,12 @@ export function inlineCSS(html: string, css: string): string {
   let result = html;
 
   for (const [element, matches] of sortedElements) {
-    const mergedStyle = mergeStyles(matches, element.existingStyle);
-    if (!mergedStyle) continue;
+    const rawStyle = mergeStyles(matches, element.existingStyle);
+    if (!rawStyle) continue;
+
+    // Escape double quotes so a declaration value (e.g. font-family: "Arial",
+    // or a crafted `x" onmouseover="…`) cannot terminate the style attribute.
+    const mergedStyle = rawStyle.replace(DOUBLE_QUOTE_RE, '&quot;');
 
     const originalTag = element.fullTag;
     let newTag: string;

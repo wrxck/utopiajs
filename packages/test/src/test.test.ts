@@ -162,6 +162,14 @@ describe('mount()', () => {
 
     expect(result.container.textContent).toBe('hi');
   });
+
+  it('unmount() tolerates a target that was never attached to the DOM', () => {
+    const target = document.createElement('div');
+    const result = mount(StaticComponent, { target });
+
+    expect(target.parentNode).toBeNull();
+    expect(() => result.unmount()).not.toThrow();
+  });
 });
 
 describe('render()', () => {
@@ -216,6 +224,13 @@ describe('render()', () => {
     cleanup = result.unmount;
 
     expect(() => result.getByText('Not here')).toThrow(/no element found/);
+  });
+
+  it('getByText mentions the pattern when a RegExp match fails', () => {
+    const result = render(MultiElementComponent);
+    cleanup = result.unmount;
+
+    expect(() => result.getByText(/^Not here$/)).toThrow(/\/\^Not here\$\//);
   });
 });
 
@@ -301,12 +316,15 @@ describe('fireEvent', () => {
   });
 
   it('fires keyboard events', () => {
-    let key = '';
+    const keys: string[] = [];
     const comp: ComponentDefinition = {
       render() {
         const input = createElement('input');
         addEventListener(input, 'keydown', (e: Event) => {
-          key = (e as KeyboardEvent).key;
+          keys.push(`down:${(e as KeyboardEvent).key}`);
+        });
+        addEventListener(input, 'keyup', (e: Event) => {
+          keys.push(`up:${(e as KeyboardEvent).key}`);
         });
         return input;
       },
@@ -315,8 +333,10 @@ describe('fireEvent', () => {
     const result = mount(comp);
     cleanup = result.unmount;
 
-    fireEvent.keydown(result.container.querySelector('input')!, { key: 'Enter' });
-    expect(key).toBe('Enter');
+    const input = result.container.querySelector('input')!;
+    fireEvent.keydown(input, { key: 'Enter' });
+    fireEvent.keyup(input, { key: 'Enter' });
+    expect(keys).toEqual(['down:Enter', 'up:Enter']);
   });
 
   it('fires focus and blur events', () => {

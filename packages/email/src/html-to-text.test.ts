@@ -30,6 +30,12 @@ describe('HTML to Text', () => {
     );
   });
 
+  it('falls back to the href when a link has no text content', () => {
+    expect(htmlToText('<a href="https://example.com"><img src="i.png"></a>')).toBe(
+      'https://example.com',
+    );
+  });
+
   it('converts headings to uppercase', () => {
     expect(htmlToText('<h1>My Title</h1>')).toBe('MY TITLE');
   });
@@ -102,5 +108,32 @@ describe('HTML to Text', () => {
     expect(result).toContain('Click here (https://example.com)');
     expect(result).toContain('---');
     expect(result).toContain('Footer');
+  });
+
+  it('decodes named entities', () => {
+    expect(htmlToText('<p>A &amp; B &copy; &hellip;</p>')).toBe('A & B © …');
+  });
+
+  it('decodes numeric decimal entities', () => {
+    expect(htmlToText('<p>&#65;&#66;</p>')).toBe('AB');
+  });
+
+  it('decodes numeric hex entities', () => {
+    expect(htmlToText('<p>&#x41;&#x42;</p>')).toBe('AB');
+  });
+
+  it('decodes astral-plane numeric entities (above U+FFFF)', () => {
+    // 128169 is U+1F4A9; String.fromCharCode truncates it to a lone surrogate.
+    expect(htmlToText('<p>&#128169;</p>')).toBe('\u{1F4A9}');
+    expect(htmlToText('<p>&#x1F4A9;</p>')).toBe('\u{1F4A9}');
+  });
+
+  it('leaves invalid numeric entities untouched', () => {
+    // Above the Unicode range — decoding would throw in fromCodePoint.
+    expect(htmlToText('<p>&#1114112;</p>')).toBe('&#1114112;');
+  });
+
+  it('leaves unknown named entities untouched', () => {
+    expect(htmlToText('<p>&unknownentity;</p>')).toBe('&unknownentity;');
   });
 });

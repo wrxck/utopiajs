@@ -1,3 +1,4 @@
+import { escapeHtml } from '@/escape';
 import { generateJsonLd, generateMetaTags } from '@/seo/meta';
 import { sanitiseHtml } from '@/seo/prerender';
 import type { SeoConfig, SeoEntry } from '@/seo/types';
@@ -6,7 +7,10 @@ const AMP_BOILERPLATE = `<style amp-boilerplate>body{-webkit-animation:-amp-star
 
 /** Convert <img> tags to <amp-img> with layout="responsive" */
 function convertImages(html: string): string {
-  return html.replace(/<img\s([^>]*)>/g, (_, attrs: string) => {
+  // attribute values may legally contain ">" (jsdom leaves it unescaped), so
+  // the tag match must skip over quoted strings instead of stopping at the
+  // first ">" it sees.
+  return html.replace(/<img\s((?:"[^"]*"|'[^']*'|[^>])*)>/g, (_, attrs: string) => {
     // Extract src, alt, width, height
     const src = attrs.match(/src="([^"]*)"/)?.[1] ?? '';
     const alt = attrs.match(/alt="([^"]*)"/)?.[1] ?? '';
@@ -191,12 +195,4 @@ ${generateAmpCss()}
   </article>
 </body>
 </html>`;
-}
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }

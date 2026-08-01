@@ -1,13 +1,5 @@
+import { escapeXml } from '@/escape';
 import type { SeoConfig, SeoEntry } from '@/seo/types';
-
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
 
 /** Generate sitemap.xml for all blog entries */
 export function generateSitemap(entries: SeoEntry[], config: SeoConfig): string {

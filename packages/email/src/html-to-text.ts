@@ -76,6 +76,11 @@ const ENTITY_MAP: Record<string, string> = {
   '&bull;': '\u2022',
 };
 
+/** Decode a numeric character reference, falling back for out-of-range values. */
+function decodeCodePoint(codePoint: number, fallback: string): string {
+  return codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : fallback;
+}
+
 /**
  * Convert HTML to plain text suitable as an email fallback.
  */
@@ -127,11 +132,13 @@ export function htmlToText(html: string): string {
   text = text.replace(HTML_ENTITY_RE, (entity) => {
     // Named entities
     if (ENTITY_MAP[entity]) return ENTITY_MAP[entity];
-    // Numeric entities
+    // Numeric entities. fromCodePoint (not fromCharCode) so astral-plane
+    // characters like emoji decode correctly instead of to a lone surrogate;
+    // values beyond the Unicode range are left as-is rather than throwing.
     const numMatch = entity.match(NUMERIC_ENTITY_RE);
-    if (numMatch) return String.fromCharCode(parseInt(numMatch[1], 10));
+    if (numMatch) return decodeCodePoint(parseInt(numMatch[1], 10), entity);
     const hexMatch = entity.match(HEX_ENTITY_RE);
-    if (hexMatch) return String.fromCharCode(parseInt(hexMatch[1], 16));
+    if (hexMatch) return decodeCodePoint(parseInt(hexMatch[1], 16), entity);
     return entity;
   });
 

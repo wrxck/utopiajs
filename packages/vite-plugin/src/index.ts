@@ -1,4 +1,4 @@
-import type { Plugin, UserConfig, ViteDevServer, ModuleNode, HmrContext } from 'vite';
+import type { Plugin, UserConfig, ModuleNode, HmrContext } from 'vite';
 import { compile, parse, type SFCBlock } from '@matthesketh/utopia-compiler';
 import { createFilter, type FilterPattern } from 'vite';
 import path from 'node:path';
@@ -60,16 +60,8 @@ const RESOLVED_VIRTUAL_ROUTES_ID = VIRTUAL_PREFIX + VIRTUAL_ROUTES_ID;
 const ROUTE_FILE_RE = /\+(?:page|layout|error|server)\.\w+$/;
 
 // ---------------------------------------------------------------------------
-// CSS cache
+// External dependency index
 // ---------------------------------------------------------------------------
-
-/**
- * In-memory cache that maps a `.utopia` file path to its most recently
- * extracted CSS string.  The cache is shared between the `transform` and
- * `resolveId` / `load` hooks so that the virtual CSS module can serve the
- * correct stylesheet content.
- */
-const cssCache = new Map<string, string>();
 
 /**
  * Reverse index mapping an external file's absolute path (a `<style src>`
@@ -77,6 +69,10 @@ const cssCache = new Map<string, string>();
  * files that pull it in. Populated during `transform` and consulted in
  * `handleHotUpdate` so that editing a shared external file hot-updates every
  * component that references it.
+ *
+ * This stays at module scope because `registerExternalDep` is a module-level
+ * helper. The CSS cache, by contrast, lives inside the plugin factory so two
+ * plugin instances in one process cannot see each other's stylesheets.
  */
 const externalDepOwners = new Map<string, Set<string>>();
 
@@ -330,7 +326,14 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
   const { include = `**/*${UTOPIA_EXT}`, exclude, routesDir = 'src/routes' } = options;
 
   let filter: (id: string) => boolean;
-  let server: ViteDevServer | undefined;
+
+  /**
+   * In-memory cache that maps a `.utopia` file path to its most recently
+   * extracted CSS string.  The cache is shared between the `transform` and
+   * `resolveId` / `load` hooks so that the virtual CSS module can serve the
+   * correct stylesheet content.
+   */
+  const cssCache = new Map<string, string>();
 
   /**
    * Track the previous SFC descriptor per file so we can diff blocks for
@@ -365,14 +368,6 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
 
     configResolved() {
       filter = createFilter(include, exclude);
-    },
-
-    // -------------------------------------------------------------------
-    // Dev server – store reference for HMR
-    // -------------------------------------------------------------------
-
-    configureServer(_server) {
-      server = _server;
     },
 
     // -------------------------------------------------------------------
@@ -720,10 +715,11 @@ export function defineConfig(userConfig: UserConfig = {}): UserConfig {
     ...rest
   } = userConfig;
 
-  // Check whether the user already included the utopia plugin.
-  const hasUtopiaPlugin = (userPlugins as Plugin[]).some(
-    (p) => p && typeof p === 'object' && 'name' in p && p.name === 'utopia',
-  );
+  // Check whether the user already included the utopia plugin. Plugin
+  // entries may be arbitrarily nested arrays (presets), so flatten first.
+  const hasUtopiaPlugin = (userPlugins as unknown[])
+    .flat(Infinity)
+    .some((p) => p != null && typeof p === 'object' && 'name' in p && p.name === 'utopia');
 
   const plugins: Plugin[] = hasUtopiaPlugin
     ? (userPlugins as Plugin[])

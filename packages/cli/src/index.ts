@@ -7,11 +7,13 @@
 // Wraps Vite and auto-injects the UtopiaJS plugin when no vite.config exists.
 // ---------------------------------------------------------------------------
 
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { createRequire } from 'node:module';
-import { execSync, execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import type { Readable, Writable } from 'node:stream';
 import {
   createServer,
   build as viteBuild,
@@ -26,7 +28,7 @@ import { utopiaTestPlugin } from '@matthesketh/utopia-test/plugin';
 
 // ---- Argument parsing -------------------------------------------------------
 
-interface ParsedArgs {
+export interface ParsedArgs {
   command: string | undefined;
   port: number | undefined;
   host: string | boolean | undefined;
@@ -36,7 +38,7 @@ interface ParsedArgs {
   rest: string[];
 }
 
-function parseArgs(argv: string[]): ParsedArgs {
+export function parseArgs(argv: string[]): ParsedArgs {
   const args = argv.slice(2);
   const META_FLAGS = new Set(['-v', '--version', '-h', '--help']);
   const command = args[0]
@@ -90,11 +92,11 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 const CONFIG_FILES = ['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.mts'];
 
-function hasViteConfig(): boolean {
+export function hasViteConfig(): boolean {
   return CONFIG_FILES.some((f) => existsSync(resolve(process.cwd(), f)));
 }
 
-function buildInlineConfig(args: ParsedArgs, mode: string): InlineConfig {
+export function buildInlineConfig(args: ParsedArgs, mode: string): InlineConfig {
   const config: InlineConfig = { mode };
 
   // Use custom config file if specified, otherwise auto-detect.
@@ -122,7 +124,7 @@ function buildInlineConfig(args: ParsedArgs, mode: string): InlineConfig {
 
 // ---- Commands ---------------------------------------------------------------
 
-async function dev(args: ParsedArgs): Promise<void> {
+export async function dev(args: ParsedArgs): Promise<void> {
   const config = buildInlineConfig(args, 'development');
   const server = await createServer(config);
   await server.listen();
@@ -130,12 +132,12 @@ async function dev(args: ParsedArgs): Promise<void> {
   server.bindCLIShortcuts({ print: true });
 }
 
-async function build(args: ParsedArgs): Promise<void> {
+export async function build(args: ParsedArgs): Promise<void> {
   const config = buildInlineConfig(args, 'production');
   await viteBuild(config);
 }
 
-async function preview(args: ParsedArgs): Promise<void> {
+export async function preview(args: ParsedArgs): Promise<void> {
   const config = buildInlineConfig(args, 'production');
 
   // Preview has its own options namespace.
@@ -148,7 +150,7 @@ async function preview(args: ParsedArgs): Promise<void> {
   server.printUrls();
 }
 
-async function test(args: ParsedArgs): Promise<void> {
+export async function test(args: ParsedArgs): Promise<void> {
   const { startVitest } = await import('vitest/node');
 
   const config = buildInlineConfig(args, 'test');
@@ -176,38 +178,132 @@ const CONTENT_CONFIG_FILES = [
   'content.config.mts',
 ];
 
-function findContentConfig(): string | undefined {
+export function findContentConfig(): string | undefined {
   return CONTENT_CONFIG_FILES.find((f) => existsSync(resolve(process.cwd(), f)));
 }
 
-async function mcpServe(): Promise<void> {
-  const configFile = findContentConfig();
-  if (!configFile) {
-    process.stderr.write(
-      'No content.config found. utopia mcp serve requires @matthesketh/utopia-content.\n',
-    );
-    process.exit(1);
-  }
+export interface JsonRpcRequest {
+  jsonrpc: string;
+  id: string | number;
+  method: string;
+  params?: Record<string, unknown>;
+}
 
-  // Use Vite in middleware mode to load the TypeScript content config.
+export interface JsonRpcResponse {
+  jsonrpc: string;
+  id: string | number;
+  result?: unknown;
+  error?: { code: number; message: string };
+}
+
+export interface McpTool {
+  definition: { name: string; description: string; inputSchema: unknown };
+  handler: (params: Record<string, unknown>) => Promise<unknown>;
+}
+
+/**
+ * Build the JSON-RPC request handler for the MCP stdio server from the
+ * loaded content tools.
+ */
+export function createMcpRequestHandler(
+  tools: McpTool[],
+): (request: JsonRpcRequest) => Promise<JsonRpcResponse> {
+  const toolMap = new Map(tools.map((t) => [t.definition.name, t]));
+  const serverInfo = { name: 'utopia-content', version: '1.0.0' };
+
+  return async (request) => {
+    try {
+      let result: unknown;
+      switch (request.method) {
+        case 'initialize':
+          result = {
+            protocolVersion: '2024-11-05',
+            capabilities: { tools: {} },
+            serverInfo,
+          };
+          break;
+        case 'tools/list':
+          result = {
+            tools: tools.map((t) => ({
+              name: t.definition.name,
+              description: t.definition.description,
+              inputSchema: t.definition.inputSchema,
+            })),
+          };
+          break;
+        case 'tools/call': {
+          const params = request.params as { name: string; arguments?: Record<string, unknown> };
+          const tool = toolMap.get(params.name);
+          if (!tool) {
+            return {
+              jsonrpc: '2.0' as const,
+              id: request.id,
+              error: { code: -32602, message: `Unknown tool: ${params.name}` },
+            };
+          }
+          result = await tool.handler(params.arguments ?? {});
+          break;
+        }
+        case 'ping':
+          result = {};
+          break;
+        default:
+          return {
+            jsonrpc: '2.0' as const,
+            id: request.id,
+            error: { code: -32601, message: `Method not found: ${request.method}` },
+          };
+      }
+      return { jsonrpc: '2.0', id: request.id, result };
+    } catch (err: unknown) {
+      const e = err as { code?: number; message?: string };
+      return {
+        jsonrpc: '2.0',
+        id: request.id,
+        error: { code: e.code ?? -32603, message: e.message ?? 'Internal error' },
+      };
+    }
+  };
+}
+
+/**
+ * Newline-delimited JSON-RPC loop. Reads requests from `input`, writes
+ * responses to `output`. Notifications (no id) and malformed lines are
+ * ignored, matching MCP stdio transport expectations.
+ */
+export async function runStdioLoop(
+  handleRequest: (request: JsonRpcRequest) => Promise<JsonRpcResponse>,
+  input: Readable = process.stdin,
+  output: Writable = process.stdout,
+): Promise<void> {
+  const rl = createInterface({ input });
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+    try {
+      const request = JSON.parse(line) as JsonRpcRequest;
+      // Notifications (no id) don't get a response.
+      if (request.id == null) continue;
+      const response = await handleRequest(request);
+      output.write(JSON.stringify(response) + '\n');
+    } catch {
+      // Malformed JSON — ignore.
+    }
+  }
+}
+
+/**
+ * Load the project's content collections through a throwaway Vite server
+ * (so the TypeScript content config can be imported) and wrap them in MCP
+ * tools. The server is closed before returning — the content adapters use
+ * plain fs, not Vite internals.
+ */
+export async function loadContentTools(configFile: string): Promise<McpTool[]> {
   const server = await createServer({
     mode: 'production',
     logLevel: 'silent',
     server: { middlewareMode: true },
     plugins: [utopia()],
   });
-
-  let handleRequest: (req: {
-    jsonrpc: string;
-    id: string | number;
-    method: string;
-    params?: Record<string, unknown>;
-  }) => Promise<{
-    jsonrpc: string;
-    id: string | number;
-    result?: unknown;
-    error?: { code: number; message: string };
-  }>;
 
   try {
     // Loading the config triggers createContent() + defineCollection() side effects.
@@ -227,10 +323,7 @@ async function mcpServe(): Promise<void> {
     }
 
     const contentMcp = (await server.ssrLoadModule('@matthesketh/utopia-content/mcp')) as {
-      createContentTools: (getCollections: () => Map<string, unknown>) => Array<{
-        definition: { name: string; description: string; inputSchema: unknown };
-        handler: (params: Record<string, unknown>) => Promise<unknown>;
-      }>;
+      createContentTools: (getCollections: () => Map<string, unknown>) => McpTool[];
     };
 
     const collectionMap = new Map<string, unknown>();
@@ -239,89 +332,29 @@ async function mcpServe(): Promise<void> {
       if (col) collectionMap.set(name, col);
     }
 
-    const tools = contentMcp.createContentTools(() => collectionMap);
-    const toolMap = new Map(tools.map((t) => [t.definition.name, t]));
-
-    const serverInfo = { name: 'utopia-content', version: '1.0.0' };
-
-    handleRequest = async (request) => {
-      try {
-        let result: unknown;
-        switch (request.method) {
-          case 'initialize':
-            result = {
-              protocolVersion: '2024-11-05',
-              capabilities: { tools: {} },
-              serverInfo,
-            };
-            break;
-          case 'tools/list':
-            result = {
-              tools: tools.map((t) => ({
-                name: t.definition.name,
-                description: t.definition.description,
-                inputSchema: t.definition.inputSchema,
-              })),
-            };
-            break;
-          case 'tools/call': {
-            const params = request.params as { name: string; arguments?: Record<string, unknown> };
-            const tool = toolMap.get(params.name);
-            if (!tool) {
-              return {
-                jsonrpc: '2.0' as const,
-                id: request.id,
-                error: { code: -32602, message: `Unknown tool: ${params.name}` },
-              };
-            }
-            result = await tool.handler(params.arguments ?? {});
-            break;
-          }
-          case 'ping':
-            result = {};
-            break;
-          default:
-            return {
-              jsonrpc: '2.0' as const,
-              id: request.id,
-              error: { code: -32601, message: `Method not found: ${request.method}` },
-            };
-        }
-        return { jsonrpc: '2.0', id: request.id, result };
-      } catch (err: unknown) {
-        const e = err as { code?: number; message?: string };
-        return {
-          jsonrpc: '2.0',
-          id: request.id,
-          error: { code: e.code ?? -32603, message: e.message ?? 'Internal error' },
-        };
-      }
-    };
-  } catch (err) {
+    return contentMcp.createContentTools(() => collectionMap);
+  } finally {
     await server.close();
-    throw err;
-  }
-
-  // Close Vite — the content adapters use plain fs, not Vite internals.
-  await server.close();
-
-  // Stdio JSON-RPC loop (newline-delimited JSON).
-  const rl = createInterface({ input: process.stdin });
-  for await (const line of rl) {
-    if (!line.trim()) continue;
-    try {
-      const request = JSON.parse(line);
-      // Notifications (no id) don't get a response.
-      if (request.id == null) continue;
-      const response = await handleRequest(request);
-      process.stdout.write(JSON.stringify(response) + '\n');
-    } catch {
-      // Malformed JSON — ignore.
-    }
   }
 }
 
-function findClaude(): string | null {
+export async function mcpServe(): Promise<void> {
+  const configFile = findContentConfig();
+  if (!configFile) {
+    process.stderr.write(
+      'No content.config found. utopia mcp serve requires @matthesketh/utopia-content.\n',
+    );
+    process.exit(1);
+  }
+
+  const tools = await loadContentTools(configFile);
+  const handleRequest = createMcpRequestHandler(tools);
+
+  // Stdio JSON-RPC loop (newline-delimited JSON).
+  await runStdioLoop(handleRequest);
+}
+
+export function findClaude(): string | null {
   const candidates = [
     'claude',
     resolve(process.env.HOME ?? '~', '.local/bin/claude'),
@@ -339,7 +372,7 @@ function findClaude(): string | null {
   return null;
 }
 
-function mcpInstall(): void {
+export function mcpInstall(): void {
   const claude = findClaude();
   if (!claude) {
     console.error(
@@ -366,7 +399,7 @@ function mcpInstall(): void {
   }
 }
 
-function printMcpHelp(): void {
+export function printMcpHelp(): void {
   console.log(`
   utopia mcp — MCP server for Claude Code integration
 
@@ -386,13 +419,13 @@ function printMcpHelp(): void {
 `);
 }
 
-function printVersion(): void {
+export function printVersion(): void {
   const require = createRequire(import.meta.url);
-  const pkg = require('../package.json');
+  const pkg = require('../package.json') as { version: string };
   console.log(`utopia v${pkg.version}`);
 }
 
-function printHelp(): void {
+export function printHelp(): void {
   console.log(`
   utopia — UtopiaJS CLI
 
@@ -420,8 +453,8 @@ function printHelp(): void {
 
 // ---- Main -------------------------------------------------------------------
 
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv);
+export async function main(argv: string[] = process.argv): Promise<void> {
+  const args = parseArgs(argv);
 
   switch (args.command) {
     case 'dev':
@@ -463,7 +496,29 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(err.message || err);
-  process.exit(1);
-});
+// ---- Entry point ------------------------------------------------------------
+
+/**
+ * True when this module is the script Node was asked to execute (the
+ * `utopia` bin), as opposed to being imported (e.g. by tests).
+ */
+export function isDirectInvocation(
+  argv1: string | undefined,
+  moduleUrl: string = import.meta.url,
+): boolean {
+  if (!argv1) return false;
+  try {
+    return realpathSync(argv1) === realpathSync(fileURLToPath(moduleUrl));
+  } catch {
+    return false;
+  }
+}
+
+/* v8 ignore start -- only reachable when run as the CLI binary */
+if (isDirectInvocation(process.argv[1])) {
+  main().catch((err) => {
+    console.error(err.message || err);
+    process.exit(1);
+  });
+}
+/* v8 ignore stop */

@@ -97,10 +97,17 @@ export function createMCPHandler(
       }
     }
 
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+    // a malformed Host header must not crash routing (the URL constructor
+    // throws on invalid base URLs) — fall back to the raw path in that case.
+    let pathname: string;
+    try {
+      pathname = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`).pathname;
+    } catch {
+      pathname = (req.url ?? '/').split('?')[0];
+    }
 
     // sse endpoint for streamable http transport
-    if (url.pathname.endsWith('/sse') && req.method === 'GET') {
+    if (pathname.endsWith('/sse') && req.method === 'GET') {
       handleSSE(server, req, res);
       return;
     }

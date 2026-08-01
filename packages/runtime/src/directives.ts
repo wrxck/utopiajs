@@ -10,12 +10,9 @@ import { insertBefore, removeNode } from '@/dom';
 import {
   createComponentInstance,
   pushDisposer,
-  pushOwner,
-  popOwner,
+  runSetupAndRender,
   startCapturingDisposers,
   stopCapturingDisposers,
-  startCapturingLifecycle,
-  stopCapturingLifecycle,
 } from '@/component';
 import type { ComponentDefinition } from '@/component';
 
@@ -294,10 +291,33 @@ export function createFor<T>(
     return { key: k, node, dispose, refresh };
   };
 
+  // bumped from a microtask to re-run the reconcile once our anchor is
+  // connected. see the guard below.
+  const anchorAttached = signal(0);
+  let retryScheduled = false;
+  let listDisposed = false;
+
   const reconcile = effect(() => {
     const items = list();
+    // read unconditionally so a retry always re-runs us.
+    anchorAttached();
     const parent = anchor.parentNode;
-    if (!parent) return;
+    if (!parent) {
+      // same case createIf handles: when this u-for is returned as a branch of
+      // an outer createIf (an else-if chain, or a root-level u-for whose anchor
+      // the caller appends after render returns), the first reconcile runs
+      // before the anchor is connected. dropping it silently rendered NOTHING
+      // for the life of the page whenever the list never changed again, so
+      // retry on a microtask instead.
+      if (!retryScheduled) {
+        retryScheduled = true;
+        queueMicrotask(() => {
+          retryScheduled = false;
+          if (!listDisposed && anchor.parentNode) anchorAttached.update((n) => n + 1);
+        });
+      }
+      return;
+    }
 
     const prevByKey = new Map<string | number, Entry>();
     for (const e of entries) prevByKey.set(e.key, e);
@@ -349,6 +369,7 @@ export function createFor<T>(
   });
 
   const disposeAll = (): void => {
+    listDisposed = true;
     reconcile();
     const parent = anchor.parentNode;
     for (const e of entries) {
@@ -412,31 +433,15 @@ export function createComponent(
 
   const def = resolved as ComponentDefinition;
 
-  // capture disposers across BOTH setup and render so effects (createEffect /
-  // use*) created in a per-instance setup() are torn down on unmount, not just
-  // render-phase ones. lifecycle stays scoped to setup — children mount during
-  // render, after the lifecycle window closes, so its globals are never clobbered.
-  // an owner is pushed for the same window so provide()/inject() resolve against
-  // this component (and children created during render link to it as parent).
-  const owner = pushOwner();
-  const prev = startCapturingDisposers();
-  let lifecycle: { mount: (() => void)[]; destroy: (() => void)[] };
-  try {
-    startCapturingLifecycle();
-    const ctx = def.setup ? def.setup(instance.props) : {};
-    lifecycle = stopCapturingLifecycle();
-
-    // Merge slots into the render context so templates can reference them.
-    const renderCtx: Record<string, unknown> = {
-      ...ctx,
-      $slots: instance.slots,
-    };
-
-    instance.el = def.render(renderCtx);
-  } finally {
-    popOwner(owner);
-  }
-  const disposers = stopCapturingDisposers(prev);
+  // Run setup() + render() inside one disposer-capture scope so effects
+  // created during setup belong to THIS component's cleanup (important for
+  // async mounts like defineLazy, where no outer scope is active).
+  const { el, mountCallbacks, destroyCallbacks, disposers } = runSetupAndRender(
+    def,
+    instance.props,
+    instance.slots,
+  );
+  instance.el = el;
 
   // Inject scoped styles if the definition carries them (deduplicated).
   if (def.styles && !injectedStyles.has(def.styles)) {
@@ -447,7 +452,7 @@ export function createComponent(
   }
 
   // Run onMount callbacks.
-  for (const cb of lifecycle.mount) {
+  for (const cb of mountCallbacks) {
     cb();
   }
 
@@ -460,7 +465,7 @@ export function createComponent(
   const cleanup = (): void => {
     if (cleaned) return;
     cleaned = true;
-    for (const cb of lifecycle.destroy) {
+    for (const cb of destroyCallbacks) {
       try {
         cb();
       } catch {

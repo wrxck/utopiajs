@@ -4,12 +4,14 @@
 // forwarded to the surrounding scope.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { signal, tick } from '@matthesketh/utopia-core';
+import { flushSync, signal, tick } from '@matthesketh/utopia-core';
 
 import { createComponentInstance, onDestroy } from '@/component';
 import type { ComponentDefinition } from '@/component';
 import { createComponent, createIf, createFor } from '@/directives';
-import { setAttr, setSafeHtml } from '@/dom';
+import { createTextNode, setAttr, setSafeHtml, setText } from '@/dom';
+import { hydrate } from '@/hydration';
+import { defineLazy } from '@/lazy';
 import { createEffect } from '@/index';
 
 describe('setAttr URL-scheme + event-handler guards', () => {
@@ -212,6 +214,124 @@ describe('createFor reuses nodes when reordering a primitive list', () => {
     // the 'a' node was moved, not recreated (index-coupled keys would rebuild it).
     expect(after.find((n) => n.textContent === 'a')).toBe(nodeA);
     parent.remove();
+  });
+});
+
+describe('hydrated instance cleanup on unmount', () => {
+  let host: HTMLElement;
+  beforeEach(() => {
+    host = document.createElement('div');
+    document.body.appendChild(host);
+  });
+  afterEach(() => host.remove());
+
+  it('disposes effects and runs onDestroy when a hydrated instance unmounts', () => {
+    host.innerHTML = 'x';
+    const sig = signal('x');
+    let destroyed = 0;
+    let runs = 0;
+
+    const Comp: ComponentDefinition = {
+      setup() {
+        onDestroy(() => {
+          destroyed++;
+        });
+        return {};
+      },
+      render() {
+        const t = createTextNode('x');
+        createEffect(() => {
+          runs++;
+          setText(t, sig());
+        });
+        return t;
+      },
+    };
+
+    const instance = hydrate(Comp, host);
+    expect(runs).toBe(1);
+    flushSync(() => sig.set('y'));
+    expect(runs).toBe(2);
+
+    instance.unmount();
+    expect(destroyed).toBe(1);
+
+    flushSync(() => sig.set('z'));
+    expect(runs).toBe(2); // disposed — no leaked subscription
+  });
+
+  it('removes the injected style element when a hydrated instance unmounts', () => {
+    host.innerHTML = '<div></div>';
+    const before = document.head.querySelectorAll('style').length;
+
+    const Comp: ComponentDefinition = {
+      render: () => document.createElement('div'),
+      styles: '.hydrated-style-test { color: red; }',
+    };
+
+    const instance = hydrate(Comp, host);
+    expect(document.head.querySelectorAll('style').length).toBe(before + 1);
+
+    instance.unmount();
+    expect(document.head.querySelectorAll('style').length).toBe(before);
+  });
+});
+
+describe('setup()-created effects are disposed on unmount', () => {
+  it('stops an effect created during setup when the root instance unmounts', () => {
+    const sig = signal(0);
+    let runs = 0;
+
+    const Comp: ComponentDefinition = {
+      setup() {
+        createEffect(() => {
+          sig();
+          runs++;
+        });
+        return {};
+      },
+      render: () => document.createElement('div'),
+    };
+
+    const instance = createComponentInstance(Comp);
+    instance.mount(document.body);
+    expect(runs).toBe(1);
+    flushSync(() => sig.set(1));
+    expect(runs).toBe(2);
+
+    instance.unmount();
+    flushSync(() => sig.set(2));
+    expect(runs).toBe(2); // disposed — no leaked subscription
+  });
+
+  it('stops a setup effect of a lazy-loaded component when its scope unmounts', async () => {
+    const sig = signal(0);
+    let runs = 0;
+
+    const Heavy: ComponentDefinition = {
+      setup() {
+        createEffect(() => {
+          sig();
+          runs++;
+        });
+        return {};
+      },
+      render: () => document.createElement('div'),
+    };
+
+    const Lazy = defineLazy(() => Promise.resolve({ default: Heavy }));
+    const Root: ComponentDefinition = {
+      render: () => createComponent(Lazy),
+    };
+
+    const instance = createComponentInstance(Root);
+    instance.mount(document.body);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(runs).toBe(1);
+
+    instance.unmount();
+    sig.set(1);
+    expect(runs).toBe(1); // disposed — no leaked subscription
   });
 });
 

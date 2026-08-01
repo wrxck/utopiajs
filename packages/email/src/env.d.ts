@@ -46,9 +46,10 @@ declare module 'resend' {
     headers?: Record<string, string>;
     attachments?: Array<{ filename?: string; content?: string | Buffer; content_type?: string }>;
   }
+  // resend v3+ resolves { data, error } and does not throw on API errors.
   interface SendEmailResponse {
-    data?: { id: string };
-    id?: string;
+    data?: { id: string } | null;
+    error?: { message?: string; name?: string } | null;
   }
   export class Resend {
     constructor(apiKey: string);

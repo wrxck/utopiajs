@@ -7,14 +7,7 @@
 // <style>. this keeps formatting safe and idempotent: we never reprint from a
 // lossy ast, we only re-indent the blocks and delegate their contents.
 
-import {
-  type AstPath,
-  doc,
-  type Parser,
-  type Plugin,
-  type Printer,
-  type SupportLanguage,
-} from 'prettier';
+import { doc, type Parser, type Plugin, type Printer, type SupportLanguage } from 'prettier';
 
 import { type BlockName, splitBlocks, type UtopiaBlock, type UtopiaRoot } from '@/split-blocks';
 

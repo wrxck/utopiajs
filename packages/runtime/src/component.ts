@@ -128,6 +128,59 @@ export function inject<T = unknown>(key: unknown, fallback?: T): T | undefined {
 }
 
 // ---------------------------------------------------------------------------
+// Setup + render pipeline (shared by mount, createComponent, and hydrate)
+// ---------------------------------------------------------------------------
+
+/**
+ * Internal: run a definition's setup() and render() inside a single
+ * disposer-capture scope, capturing lifecycle hooks during setup. Running
+ * setup inside the scope means effects created during setup are disposed
+ * together with render-created ones instead of leaking.
+ *
+ * An owner is pushed around both phases so provide()/inject() resolve against
+ * this component, and a child created during render links to it as its parent.
+ */
+export function runSetupAndRender(
+  definition: ComponentDefinition,
+  props: Record<string, unknown>,
+  slots: Record<string, () => Node>,
+): {
+  el: Node;
+  mountCallbacks: (() => void)[];
+  destroyCallbacks: (() => void)[];
+  disposers: (() => void)[];
+} {
+  let el: Node;
+  let lifecycle: { mount: (() => void)[]; destroy: (() => void)[] };
+  let disposers: (() => void)[];
+
+  const owner = pushOwner();
+  const prev = startCapturingDisposers();
+  try {
+    startCapturingLifecycle();
+    let ctx: Record<string, unknown>;
+    try {
+      ctx = definition.setup ? definition.setup(props) : {};
+    } finally {
+      // Always close the lifecycle capture, even when setup throws, so a
+      // faulty component cannot poison the next component's capture.
+      lifecycle = stopCapturingLifecycle();
+    }
+    el = definition.render({ ...ctx, $slots: slots });
+  } finally {
+    disposers = stopCapturingDisposers(prev);
+    popOwner(owner);
+  }
+
+  return {
+    el,
+    mountCallbacks: lifecycle.mount,
+    destroyCallbacks: lifecycle.destroy,
+    disposers,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -176,6 +229,7 @@ export function createComponentInstance(
 ): ComponentInstance {
   let styleElement: HTMLStyleElement | null = null;
   let disposers: (() => void)[] = [];
+  let mountCallbacks: (() => void)[] = [];
   let destroyCallbacks: (() => void)[] = [];
 
   const instance: ComponentInstance = {
@@ -190,32 +244,15 @@ export function createComponentInstance(
         return;
       }
 
-      // 1. Run setup() to obtain the reactive context. capture disposers across
-      // both setup and render so a per-instance setup()'s effects are torn down
-      // on unmount; the lifecycle window stays scoped to setup. push an owner so
-      // provide()/inject() resolve against this component during setup + render.
-      const owner = pushOwner();
-      let renderCtx: Record<string, unknown>;
-      let lifecycle: { mount: (() => void)[]; destroy: (() => void)[] };
-      const prev = startCapturingDisposers();
-      try {
-        startCapturingLifecycle();
-        const ctx = definition.setup ? definition.setup(instance.props) : {};
-        lifecycle = stopCapturingLifecycle();
-        destroyCallbacks = lifecycle.destroy;
-
-        // Merge slots into the render context.
-        renderCtx = {
-          ...ctx,
-          $slots: instance.slots,
-        };
-
-        // 2. Render the template to a real DOM subtree.
-        instance.el = definition.render(renderCtx);
-      } finally {
-        popOwner(owner);
-      }
-      disposers = stopCapturingDisposers(prev);
+      // 1. Run setup() to obtain the reactive context (capturing lifecycle
+      //    hooks) and 2. render the template to a real DOM subtree — both
+      //    inside one disposer-capture scope so setup- and render-created
+      //    effects are all disposed on unmount.
+      const result = runSetupAndRender(definition, instance.props, instance.slots);
+      instance.el = result.el;
+      disposers = result.disposers;
+      mountCallbacks = result.mountCallbacks;
+      destroyCallbacks = result.destroyCallbacks;
 
       // 3. Insert into the target.
       target.insertBefore(instance.el, anchor ?? null);
@@ -228,9 +265,10 @@ export function createComponentInstance(
       }
 
       // 5. Run onMount callbacks after DOM insertion.
-      for (const cb of lifecycle.mount) {
+      for (const cb of mountCallbacks) {
         cb();
       }
+      mountCallbacks = [];
     },
 
     unmount(): void {
