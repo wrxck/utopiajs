@@ -1,17 +1,32 @@
 import path from 'path';
 import { defineConfig } from 'vitest/config';
 
+// the slice of the rollup plugin context this hook needs. declared as a `this`
+// parameter so the hook reaches it without casting the surrounding object.
+interface ResolveContext {
+  resolve(
+    source: string,
+    importer: string | undefined,
+    options: { skipSelf?: boolean },
+  ): Promise<{ id: string } | null>;
+}
+
 // resolves `@/x` to the importing file's OWN package src (packages/<name>/src/x),
 // mirroring the per-package tsconfig `paths` so the test runner matches the build.
 const localAlias = {
   name: 'utopia-local-alias',
   enforce: 'pre' as const,
-  async resolveId(source: string, importer: string | undefined, options: unknown) {
+  async resolveId(
+    this: ResolveContext,
+    source: string,
+    importer: string | undefined,
+    options: unknown,
+  ) {
     if (!source.startsWith('@/') || !importer) return null;
     const m = importer.replace(/\\/g, '/').match(/^(.*\/packages\/[^/]+\/src)\//);
     if (!m) return null;
     const target = path.resolve(m[1], source.slice(2));
-    const resolved = await (this as { resolve: Function }).resolve(target, importer, {
+    const resolved = await this.resolve(target, importer, {
       skipSelf: true,
       ...(options as object),
     });

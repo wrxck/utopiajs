@@ -46,8 +46,9 @@ export async function POST(req: IncomingMessage, res: ServerResponse) {
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(result));
-  } catch (err: any) {
+  } catch (err) {
     res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: false, error: err.message }));
+    const error = err instanceof Error ? err.message : String(err);
+    res.end(JSON.stringify({ success: false, error }));
   }
 }
