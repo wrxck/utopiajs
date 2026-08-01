@@ -210,7 +210,7 @@ function makeCallable<T>(node: { _read(): T; _peek(): T }): ReadonlySignal<T> {
     configurable: false,
   });
 
-  (read as any).peek = (): T => node._peek();
+  read.peek = (): T => node._peek();
 
   return read;
 }
@@ -291,11 +291,11 @@ export function signal<T>(initialValue: T): Signal<T> {
   // The callable function itself acts as the read accessor.
   const read = makeCallable(node) as Signal<T>;
 
-  (read as any).set = (newValue: T): void => {
+  read.set = (newValue: T): void => {
     node._write(newValue);
   };
 
-  (read as any).update = (fn: (current: T) => T): void => {
+  read.update = (fn: (current: T) => T): void => {
     node._write(fn(node._value));
   };
 
@@ -418,7 +418,7 @@ export function computed<T>(fn: () => T): ReadonlySignal<T> {
   const node = new ComputedNode<T>(fn);
   const read = makeCallable(node);
 
-  (read as any).dispose = (): void => node._dispose();
+  read.dispose = (): void => node._dispose();
 
   // if created inside a createRoot, tie this computed's teardown to the root so
   // a long-lived source signal no longer retains it after the root is disposed.
