@@ -73,12 +73,18 @@ function findBlockEnd(source: string, name: BlockName, from: number): number {
 }
 
 /**
- * the printer only ever emits the blocks this splitter returns, so anything the
- * splitter fails to claim would be silently deleted from the formatted file. a
- * formatter must never lose source: refuse the file instead, which surfaces as
- * a prettier parse error and leaves the file on disk untouched.
+ * the printer only ever emits the blocks it is handed, so any source those
+ * blocks do not span is deleted from the formatted file. a formatter must never
+ * lose source: refuse the file instead, which surfaces as a prettier error and
+ * leaves the file on disk untouched.
+ *
+ * this is deliberately a check on the *result* of splitting rather than on how
+ * the split was reached, so it holds against splitter bugs that have not been
+ * written yet. every miscount so far — the escaped `<\/script>`, an unclosed
+ * block, a `<script>` token inside a line comment — leaves the block's own text
+ * stranded between blocks, which is exactly what this refuses.
  */
-function assertLossless(source: string, blocks: UtopiaBlock[]): void {
+export function assertBlocksSpanSource(source: string, blocks: UtopiaBlock[]): void {
   let cursor = 0;
 
   for (const block of blocks) {
@@ -126,7 +132,7 @@ export function splitBlocks(source: string): UtopiaRoot {
     OPEN_TAG_RE.lastIndex = end;
   }
 
-  assertLossless(source, blocks);
+  assertBlocksSpanSource(source, blocks);
 
   return { type: 'root', blocks, start: 0, end: source.length };
 }

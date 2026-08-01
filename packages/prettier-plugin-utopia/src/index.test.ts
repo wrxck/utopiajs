@@ -102,6 +102,27 @@ describe('format', () => {
     expect(out.match(/<script>/g)).toHaveLength(2); // the block's own tag and the string's
   });
 
+  it('keeps the imports above a comment that mentions a script tag', async () => {
+    // the whole component, because the damage this guards against removed the
+    // block's opening lines and left something that still compiled.
+    const source = [
+      '<script>',
+      "import { signal, effect } from '@matthesketh/utopia-core';",
+      "import { currentRoute } from '@matthesketh/utopia-router';",
+      '',
+      '// the client bundle inlines every route module, so this <script> is',
+      '// evaluated at app boot on every load, not when the route renders.',
+      "const status = signal('idle');",
+      '</script>',
+    ].join('\n');
+    // the local format() helper takes prettier's defaults, hence double quotes.
+    const out = await format(source);
+    expect(out).toContain('import { signal, effect } from "@matthesketh/utopia-core";');
+    expect(out).toContain('import { currentRoute } from "@matthesketh/utopia-router";');
+    expect(out).toContain('const status = signal("idle");');
+    expect(out).not.toContain('is;');
+  });
+
   it('refuses a component it cannot split rather than emptying the file', async () => {
     await expect(format('<template><p>hi</p>')).rejects.toThrow(/Unclosed <template>/);
   });
@@ -142,6 +163,36 @@ describe('plugin surface', () => {
     expect(JSON.stringify(printed)).toContain('<script lang=\\"ts\\">');
     expect(JSON.stringify(printed)).toContain('const a = 1;');
     expect(JSON.stringify(printed)).toContain('</script>');
+  });
+
+  it('the printer refuses blocks that do not span the file it was given', () => {
+    // stands in for a future splitter bug: blocks that look fine on their own but
+    // leave real source stranded between them. the printer emits nothing but the
+    // blocks, so without this the stranded text is deleted. checked against
+    // prettier's own copy of the file, independently of what the parser saw.
+    const original = [
+      '<template><p>hi</p></template>',
+      '<script>',
+      "import { signal } from '@matthesketh/utopia-core';",
+      'const a = 1;',
+      '</script>',
+    ].join('\n');
+    const root = splitBlocks(original);
+    // drop the first two lines of the script block, as the old depth miscount did.
+    const truncated = {
+      ...root,
+      blocks: root.blocks.map((b) =>
+        b.name === 'script' ? { ...b, start: b.start + 60, content: 'const a = 1;\n' } : b,
+      ),
+    };
+    const printer = plugin.printers!['utopia-ast'];
+    expect(() =>
+      printer.print(
+        { node: truncated } as never,
+        { originalText: original } as never,
+        (() => '') as never,
+      ),
+    ).toThrow(/Unexpected content before <script>/);
   });
 
   it('the synchronous print fallback collapses empty blocks', () => {

@@ -63,14 +63,25 @@ function subParser(
   return 'css';
 }
 
-const subFormat = (source: string, parser: string): Promise<string> =>
+// a canonical form for a block, so before and after can be compared byte for
+// byte. two things otherwise make prettier's output depend on how its input was
+// laid out rather than on what the input says, and both produce false alarms:
+//
+//   objectWrap defaults to 'preserve', which keeps an object expanded when the
+//   source had a newline after `{`; and the plugin lays every block one tab stop
+//   in, so it has that much less width than the same text formatted on its own.
+//
+// pin both and the comparison is exact — no whitespace-insensitive fallback,
+// which would have hidden a block losing its indentation-significant content.
+const canonical = (source: string, parser: string): Promise<string> =>
   prettier.format(source, {
     parser,
     semi: true,
     singleQuote: true,
     trailingComma: 'all',
-    printWidth: 100,
+    printWidth: 100 - 2,
     tabWidth: 2,
+    objectWrap: 'collapse',
   });
 
 describe('.utopia corpus', () => {
@@ -92,22 +103,58 @@ describe('.utopia corpus', () => {
       const after = parse(once, rel);
       expect(shape(after)).toEqual(shape(before));
 
-      // nothing may vanish: each block, put through prettier's own sub-formatter,
-      // must carry the same content afterwards. whitespace is compared loosely
-      // because a block is laid out one tab stop in, so prose and long
-      // expressions can wrap at a different column than they would standalone.
+      // nothing may vanish: each block, reduced to its canonical form, must be
+      // byte-identical before and after. this is the check that catches a block
+      // quietly losing its opening lines — the damage there stays valid
+      // TypeScript, keeps the same block set and barely changes the file size,
+      // so nothing coarser notices it.
       for (const name of blockNames) {
         if (!before[name]) continue;
         const parser = subParser(name, before[name]!.attrs);
         let expected: string;
         try {
-          expected = await subFormat(before[name]!.content, parser);
+          expected = await canonical(before[name]!.content, parser);
         } catch {
           continue; // the sub-formatter cannot read the original: nothing to compare
         }
-        const actual = await subFormat(after[name]!.content, parser);
-        expect(actual.replace(/\s+/g, '')).toBe(expected.replace(/\s+/g, ''));
+        const actual = await canonical(after[name]!.content, parser);
+        expect(actual).toBe(expected);
       }
     });
   }
+});
+
+// a check that only ever runs against clean input cannot tell you it still
+// works. this pins the sensitivity of the one above against the damage the
+// splitter used to cause, and shows why the coarser checks are not enough.
+describe('the corpus check notices a block losing its opening lines', () => {
+  const intact = [
+    '<script>',
+    "import { signal, effect } from '@matthesketh/utopia-core';",
+    "import { currentRoute } from '@matthesketh/utopia-router';",
+    '',
+    '// the client bundle inlines every route module, so this <script> is',
+    '// evaluated at app boot on every load, not when the route renders.',
+    "const status = signal('idle');",
+    '</script>',
+  ].join('\n');
+
+  // what the splitter used to emit: everything up to the comment's own `<script>`
+  // token is gone, and the tail of that comment line is left as a bare statement.
+  const damaged = ['<script>', 'is;', "const status = signal('idle');", '</script>'].join('\n');
+
+  const script = (component: string) => parse(component, 'x').script!.content;
+
+  it('survives the checks that are too coarse to see it', () => {
+    // still the same blocks, with the same attributes.
+    expect(shape(parse(damaged, 'x'))).toEqual(shape(parse(intact, 'x')));
+    // and the wreckage is still valid TypeScript, so a build stays green.
+    expect(() => prettier.format(script(damaged), { parser: 'typescript' })).not.toThrow();
+  });
+
+  it('is caught by the canonical block comparison', async () => {
+    const expected = await canonical(script(intact), 'typescript');
+    const actual = await canonical(script(damaged), 'typescript');
+    expect(actual).not.toBe(expected);
+  });
 });
