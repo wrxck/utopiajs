@@ -89,6 +89,23 @@ describe('format', () => {
     expect(out).toContain('it("x", () => {');
   });
 
+  it('keeps every line of a script that embeds an escaped closing tag', async () => {
+    const source = [
+      '<script>',
+      'const sample = `<script>inner<\\/script>`;',
+      'const keep = 1;',
+      '</script>',
+    ].join('\n');
+    const out = await format(source);
+    expect(out).toContain('const sample = `<script>inner<\\/script>`;');
+    expect(out).toContain('const keep = 1;');
+    expect(out.match(/<script>/g)).toHaveLength(2); // the block's own tag and the string's
+  });
+
+  it('refuses a component it cannot split rather than emptying the file', async () => {
+    await expect(format('<template><p>hi</p>')).rejects.toThrow(/Unclosed <template>/);
+  });
+
   it('does not truncate a template containing a native <template> element', async () => {
     const out = await format(
       '<template>\n<div><template>inner</template></div>\n</template>\n<script>const a=1</script>',
