@@ -4,6 +4,47 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.2] - 2026-08-03
+
+A single-defect patch. `@matthesketh/utopia-router` could hand a click back to
+the browser as a full page navigation instead of routing it.
+
+### Fixed
+
+- `@matthesketh/utopia-router` — **in-app anchors detached mid-click escaped the
+  router.** Anchors are intercepted by one delegated listener on `document`, in
+  the bubble phase. If an element-level handler removed the anchor's own subtree
+  before the event arrived, `findAnchorElement` could no longer resolve it, the
+  router bailed, and the browser performed the default navigation.
+
+  That is not a corner case here: `@matthesketh/utopia-core` flushes effects
+  synchronously inside `signal.set`, so a `u-if` gated on a signal the handler
+  writes tears its subtree down mid-dispatch. The trigger is narrower than it
+  first appears — detaching a subtree root keeps its internal parent links, so
+  an anchor that is itself the click target still resolved. It broke when the
+  target was a **descendant** of the anchor and teardown unlinked node by node,
+  which is what component teardown and `createFor` both do, and when the target
+  was **moved** rather than removed, as a keyed `u-for` re-diff does.
+
+  A capture-phase listener now records the anchor and its `href` against the
+  event in a `WeakMap`, before any element handler can run. The bubble handler
+  falls back to that record only when the live walk fails, and every guard it
+  already had — `defaultPrevented`, modifier keys, button, `target`, `download`,
+  `#`, `//`, cross-origin — still runs there, in the same order. Deciding in
+  capture would have been wrong: it would steal clicks from applications that
+  call `preventDefault()` to cancel navigation.
+
+  The stashed `href` is used only when the live walk failed, so an attached
+  anchor whose handler removes its `href` mid-dispatch still bails rather than
+  navigating to a stale value. The `WeakMap` is keyed on the event rather than a
+  module-scoped slot, so a handler calling `stopPropagation()` cannot leave a
+  detached subtree retained until the next click.
+
+### Changed
+
+- All packages bumped to 0.13.2, as the lockstep convention requires. Only the
+  router's shipped code changed.
+
 ## [0.13.1] - 2026-08-01
 
 A single-defect patch. `@matthesketh/prettier-plugin-utopia` could silently

@@ -1,6 +1,6 @@
 {
   "name": "@matthesketh/utopia-ts-plugin",
-  "version": "0.13.1",
+  "version": "0.13.2",
   "description": "TypeScript language-service plugin for UtopiaJS .utopia single-file components",
   "license": "MIT",
   "author": "Matt <matt@matthesketh.pro>",
