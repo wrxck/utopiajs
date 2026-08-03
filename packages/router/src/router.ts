@@ -69,6 +69,31 @@ let redirectDepth = 0;
 /** The cleanup function to tear down event listeners. */
 let cleanup: (() => void) | null = null;
 
+/** The anchor a click carried when it entered the document, before any element handler ran. */
+interface CapturedAnchor {
+  anchor: HTMLAnchorElement;
+  href: string | null;
+}
+
+/**
+ * Anchor identities recorded during the capture phase, keyed on the click event.
+ *
+ * An element-level handler can tear its own anchor out of the DOM before the
+ * click reaches our document-level listener: signal writes flush effects
+ * synchronously, so a `u-if` gated on the signal a handler just set unmounts
+ * that subtree mid-dispatch. The event still bubbles to document, but its
+ * target no longer has a path up to the <a>, so the anchor walk finds nothing
+ * and the click falls through to the browser as a full page load.
+ *
+ * Capture runs before any element handler, so the anchor is resolved there
+ * while the tree is intact. Nothing is decided in capture — an app that
+ * cancels its own links with preventDefault() must still win.
+ *
+ * Keying on the event means an entry can never leak into another click, and
+ * holds no DOM node once the event itself is collected.
+ */
+const capturedAnchors = new WeakMap<Event, CapturedAnchor>();
+
 // ---------------------------------------------------------------------------
 // createRouter — Initialize the router
 // ---------------------------------------------------------------------------
@@ -178,20 +203,37 @@ export function createRouter(routeTable: (Route | RouteConfig)[]): void {
       });
     };
 
+    // record the clicked anchor while the tree is still intact. this runs
+    // before any element handler, so a handler that unmounts its own subtree
+    // cannot rob the bubble pass below of the link it needs. record only —
+    // every decision, including preventDefault(), stays in the bubble pass.
+    const handleClickCapture = (event: MouseEvent): void => {
+      const anchor = findAnchorElement(event.target as Element);
+      if (anchor) {
+        capturedAnchors.set(event, { anchor, href: anchor.getAttribute('href') });
+      }
+    };
+
     const handleClick = (event: MouseEvent): void => {
       // Only handle left-clicks without modifier keys.
       if (event.button !== 0) return;
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       if (event.defaultPrevented) return;
 
-      // Walk up from the event target to find an <a> element.
-      const anchor = findAnchorElement(event.target as Element);
+      // Walk up from the event target to find an <a> element. The walk fails if
+      // the target was detached or moved mid-dispatch, so fall back to the
+      // anchor this same click carried into the document.
+      const captured = takeCapturedAnchor(event);
+      const liveAnchor = findAnchorElement(event.target as Element);
+      const anchor = liveAnchor ?? captured?.anchor;
       if (!anchor) return;
 
       // Skip links with target or download attributes.
       if (anchor.hasAttribute('target') || anchor.hasAttribute('download')) return;
 
-      const href = anchor.getAttribute('href');
+      // a detached anchor keeps its attributes, but the runtime may recycle the
+      // node, so trust the captured href when the live walk came up empty.
+      const href = liveAnchor ? liveAnchor.getAttribute('href') : (captured?.href ?? null);
       if (!href) return;
 
       // Hash-only links on the same page: scroll to the target element
@@ -222,10 +264,14 @@ export function createRouter(routeTable: (Route | RouteConfig)[]): void {
     };
 
     window.addEventListener('popstate', handlePopState);
+    document.addEventListener('click', handleClickCapture, true);
     document.addEventListener('click', handleClick);
 
     cleanup = () => {
       window.removeEventListener('popstate', handlePopState);
+      // the capture flag is part of the listener's identity — omitting it here
+      // would leave the capture listener installed for ever.
+      document.removeEventListener('click', handleClickCapture, true);
       document.removeEventListener('click', handleClick);
       cleanup = null;
     };
@@ -414,6 +460,19 @@ function findAnchorElement(target: Element | null): HTMLAnchorElement | null {
     target = target.parentElement;
   }
   return null;
+}
+
+/**
+ * Read and clear the anchor recorded for a click during the capture phase.
+ * Read once, by the bubble handler, so the entry never outlives the dispatch
+ * it belongs to.
+ */
+function takeCapturedAnchor(event: Event): CapturedAnchor | undefined {
+  const captured = capturedAnchors.get(event);
+  if (captured) {
+    capturedAnchors.delete(event);
+  }
+  return captured;
 }
 
 /**

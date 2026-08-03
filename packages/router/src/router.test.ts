@@ -37,6 +37,15 @@ interface LinkWithDispose extends HTMLAnchorElement {
   __dispose?: () => void;
 }
 
+/** The slice of happy-dom's control handle the detachment tests switch off. */
+interface HappyDomWindow {
+  happyDOM?: {
+    settings: {
+      navigation: { disableMainFrameNavigation: boolean; disableFallbackToSetURL: boolean };
+    };
+  };
+}
+
 // ============================================================================
 // 1. filePathToRoute
 // ============================================================================
@@ -1322,7 +1331,282 @@ describe('Click interception', () => {
 });
 
 // ============================================================================
-// 8e. back/forward, destroy, and SSR guards
+// 8e. Anchors detached mid-dispatch
+// ============================================================================
+
+describe('Anchors detached mid-dispatch', () => {
+  const makeRoutes = (): Route[] => {
+    return buildRouteTable({
+      'src/routes/+page.utopia': () => Promise.resolve({ default: () => {} }),
+      'src/routes/about/+page.utopia': () => Promise.resolve({ default: () => {} }),
+    });
+  };
+
+  /** Dispatch a click and report whether anything cancelled it. */
+  const dispatchClick = (
+    element: Element,
+    init: {
+      ctrlKey?: boolean;
+      metaKey?: boolean;
+      shiftKey?: boolean;
+      altKey?: boolean;
+      button?: number;
+    } = {},
+  ): boolean => {
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true, ...init });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+
+  /**
+   * A link with a nested label inside a modal, wired so that clicking the label
+   * unmounts the whole thing the way `u-if` does when a handler flips its
+   * signal: `signal.set()` flushes effects synchronously, so the branch is torn
+   * down node by node before the click ever reaches document — and the event
+   * target arrives there with no path left to its anchor.
+   */
+  const makeUnmountingLink = (
+    href: string,
+    onClick?: (event: MouseEvent) => void,
+  ): { anchor: HTMLAnchorElement; label: HTMLElement } => {
+    const modal = document.createElement('div');
+    const anchor = document.createElement('a');
+    anchor.setAttribute('href', href);
+    const label = document.createElement('span');
+    label.textContent = 'Build my own';
+    anchor.appendChild(label);
+    modal.appendChild(anchor);
+    document.body.appendChild(modal);
+
+    label.addEventListener('click', (event) => {
+      onClick?.(event as MouseEvent);
+      label.remove();
+      anchor.remove();
+      modal.remove();
+    });
+
+    return { anchor, label };
+  };
+
+  let restoreNavigation: (() => void) | null = null;
+
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/');
+
+    // happy-dom follows a link's default navigation even when the click was
+    // cancelled, whenever the event was dispatched on a node *inside* the
+    // anchor — the very shape these tests need. Switching it off leaves
+    // window.location a faithful record of what the router itself did, which is
+    // what separates "routed client-side" from "the browser reloaded the page".
+    const nav = (window as unknown as HappyDomWindow).happyDOM?.settings.navigation;
+    if (nav) {
+      const previous = {
+        disableMainFrameNavigation: nav.disableMainFrameNavigation,
+        disableFallbackToSetURL: nav.disableFallbackToSetURL,
+      };
+      nav.disableMainFrameNavigation = true;
+      nav.disableFallbackToSetURL = true;
+      restoreNavigation = (): void => {
+        Object.assign(nav, previous);
+      };
+    }
+  });
+
+  afterEach(() => {
+    restoreNavigation?.();
+    restoreNavigation = null;
+    document.body.innerHTML = '';
+    destroy();
+    vi.restoreAllMocks();
+  });
+
+  it('routes client-side when the click handler unmounts its own anchor', async () => {
+    createRouter(makeRoutes());
+    const { label } = makeUnmountingLink('/about');
+
+    // cancelled means the browser will not perform the real page load this bug
+    // used to fall through to.
+    expect(dispatchClick(label)).toBe(true);
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(currentRoute.peek()!.route.path).toBe('/about');
+    expect(window.location.pathname).toBe('/about');
+  });
+
+  it('routes client-side when the handler moves the clicked node out of the anchor', async () => {
+    createRouter(makeRoutes());
+    const modal = document.createElement('div');
+    const anchor = document.createElement('a');
+    anchor.setAttribute('href', '/about');
+    const label = document.createElement('span');
+    anchor.appendChild(label);
+    modal.appendChild(anchor);
+    document.body.appendChild(modal);
+
+    // a keyed u-for re-diff can relocate the clicked node rather than drop it.
+    label.addEventListener('click', () => {
+      document.body.appendChild(label);
+      modal.remove();
+    });
+
+    expect(dispatchClick(label)).toBe(true);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(currentRoute.peek()!.route.path).toBe('/about');
+  });
+
+  it('still routes when the anchor itself is the detached target', async () => {
+    createRouter(makeRoutes());
+    const modal = document.createElement('div');
+    const anchor = document.createElement('a');
+    anchor.setAttribute('href', '/about');
+    modal.appendChild(anchor);
+    document.body.appendChild(modal);
+    anchor.addEventListener('click', () => modal.remove());
+
+    expect(dispatchClick(anchor)).toBe(true);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(currentRoute.peek()!.route.path).toBe('/about');
+  });
+
+  it('does not navigate when the handler cancels a click that also unmounts the anchor', async () => {
+    createRouter(makeRoutes());
+    const pushSpy = vi.spyOn(history, 'pushState');
+    const { label } = makeUnmountingLink('/about', (event) => event.preventDefault());
+
+    dispatchClick(label);
+    await new Promise((r) => setTimeout(r, 0));
+
+    // the whole point of deciding in the bubble phase: an app that cancels its
+    // own link still wins, even though capture already resolved the anchor.
+    expect(pushSpy).not.toHaveBeenCalled();
+    expect(currentRoute.peek()!.route.path).toBe('/');
+    expect(window.location.pathname).toBe('/');
+  });
+
+  it('ignores modifier-clicked and middle-clicked links that unmount themselves', () => {
+    createRouter(makeRoutes());
+    for (const init of [
+      { ctrlKey: true },
+      { metaKey: true },
+      { shiftKey: true },
+      { altKey: true },
+      { button: 1 },
+    ]) {
+      const { label } = makeUnmountingLink('/about');
+      expect(dispatchClick(label, init)).toBe(false);
+    }
+    expect(currentRoute.peek()!.route.path).toBe('/');
+    expect(window.location.pathname).toBe('/');
+  });
+
+  it('ignores target and download links that unmount themselves', () => {
+    createRouter(makeRoutes());
+
+    // the guards read the captured anchor, and a detached node keeps its
+    // attributes — so these must still be honoured.
+    const blank = makeUnmountingLink('/about');
+    blank.anchor.setAttribute('target', '_blank');
+    expect(dispatchClick(blank.label)).toBe(false);
+
+    const download = makeUnmountingLink('/files/report.pdf');
+    download.anchor.setAttribute('download', '');
+    expect(dispatchClick(download.label)).toBe(false);
+
+    expect(currentRoute.peek()!.route.path).toBe('/');
+    expect(window.location.pathname).toBe('/');
+  });
+
+  it('ignores cross-origin and protocol-relative links that unmount themselves', () => {
+    createRouter(makeRoutes());
+    const origin = window.location.origin;
+
+    for (const href of [
+      '//evil.com/path',
+      'https://evil.com/phishing',
+      `${origin}.evil.com/x`,
+      'mailto:hi@example.com',
+      'about',
+    ]) {
+      expect(dispatchClick(makeUnmountingLink(href).label)).toBe(false);
+    }
+
+    expect(currentRoute.peek()!.route.path).toBe('/');
+    expect(window.location.origin).toBe(origin);
+    expect(window.location.pathname).toBe('/');
+  });
+
+  it('handles a hash-only link that unmounts itself', () => {
+    createRouter(makeRoutes());
+    const { label } = makeUnmountingLink('#section');
+
+    expect(dispatchClick(label)).toBe(true);
+    expect(window.location.hash).toBe('#section');
+    // a hash jump must not change the route.
+    expect(currentRoute.peek()!.route.path).toBe('/');
+  });
+
+  it('does not resurrect an href removed mid-dispatch while the anchor stays attached', async () => {
+    createRouter(makeRoutes());
+    const anchor = document.createElement('a');
+    anchor.setAttribute('href', '/about');
+    const label = document.createElement('span');
+    anchor.appendChild(label);
+    document.body.appendChild(anchor);
+
+    // the anchor survives, so the live walk finds it and the captured href must
+    // not be used to paper over the now-missing one.
+    label.addEventListener('click', () => anchor.removeAttribute('href'));
+
+    expect(dispatchClick(label)).toBe(false);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(currentRoute.peek()!.route.path).toBe('/');
+  });
+
+  it('does not carry a captured anchor over to the next click', async () => {
+    createRouter(makeRoutes());
+
+    // a handler that stops propagation means the bubble pass never runs, so
+    // nothing clears the capture record by hand.
+    const { label } = makeUnmountingLink('/about', (event) => event.stopPropagation());
+    expect(dispatchClick(label)).toBe(false);
+
+    const bystander = document.createElement('div');
+    document.body.appendChild(bystander);
+    expect(dispatchClick(bystander)).toBe(false);
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(currentRoute.peek()!.route.path).toBe('/');
+  });
+
+  it('stops intercepting detached anchors after destroy()', async () => {
+    createRouter(makeRoutes());
+    destroy();
+
+    const { label } = makeUnmountingLink('/about');
+    expect(dispatchClick(label)).toBe(false);
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(currentRoute.peek()).toBeNull();
+  });
+
+  it('intercepts exactly once after createRouter is called again', async () => {
+    createRouter(makeRoutes());
+    createRouter(makeRoutes()); // e.g. HMR re-init
+
+    const pushSpy = vi.spyOn(history, 'pushState');
+    const { label } = makeUnmountingLink('/about');
+    dispatchClick(label);
+    await new Promise((r) => setTimeout(r, 0));
+
+    // the first router's capture listener must have been removed with its
+    // matching capture flag, or the click is handled twice.
+    expect(pushSpy).toHaveBeenCalledTimes(1);
+    expect(currentRoute.peek()!.route.path).toBe('/about');
+  });
+});
+
+// ============================================================================
+// 8f. back/forward, destroy, and SSR guards
 // ============================================================================
 
 describe('back/forward and teardown', () => {
