@@ -10,4 +10,4 @@ export { renderToStream } from '@/render-to-stream';
 export { renderToString, serializeHead } from '@/render-to-string';
 export { createServerRouter } from '@/server-router';
 export type { HeadConfig } from '@/ssr-runtime';
-export type { VComment, VElement, VNode, VText } from '@/vnode';
+export type { VComment, VElement, VFragment, VNode, VText } from '@/vnode';

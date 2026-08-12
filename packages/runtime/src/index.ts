@@ -13,6 +13,7 @@ export {
   appendChild,
   createComment,
   createElement,
+  createFragment,
   createTextNode,
   insertBefore,
   mergeClass,

@@ -191,12 +191,78 @@ function escapeRegex(str: string): string {
 // matchRoute — Match a URL against a list of routes
 // ---------------------------------------------------------------------------
 
+/** A fast-path entry: a fully static route and the index it occupies in its routes array. */
+interface StaticMatchEntry {
+  route: Route;
+  index: number;
+}
+
+/** The fast-path map plus an identity snapshot of the array it was built from. */
+interface StaticMatchTable {
+  map: Map<string, StaticMatchEntry>;
+  snapshot: Route[];
+}
+
+/**
+ * Lazily built per-routes-array lookup of normalized static path → linear-scan
+ * winner. Keyed weakly on the routes array so each table (e.g. per
+ * createRouter call) gets its own map and old ones can be collected.
+ */
+const staticMatchCache = new WeakMap<Route[], StaticMatchTable>();
+
+/**
+ * Build the static fast-path map for a routes array.
+ *
+ * Only routes with no params (no `:param` or `*rest` segments) are eligible —
+ * their regex matches exactly one normalized pathname: their own path. For
+ * each eligible route, the linear scan is run once here, at build time, and
+ * the path is stored only when that scan's winner is the static route itself.
+ * A fast-path hit therefore returns, by construction, exactly what the linear
+ * scan would have returned; any path where an earlier (e.g. dynamic) route
+ * would win is simply left out of the map and falls through to the scan.
+ */
+function buildStaticMatchMap(routes: Route[]): Map<string, StaticMatchEntry> {
+  const map = new Map<string, StaticMatchEntry>();
+
+  for (let i = 0; i < routes.length; i++) {
+    const route = routes[i];
+    if (route.params.length !== 0) {
+      continue;
+    }
+
+    // Normalize the declared path the same way matchRoute normalizes incoming
+    // pathnames: strip a trailing slash (except for root '/').
+    let key = route.path;
+    if (key.length > 1 && key.endsWith('/')) {
+      key = key.slice(0, -1);
+    }
+
+    // Replay the linear scan for this path; store only if this route wins it.
+    let winner: Route | undefined;
+    for (const candidate of routes) {
+      if (candidate.pattern.test(key)) {
+        winner = candidate;
+        break;
+      }
+    }
+    if (winner === route && !map.has(key)) {
+      map.set(key, { route, index: i });
+    }
+  }
+
+  return map;
+}
+
 /**
  * Matches a URL against an ordered list of routes. Returns the first match
  * with extracted parameters, or null if no route matches.
  *
  * Routes are tested in order, so more specific routes should come first.
  * The `buildRouteTable` function handles this ordering automatically.
+ *
+ * Static routes (no params) are resolved through an O(1) exact-path map built
+ * lazily on the first match for a given routes array; dynamic routes and any
+ * path not claimed by that map fall back to the ordered linear scan.
  *
  * @param url - The URL to match
  * @param routes - Ordered array of compiled routes
@@ -207,6 +273,33 @@ export function matchRoute(url: URL, routes: Route[]): RouteMatch | null {
   let pathname = url.pathname;
   if (pathname.length > 1 && pathname.endsWith('/')) {
     pathname = pathname.slice(0, -1);
+  }
+
+  // Fast path: exact static-path lookup.
+  let table = staticMatchCache.get(routes);
+  if (!table) {
+    table = { map: buildStaticMatchMap(routes), snapshot: routes.slice() };
+    staticMatchCache.set(routes, table);
+  }
+  const entry = table.map.get(pathname);
+  if (entry) {
+    // Staleness guard: in a first-match scan only routes at or before the
+    // winner's index can shadow it, so the fast path answers only while that
+    // whole prefix is identical to the build-time snapshot. Any in-place
+    // mutation of the prefix (replacement, splice, reorder) — not just one
+    // that moves the winner itself — drops back to the authoritative scan
+    // and rebuilds the map on the next call. Identity checks only: no regex.
+    let fresh = true;
+    for (let i = 0; i <= entry.index; i++) {
+      if (routes[i] !== table.snapshot[i]) {
+        fresh = false;
+        break;
+      }
+    }
+    if (fresh) {
+      return { route: entry.route, params: {}, url };
+    }
+    staticMatchCache.delete(routes);
   }
 
   for (const route of routes) {
@@ -277,6 +370,11 @@ export function buildRouteTable(
     }
   }
 
+  // Index special files by directory once, so each page's nearest-file walk
+  // costs O(depth) Map hits instead of rescanning every special file per level.
+  const layoutsByDir = indexSpecialFilesByDir(layouts);
+  const errorsByDir = indexSpecialFilesByDir(errors);
+
   // Build routes from pages.
   const routes: Route[] = [];
 
@@ -285,8 +383,8 @@ export function buildRouteTable(
     const { regex, params } = compilePattern(path);
 
     // Find the nearest layout and error boundary by walking up the directory tree.
-    const layout = findNearestSpecialFile(filePath, layouts);
-    const error = findNearestSpecialFile(filePath, errors);
+    const layout = findNearestSpecialFile(filePath, layoutsByDir);
+    const error = findNearestSpecialFile(filePath, errorsByDir);
 
     routes.push({
       path,
@@ -342,18 +440,47 @@ function compareRouteSpecificity(a: Route, b: Route): number {
 }
 
 /**
+ * Index special files (layouts or errors) by their containing directory.
+ *
+ * One pass over the special files replaces the per-page, per-level rescan the
+ * nearest-file walk used to do. When several special files share a directory
+ * (e.g. '+layout.utopia' alongside '+layout.ts'), the first one in Map
+ * insertion order wins — exactly the file the previous linear scan returned.
+ *
+ * @param specialFiles - Map of special file paths to their import functions
+ * @returns Map of directory path → import function of that directory's special file
+ */
+function indexSpecialFilesByDir(
+  specialFiles: Map<string, () => Promise<Record<string, unknown>>>,
+): Map<string, () => Promise<Record<string, unknown>>> {
+  const byDir = new Map<string, () => Promise<Record<string, unknown>>>();
+
+  for (const [specialPath, importFn] of specialFiles) {
+    const specialNorm = specialPath.replace(BACKSLASH_RE, '/');
+    const specialLastSlash = specialNorm.lastIndexOf('/');
+    const specialDir = specialLastSlash !== -1 ? specialNorm.slice(0, specialLastSlash) : '';
+
+    if (!byDir.has(specialDir)) {
+      byDir.set(specialDir, importFn);
+    }
+  }
+
+  return byDir;
+}
+
+/**
  * Find the nearest layout or error file for a given page file path.
  *
  * Walks up from the page's directory, looking for a matching special file
  * in the same directory or any ancestor up to the routes root.
  *
  * @param pageFilePath - The page file path, e.g., 'src/routes/blog/[slug]/+page.utopia'
- * @param specialFiles - Map of special file paths to their import functions
+ * @param specialFilesByDir - Map of directory paths to special-file import functions
  * @returns The import function for the nearest matching file, or undefined
  */
 function findNearestSpecialFile(
   pageFilePath: string,
-  specialFiles: Map<string, () => Promise<Record<string, unknown>>>,
+  specialFilesByDir: Map<string, () => Promise<Record<string, unknown>>>,
 ): (() => Promise<Record<string, unknown>>) | undefined {
   const normalized = pageFilePath.replace(BACKSLASH_RE, '/');
 
@@ -363,14 +490,9 @@ function findNearestSpecialFile(
 
   // Walk up directories looking for a matching special file.
   while (dir) {
-    for (const [specialPath, importFn] of specialFiles) {
-      const specialNorm = specialPath.replace(BACKSLASH_RE, '/');
-      const specialLastSlash = specialNorm.lastIndexOf('/');
-      const specialDir = specialLastSlash !== -1 ? specialNorm.slice(0, specialLastSlash) : '';
-
-      if (specialDir === dir) {
-        return importFn;
-      }
+    const importFn = specialFilesByDir.get(dir);
+    if (importFn) {
+      return importFn;
     }
 
     // Move up one directory.

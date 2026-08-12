@@ -3,7 +3,12 @@
  *
  * Provides the primitives for instantiating and mounting compiled .utopia
  * component definitions.
+ *
+ * Imports only from fragment.ts (a leaf module) — dom.ts imports this file,
+ * so anything else would be a cycle.
  */
+
+import { reclaimFragment, snapshotFragmentRoots } from '@/fragment';
 
 // ---------------------------------------------------------------------------
 // Effect disposer capture mechanism
@@ -239,7 +244,12 @@ export function createComponentInstance(
 
     mount(target: Element, anchor?: Node): void {
       if (instance.el) {
-        // Already rendered — just move into the DOM.
+        // Already rendered — just move into the DOM. A fragment root emptied
+        // on its first insertion, so reclaim its recorded roots first: the
+        // reclaim pulls them out of wherever they are and refills the
+        // fragment, and the fresh snapshot re-records them for this move.
+        reclaimFragment(instance.el);
+        snapshotFragmentRoots(instance.el);
         target.insertBefore(instance.el, anchor ?? null);
         return;
       }
@@ -255,6 +265,7 @@ export function createComponentInstance(
       destroyCallbacks = result.destroyCallbacks;
 
       // 3. Insert into the target.
+      snapshotFragmentRoots(instance.el);
       target.insertBefore(instance.el, anchor ?? null);
 
       // 4. Inject scoped styles (once).
@@ -284,7 +295,7 @@ export function createComponentInstance(
       }
       disposers = [];
 
-      if (instance.el && instance.el.parentNode) {
+      if (instance.el && !reclaimFragment(instance.el) && instance.el.parentNode) {
         instance.el.parentNode.removeChild(instance.el);
       }
       instance.el = null;

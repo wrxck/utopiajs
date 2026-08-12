@@ -303,4 +303,58 @@ describe('CSS Inliner', () => {
     const css = 'img { border: 0; }';
     expect(inlineCSS(html, css)).toBe('<img src="a.png"  style="border: 0"/>');
   });
+
+  it('produces identical output when fast-path and fallback selectors mix', () => {
+    // Exercises the indexed fast path (tag, class and id selectors), the
+    // fallback matcher (descendant and child combinators), a specificity tie
+    // resolved by source order, and an !important value carried through.
+    const html =
+      '<div id="wrap" class="outer"><section class="mid"><p class="text lead">Hi</p></section><p>Plain</p></div>';
+    const css = [
+      'p { color: red; }',
+      '.text { color: blue; }',
+      '#wrap { margin: 0; }',
+      '.outer p { font-size: 14px; }',
+      '.mid > p { line-height: 1.5; }',
+      '.lead { color: green !important; }',
+      'section p { padding: 0; }',
+    ].join(' ');
+    expect(inlineCSS(html, css)).toBe(
+      '<div id="wrap" class="outer" style="margin: 0">' +
+        '<section class="mid">' +
+        '<p class="text lead" style="color: green !important; padding: 0; font-size: 14px; line-height: 1.5">Hi</p>' +
+        '</section>' +
+        '<p style="color: red; font-size: 14px">Plain</p>' +
+        '</div>',
+    );
+  });
+
+  it('inlines correctly with many rules across many elements', () => {
+    const count = 200;
+    const items = Array.from(
+      { length: count },
+      (_, i) => `<p class="item item-${i}">Item ${i}</p>`,
+    ).join('');
+    const html = `<div class="list">${items}</div>`;
+    const perItemRules = Array.from(
+      { length: count },
+      (_, i) => `.item-${i} { margin-top: ${i}px; }`,
+    ).join(' ');
+    const css = `.item { color: red; } ${perItemRules} .list .item-0 { color: blue; }`;
+    const result = inlineCSS(html, css);
+
+    // The descendant rule outranks both class rules on item 0 only
+    expect(result).toContain(
+      '<p class="item item-0" style="color: blue; margin-top: 0px">Item 0</p>',
+    );
+    // Every other item gets the shared colour plus its own margin rule
+    for (let i = 1; i < count; i++) {
+      expect(result).toContain(
+        `<p class="item item-${i}" style="color: red; margin-top: ${i}px">Item ${i}</p>`,
+      );
+    }
+    // Exactly one style attribute per item; the wrapper stays untouched
+    expect(result.match(/ style="/g)).toHaveLength(count);
+    expect(result.startsWith('<div class="list">')).toBe(true);
+  });
 });

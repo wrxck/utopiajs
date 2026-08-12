@@ -36,6 +36,13 @@ export interface CompileOptions {
   scopeId?: string;
   /** Accessibility checking options. Pass false to disable entirely. */
   a11y?: A11yOptions | false;
+  /**
+   * Emit real DOM fragments instead of wrapper `<div>`s for multi-root
+   * templates, multi-child slot content and empty templates. Off by default
+   * because the wrapper's removal changes DOM shape (flex/grid parenting,
+   * root-level scoped selectors). Not yet supported with hydration.
+   */
+  fragments?: boolean;
 }
 
 export interface CompileResult {
@@ -102,6 +109,7 @@ export function compile(source: string, options: CompileOptions = {}): CompileRe
   if (descriptor.template) {
     const templateResult = compileTemplate(descriptor.template.content, {
       scopeId: scopeId ?? undefined,
+      fragments: options.fragments,
     });
     renderModule = templateResult.code;
 

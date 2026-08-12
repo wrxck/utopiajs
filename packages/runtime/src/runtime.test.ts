@@ -734,6 +734,118 @@ describe('Directives', () => {
       expect(after[2]).toBe(b);
     });
 
+    it('moves only the displaced node when one item jumps tail to head', () => {
+      // move-minimisation regression: the pre-LIS reorder pass moved every
+      // node not adjacent to the walk cursor, so promoting the last item to
+      // the front cost n-1 dom moves. with the LIS it must cost exactly one.
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+      const ids = ['a', 'b', 'c', 'd', 'e'];
+      const items = signal(ids.map((id) => ({ id })));
+      createFor(
+        anchor,
+        () => items(),
+        (item) => {
+          const li = createElement('li');
+          li.textContent = String(item.id);
+          return li;
+        },
+        (item) => item.id,
+      );
+      const before = Array.from(parent.querySelectorAll('li'));
+
+      const spy = vi.spyOn(parent, 'insertBefore');
+      items.set(['e', 'a', 'b', 'c', 'd'].map((id) => ({ id })));
+      expect(spy).toHaveBeenCalledTimes(1);
+      spy.mockRestore();
+
+      const after = Array.from(parent.querySelectorAll('li'));
+      expect(after.map((li) => li.textContent)).toEqual(['e', 'a', 'b', 'c', 'd']);
+      // every node survived the move
+      expect(after[0]).toBe(before[4]);
+      expect(after[1]).toBe(before[0]);
+      expect(after[4]).toBe(before[3]);
+    });
+
+    it('does not move anything when the order is unchanged', () => {
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+      const items = signal([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+      createFor(
+        anchor,
+        () => items(),
+        (item) => {
+          const li = createElement('li');
+          li.textContent = String(item.id);
+          return li;
+        },
+        (item) => item.id,
+      );
+      const spy = vi.spyOn(parent, 'insertBefore');
+      items.set([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    });
+
+    it('reuses every node when duplicate primitive values are reordered', () => {
+      // duplicate keys are disambiguated per occurrence, not per index, so
+      // ['x','x','y'] → ['y','x','x'] keeps the same key set and reuses all
+      // three nodes rather than rebuilding the ones whose index changed.
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+      const items = signal(['x', 'x', 'y']);
+      createFor(
+        anchor,
+        () => items(),
+        (item, index) => {
+          const li = createElement('li');
+          li.textContent = `${item}${index}`;
+          return li;
+        },
+      );
+      const before = Array.from(parent.querySelectorAll('li'));
+      expect(before).toHaveLength(3);
+
+      items.set(['y', 'x', 'x']);
+      const after = Array.from(parent.querySelectorAll('li'));
+      expect(after).toHaveLength(3);
+      expect(new Set(after)).toEqual(new Set(before));
+      // the y node moved to the front; the two x nodes kept their order
+      expect(after[0]).toBe(before[2]);
+      expect(after[1]).toBe(before[0]);
+      expect(after[2]).toBe(before[1]);
+    });
+
+    it('handles a key callback that returns the same key for every item', () => {
+      // fully degenerate input: every key identical. rows must stay distinct,
+      // shrink correctly, and never loop or crash.
+      const parent = container();
+      const anchor = document.createComment('for');
+      parent.appendChild(anchor);
+      const items = signal([1, 2, 3]);
+      createFor(
+        anchor,
+        () => items(),
+        (item) => {
+          const li = createElement('li');
+          li.textContent = String(item);
+          return li;
+        },
+        () => 'same',
+      );
+      expect(parent.querySelectorAll('li')).toHaveLength(3);
+
+      items.set([4, 5]);
+      const after = Array.from(parent.querySelectorAll('li'));
+      expect(after).toHaveLength(2);
+
+      items.set([]);
+      expect(parent.querySelectorAll('li')).toHaveLength(0);
+    });
+
     it('falls back to identity equality when no key callback is given', () => {
       const parent = container();
       const anchor = document.createComment('for');

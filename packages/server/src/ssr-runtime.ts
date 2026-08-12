@@ -9,7 +9,7 @@
 
 import { batch, computed, signal, untrack } from '@matthesketh/utopia-core';
 
-import type { VComment, VElement, VNode, VText } from '@/vnode';
+import type { VComment, VElement, VFragment, VNode, VParent, VText } from '@/vnode';
 
 const UPPER_CASE_RE = /([A-Z])/g;
 
@@ -114,6 +114,24 @@ export function createTextNode(text: string): VText {
 
 export function createComment(text: string): VComment {
   return { type: 3, text };
+}
+
+/**
+ * SSR mirror of the runtime's createFragment (compiled output when the
+ * compiler's `fragments` option is on). Flattened into the parent VElement
+ * at insertion, or serialized as its bare children when it is the root.
+ *
+ * Children are parented to the fragment immediately — a u-if/u-for anchor
+ * inside multi-child slot content must resolve a parent before the fragment
+ * is inserted anywhere, exactly as it does on the client where the anchor's
+ * parentNode is the DocumentFragment.
+ */
+export function createFragment(nodes: VNode[]): VFragment {
+  const frag: VFragment = { type: 4, children: nodes };
+  for (const n of nodes) {
+    n._parent = frag;
+  }
+  return frag;
 }
 
 // ---------------------------------------------------------------------------
@@ -235,12 +253,30 @@ export function addEventListener(
 // DOM mutations
 // ---------------------------------------------------------------------------
 
-export function appendChild(parent: VElement, child: VNode): void {
+export function appendChild(parent: VParent, child: VNode): void {
+  // fragments flatten at insertion, mirroring DocumentFragment semantics —
+  // the children move into the parent and the fragment empties.
+  if (child.type === 4) {
+    const moved = child.children;
+    child.children = [];
+    for (const c of moved) {
+      appendChild(parent, c);
+    }
+    return;
+  }
   child._parent = parent;
   parent.children.push(child);
 }
 
-export function insertBefore(parent: VElement, node: VNode, anchor: VNode | null): void {
+export function insertBefore(parent: VParent, node: VNode, anchor: VNode | null): void {
+  if (node.type === 4) {
+    const moved = node.children;
+    node.children = [];
+    for (const c of moved) {
+      insertBefore(parent, c, anchor);
+    }
+    return;
+  }
   node._parent = parent;
   if (anchor === null) {
     parent.children.push(node);

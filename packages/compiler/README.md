@@ -43,6 +43,8 @@ const { code, css } = compile(source, { filename: 'Counter.utopia' });
 | `compileStyle(options)` | Compile and scope CSS with data attribute selectors. |
 | `generateScopeId(filename)` | Generate a deterministic scope ID from a filename. |
 
+**CompileOptions of note:** `fragments: true` (default `false`) compiles multi-root templates, multi-child slot content and empty templates to real DOM fragments instead of wrapper `<div>`s. Opt-in because removing the wrapper changes DOM shape (flex/grid parenting, root-level scoped selectors); not yet supported with hydration.
+
 See [docs/architecture.md](../../docs/architecture.md) for the full compilation pipeline.
 
 ## License

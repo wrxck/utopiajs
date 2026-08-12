@@ -255,10 +255,18 @@ class SignalNode<T> {
     batchDepth++;
     try {
       // Snapshot subscribers before notifying — a subscriber's notify() may
-      // alter the set (cleanup + re-subscribe).
-      const subs = Array.from(this._subscribers);
-      for (let i = 0; i < subs.length; i++) {
-        subs[i].notify();
+      // alter the set (cleanup + re-subscribe). For the dominant cases of
+      // zero or one subscriber the reference grabbed up front IS the
+      // snapshot, so skip the array allocation the general case needs.
+      const size = this._subscribers.size;
+      if (size === 1) {
+        const only = this._subscribers.values().next().value as Subscriber;
+        only.notify();
+      } else if (size > 1) {
+        const subs = Array.from(this._subscribers);
+        for (let i = 0; i < subs.length; i++) {
+          subs[i].notify();
+        }
       }
     } finally {
       batchDepth--;

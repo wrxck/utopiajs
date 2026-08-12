@@ -221,10 +221,24 @@ export function createFor<T>(
   type Entry = {
     key: string | number;
     node: Node;
+    /**
+     * For a fragment-rooted row (a multi-root component under `fragments`),
+     * the row's real nodes — the fragment itself empties on insertion, so
+     * every later move/removal must operate on this range instead.
+     */
+    nodes: Node[] | null;
     dispose: () => void;
     refresh: (item: T, index: number) => void;
+    /** position in the previous reconcile's order — feeds move minimisation. */
+    pos: number;
+    /** last reconcile pass that reused this entry — unmatched entries are removed. */
+    seenPass: number;
   };
   let entries: Entry[] = [];
+  // persistent key → entry index, updated incrementally on add/remove so a
+  // reconcile doesn't rebuild the whole map just to look up survivors.
+  const byKey = new Map<string | number, Entry>();
+  let pass = 0;
 
   const keyOf = (item: T, index: number): string | number => {
     if (key) return key(item, index);
@@ -289,7 +303,9 @@ export function createFor<T>(
       if (rebind) rebind(nextItem, nextIndex);
       version.update((n) => n + 1);
     };
-    return { key: k, node, dispose, refresh };
+    // snapshot a fragment row's roots before any insertion drains them.
+    const nodes = node.nodeType === 11 ? Array.from(node.childNodes) : null;
+    return { key: k, node, nodes, dispose, refresh, pos: -1, seenPass: pass };
   };
 
   // bumped from a microtask to re-run the reconcile once our anchor is
@@ -320,49 +336,123 @@ export function createFor<T>(
       return;
     }
 
-    const prevByKey = new Map<string | number, Entry>();
-    for (const e of entries) prevByKey.set(e.key, e);
-
-    const next: Entry[] = new Array(items.length);
+    pass++;
+    const n = items.length;
+    const next: Entry[] = new Array(n);
     const seen = new Set<string | number>();
+    // old position of each row in the new order (-1 for freshly created rows),
+    // and whether any reused row's old position went backwards — only then is
+    // there anything to move, and only then is the LIS worth computing.
+    const oldIdx = new Int32Array(n);
+    let maxOld = -1;
+    let movedBack = false;
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i] as T;
-      let k = keyOf(item, i);
-      // duplicate keys are degenerate input; suffix per-position so two
-      // identical keys at different indices don't collide on lookup.
-      while (seen.has(k)) k = `${k}__dup${i}`;
-      seen.add(k);
-      const existing = prevByKey.get(k);
-      if (existing) {
-        existing.refresh(item, i);
-        next[i] = existing;
-        prevByKey.delete(k);
-      } else {
-        next[i] = renderEntry(item, i, k);
+    const freshThisPass: Entry[] = [];
+    try {
+      for (let i = 0; i < n; i++) {
+        const item = items[i] as T;
+        let k = keyOf(item, i);
+        if (seen.has(k)) {
+          // duplicate keys are degenerate input; disambiguate per OCCURRENCE
+          // (first dup → __dup1, second → __dup2) rather than per index, so a
+          // reorder of identical items keeps the same key set and reuses every
+          // node instead of rebuilding the ones whose index changed.
+          let dup = 1;
+          let dk = `${k}__dup${dup}`;
+          while (seen.has(dk)) {
+            dup++;
+            dk = `${k}__dup${dup}`;
+          }
+          k = dk;
+        }
+        seen.add(k);
+        const existing = byKey.get(k);
+        if (existing) {
+          existing.refresh(item, i);
+          existing.seenPass = pass;
+          next[i] = existing;
+          oldIdx[i] = existing.pos;
+          if (existing.pos < maxOld) {
+            movedBack = true;
+          } else {
+            maxOld = existing.pos;
+          }
+        } else {
+          next[i] = renderEntry(item, i, k);
+          byKey.set(k, next[i]);
+          freshThisPass.push(next[i]);
+          oldIdx[i] = -1;
+        }
       }
+    } catch (err) {
+      // a throwing renderItem must not strand the rows already created this
+      // pass: they sit in byKey but will never enter `entries`, so nothing
+      // would ever dispose them and a later pass could reuse a never-inserted
+      // row. evict and dispose them, then let the error propagate.
+      for (const e of freshThisPass) {
+        byKey.delete(e.key);
+        try {
+          e.dispose();
+        } catch {
+          /* dispose path must not throw — the original error propagates */
+        }
+      }
+      throw err;
     }
 
-    // remove nodes whose keys are gone, disposing their captured effects.
-    for (const e of prevByKey.values()) {
-      try {
-        e.dispose();
-      } catch {
-        /* ignore */
+    // remove nodes whose keys are gone, disposing their captured effects. a
+    // fragment row's real nodes live in its recorded range, not the (empty)
+    // fragment object.
+    for (const e of entries) {
+      if (e.seenPass !== pass) {
+        byKey.delete(e.key);
+        try {
+          e.dispose();
+        } catch {
+          /* dispose path must not throw — teardown of the rest must proceed */
+        }
+        if (e.nodes) {
+          for (const r of e.nodes) {
+            if (r.parentNode === parent) parent.removeChild(r);
+          }
+        } else if (e.node.parentNode === parent) {
+          parent.removeChild(e.node);
+        }
       }
-      if (e.node.parentNode === parent) parent.removeChild(e.node);
     }
 
     // walk backwards from the anchor to coerce the dom into matching the
-    // desired order. nodes already in position are left alone; only
-    // out-of-order nodes get an insertBefore call.
+    // desired order. rows on a longest increasing subsequence of old
+    // positions are already in relative order and stay put; only the rest
+    // (and fresh rows) get an insertBefore call. without the LIS, any node
+    // not adjacent to the walk cursor was moved, so a single head→tail move
+    // cost O(n) dom moves instead of one.
+    //
+    // in-place rows are trusted from bookkeeping, not re-checked against the
+    // dom — outside code that detaches or reorders a row's nodes between
+    // reconciles is outside createFor's contract (the old exhaustive
+    // adjacency check repaired that only incidentally, at the price of O(n)
+    // moves for a single displaced row).
+    const stable = movedBack ? lisPositions(oldIdx) : null;
     let cursor: Node = anchor;
-    for (let i = items.length - 1; i >= 0; i--) {
+    for (let i = n - 1; i >= 0; i--) {
       const e = next[i]!;
-      if (e.node.nextSibling !== cursor) {
-        parent.insertBefore(e.node, cursor);
+      e.pos = i;
+      const roots = e.nodes;
+      if (roots && roots.length === 0) continue; // empty row occupies nothing
+      const first = roots ? roots[0]! : e.node;
+      const last = roots ? roots[roots.length - 1]! : e.node;
+      const inPlace = stable ? stable.has(i) : oldIdx[i] !== -1;
+      if (!inPlace && last.nextSibling !== cursor) {
+        if (roots) {
+          for (const r of roots) {
+            parent.insertBefore(r, cursor);
+          }
+        } else {
+          parent.insertBefore(e.node, cursor);
+        }
       }
-      cursor = e.node;
+      cursor = first;
     }
 
     entries = next;
@@ -377,11 +467,19 @@ export function createFor<T>(
       try {
         e.dispose();
       } catch {
-        /* ignore */
+        /* dispose path must not throw — teardown of the rest must proceed */
       }
-      if (parent && e.node.parentNode === parent) parent.removeChild(e.node);
+      if (!parent) continue;
+      if (e.nodes) {
+        for (const r of e.nodes) {
+          if (r.parentNode === parent) parent.removeChild(r);
+        }
+      } else if (e.node.parentNode === parent) {
+        parent.removeChild(e.node);
+      }
     }
     entries = [];
+    byKey.clear();
   };
 
   // forward our own dispose to the caller's scope (component or outer
@@ -394,6 +492,41 @@ export function createFor<T>(
 // when no list keeps the source object alive.
 const identityKeys: WeakMap<object, number> = new WeakMap();
 let nextIdentityKey = 0;
+
+/**
+ * Positions forming a longest increasing subsequence of the non-negative
+ * values of `oldIdx` (fresh rows are -1 and never participate). O(n log n)
+ * patience sort with a predecessor chain; values are distinct because they
+ * are positions in the previous order.
+ */
+function lisPositions(oldIdx: Int32Array): Set<number> {
+  // tails[len] = position whose value ends the best subsequence of length len+1
+  const tails: number[] = [];
+  const prev = new Int32Array(oldIdx.length).fill(-1);
+  for (let i = 0; i < oldIdx.length; i++) {
+    const v = oldIdx[i]!;
+    if (v < 0) continue;
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (oldIdx[tails[mid]!]! < v) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    if (lo > 0) prev[i] = tails[lo - 1]!;
+    tails[lo] = i;
+  }
+  const result = new Set<number>();
+  let p = tails.length > 0 ? tails[tails.length - 1]! : -1;
+  while (p >= 0) {
+    result.add(p);
+    p = prev[p]!;
+  }
+  return result;
+}
 
 // ---------------------------------------------------------------------------
 // createComponent

@@ -11,6 +11,7 @@
 import { effect } from '@matthesketh/utopia-core';
 
 import { pushDisposer } from '@/component';
+import { reclaimFragment, snapshotFragmentRoots } from '@/fragment';
 import { claimNode, enterNode, exitNode, isHydrating, unclaimNode } from '@/hydration';
 import { domScheduler } from '@/scheduler';
 
@@ -761,11 +762,18 @@ export function addEventListener(
 
 /** Insert `node` into `parent` before the given `anchor` (or append if null). */
 export function insertBefore(parent: Node, node: Node, anchor: Node | null): void {
+  snapshotFragmentRoots(node);
   parent.insertBefore(node, anchor);
 }
 
-/** Remove a node from its parent. No-op if the node has no parent. */
+/**
+ * Remove a node from its parent. No-op if the node has no parent. A fragment
+ * with recorded roots reclaims them instead (see fragment.ts).
+ */
 export function removeNode(node: Node): void {
+  if (reclaimFragment(node)) {
+    return;
+  }
   if (node.parentNode) {
     node.parentNode.removeChild(node);
   }
@@ -781,8 +789,45 @@ export function appendChild(parent: Node, child: Node): void {
     }
     return;
   }
+  snapshotFragmentRoots(child);
   parent.appendChild(child);
 }
+
+/**
+ * Create a DocumentFragment holding `nodes` — the compiled output for a
+ * multi-root template or multi-child slot content when the `fragments`
+ * compiler option is on. During hydration the children were claimed in
+ * place in the live DOM, so appending them here would tear them out of the
+ * document; the empty fragment then makes every later insertion a no-op.
+ */
+export function createFragment(nodes: Node[]): DocumentFragment {
+  const frag = document.createDocumentFragment();
+  if (isHydrating) {
+    // fragments are not yet supported with hydration: the children were
+    // claimed in place in the live DOM, so appending them here would tear
+    // them out of the document. warn loudly instead of corrupting the page —
+    // initial paint survives, but multi-root teardown will misbehave.
+    if (!warnedHydratingFragment) {
+      warnedHydratingFragment = true;
+      console.warn(
+        '[utopia] the `fragments` compiler option is not yet supported with hydration; ' +
+          'multi-root component teardown may leave nodes behind. ' +
+          'Disable `fragments` for server-rendered apps.',
+      );
+    }
+    return frag;
+  }
+  for (const n of nodes) {
+    // a member may itself be a fragment (a multi-root child component in
+    // slot content) — record its roots before appending drains it, exactly
+    // as every other insertion path does.
+    snapshotFragmentRoots(n);
+    frag.appendChild(n);
+  }
+  return frag;
+}
+
+let warnedHydratingFragment = false;
 
 /** Create a DOM comment node. */
 export function createComment(text: string): Comment {

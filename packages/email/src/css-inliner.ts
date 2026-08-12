@@ -239,121 +239,175 @@ interface AncestorInfo {
 }
 
 /**
- * Check if a simple selector (no combinators) matches an element's properties.
+ * A simple selector (no combinators) parsed once into its constituent checks so
+ * matching an element is pure comparisons — no regex work per element.
  */
-function matchesSimpleSelector(
-  selector: string,
-  tag: string,
-  classes: string[],
-  id: string,
-  attrs: Record<string, string>,
-): boolean {
-  // Parse the simple selector into parts
+interface CompiledSimple {
+  /** False when the selector contains unsupported syntax — matches nothing. */
+  valid: boolean;
+  /** Tag name (lowercased), or null when the selector has no tag part. */
+  tag: string | null;
+  /** Required IDs (#a#b requires all — normally at most one). */
+  ids: string[];
+  /** Required class names. */
+  classes: string[];
+  /** Required attribute checks; value null means existence-only ([attr]). */
+  attrs: { name: string; value: string | null }[];
+}
+
+/**
+ * Parse a simple selector (no combinators) into a CompiledSimple. Mirrors the
+ * grammar previously parsed inline per element: leading tag, then any of
+ * #id, .class, [attr], :pseudo (skipped), * in any order.
+ */
+function compileSimpleSelector(selector: string): CompiledSimple {
+  const compiled: CompiledSimple = { valid: true, tag: null, ids: [], classes: [], attrs: [] };
   let remaining = selector;
 
   // Extract tag (must be first if present)
   const tagMatch = remaining.match(LEADING_TAG_RE);
   if (tagMatch) {
-    if (tag.toLowerCase() !== tagMatch[1].toLowerCase()) return false;
+    compiled.tag = tagMatch[1].toLowerCase();
     remaining = remaining.slice(tagMatch[1].length);
   }
 
-  // Check all parts
+  // Parse all remaining parts
   while (remaining.length > 0) {
     if (remaining[0] === '#') {
       const idMatch = remaining.match(LEADING_ID_RE);
-      if (!idMatch) return false;
-      if (id !== idMatch[1]) return false;
+      if (!idMatch) {
+        compiled.valid = false;
+        return compiled;
+      }
+      compiled.ids.push(idMatch[1]);
       remaining = remaining.slice(idMatch[0].length);
     } else if (remaining[0] === '.') {
       const classMatch = remaining.match(LEADING_CLASS_RE);
-      if (!classMatch) return false;
-      if (!classes.includes(classMatch[1])) return false;
+      if (!classMatch) {
+        compiled.valid = false;
+        return compiled;
+      }
+      compiled.classes.push(classMatch[1]);
       remaining = remaining.slice(classMatch[0].length);
     } else if (remaining[0] === '[') {
       const attrMatch = remaining.match(LEADING_ATTR_RE);
-      if (!attrMatch) return false;
+      if (!attrMatch) {
+        compiled.valid = false;
+        return compiled;
+      }
       const attrExpr = attrMatch[1];
       // Handle [attr="value"], [attr], [attr^="value"], etc.
       const eqIdx = attrExpr.indexOf('=');
       if (eqIdx === -1) {
         // Just check attribute existence
-        if (!(attrExpr.trim() in attrs)) return false;
+        compiled.attrs.push({ name: attrExpr.trim(), value: null });
       } else {
         const attrName = attrExpr.slice(0, eqIdx).replace(ATTR_OPERATOR_SUFFIX_RE, '').trim();
         const attrValue = attrExpr
           .slice(eqIdx + 1)
           .replace(QUOTE_WRAP_RE, '')
           .trim();
-        if (attrs[attrName] !== attrValue) return false;
+        compiled.attrs.push({ name: attrName, value: attrValue });
       }
       remaining = remaining.slice(attrMatch[0].length);
     } else if (remaining[0] === ':') {
       // Skip pseudo-classes for email inlining
       const pseudoMatch = remaining.match(LEADING_PSEUDO_RE);
-      if (!pseudoMatch) return false;
+      if (!pseudoMatch) {
+        compiled.valid = false;
+        return compiled;
+      }
       remaining = remaining.slice(pseudoMatch[0].length);
     } else if (remaining[0] === '*') {
       // Universal selector — matches anything
       remaining = remaining.slice(1);
     } else {
-      return false;
+      compiled.valid = false;
+      return compiled;
     }
   }
 
+  return compiled;
+}
+
+/**
+ * Check if a compiled simple selector matches an element's properties.
+ */
+function matchesCompiledSimple(
+  compiled: CompiledSimple,
+  tag: string,
+  classes: string[],
+  id: string,
+  attrs: Record<string, string>,
+): boolean {
+  if (!compiled.valid) return false;
+  if (compiled.tag !== null && tag.toLowerCase() !== compiled.tag) return false;
+  for (const wanted of compiled.ids) {
+    if (id !== wanted) return false;
+  }
+  for (const cls of compiled.classes) {
+    if (!classes.includes(cls)) return false;
+  }
+  for (const check of compiled.attrs) {
+    if (check.value === null) {
+      if (!(check.name in attrs)) return false;
+    } else if (attrs[check.name] !== check.value) {
+      return false;
+    }
+  }
   return true;
 }
 
 /**
- * Check if a full selector (with combinators) matches an element.
+ * A full selector parsed once per rule (instead of once per rule x element).
+ * `parts` holds the compiled combinator segments; `target` is the last part —
+ * the simple selector the element itself must match.
  */
-function selectorMatches(selector: string, element: ParsedElement): boolean {
+interface CompiledSelector {
+  kind: 'single' | 'child' | 'descendant';
+  parts: CompiledSimple[];
+  target: CompiledSimple;
+}
+
+function compileSelector(selector: string): CompiledSelector {
   // Handle child combinator (>)
   if (selector.includes('>')) {
-    const parts = selector.split(CHILD_COMBINATOR_RE);
-    const targetSelector = parts[parts.length - 1].trim();
-
-    if (
-      !matchesSimpleSelector(
-        targetSelector,
-        element.tag,
-        element.classes,
-        element.id,
-        element.attrs,
-      )
-    ) {
-      return false;
-    }
-
-    // Check parent chain
-    let ancestors = element.ancestors;
-    for (let i = parts.length - 2; i >= 0; i--) {
-      const parentSelector = parts[i].trim();
-      // The immediate parent must match (for > combinator)
-      if (ancestors.length === 0) return false;
-      const parent = ancestors[ancestors.length - 1];
-      if (
-        !matchesSimpleSelector(parentSelector, parent.tag, parent.classes, parent.id, parent.attrs)
-      ) {
-        return false;
-      }
-      ancestors = ancestors.slice(0, -1);
-    }
-
-    return true;
+    const parts = selector.split(CHILD_COMBINATOR_RE).map((p) => compileSimpleSelector(p.trim()));
+    return { kind: 'child', parts, target: parts[parts.length - 1] };
   }
 
   // Handle descendant combinator (space)
-  const parts = selector.split(WHITESPACE_RUN_RE);
+  const parts = selector.split(WHITESPACE_RUN_RE).map((p) => compileSimpleSelector(p));
   if (parts.length === 1) {
-    return matchesSimpleSelector(parts[0], element.tag, element.classes, element.id, element.attrs);
+    return { kind: 'single', parts, target: parts[0] };
   }
+  return { kind: 'descendant', parts, target: parts[parts.length - 1] };
+}
 
-  const targetSelector = parts[parts.length - 1];
-  if (
-    !matchesSimpleSelector(targetSelector, element.tag, element.classes, element.id, element.attrs)
-  ) {
+/**
+ * Check if a compiled selector matches an element.
+ */
+function selectorMatches(compiled: CompiledSelector, element: ParsedElement): boolean {
+  const { kind, parts, target } = compiled;
+
+  if (!matchesCompiledSimple(target, element.tag, element.classes, element.id, element.attrs)) {
     return false;
+  }
+  if (kind === 'single') return true;
+
+  if (kind === 'child') {
+    // Check parent chain — the immediate parent must match (for > combinator)
+    const ancestors = element.ancestors;
+    let depth = ancestors.length;
+    for (let i = parts.length - 2; i >= 0; i--) {
+      if (depth === 0) return false;
+      const parent = ancestors[depth - 1];
+      if (!matchesCompiledSimple(parts[i], parent.tag, parent.classes, parent.id, parent.attrs)) {
+        return false;
+      }
+      depth--;
+    }
+    return true;
   }
 
   // Check ancestor chain for descendant matching
@@ -365,7 +419,7 @@ function selectorMatches(selector: string, element: ParsedElement): boolean {
       const ancestor = element.ancestors[ancestorIdx];
       ancestorIdx--;
       if (
-        matchesSimpleSelector(
+        matchesCompiledSimple(
           ancestorSelector,
           ancestor.tag,
           ancestor.classes,
@@ -458,9 +512,40 @@ export function inlineCSS(html: string, css: string): string {
   const rules = parseCSS(css);
   if (rules.length === 0) return html;
 
+  // Hoist per-rule work out of the matching loop: compute specificity once per
+  // rule (memoised across duplicate selectors from grouped rules) and parse
+  // each selector once, instead of re-deriving both for every rule x element.
+  const specificityCache = new Map<string, Specificity>();
+  const prepared = rules.map((rule) => {
+    let specificity = specificityCache.get(rule.selector);
+    if (!specificity) {
+      specificity = calculateSpecificity(rule.selector);
+      specificityCache.set(rule.selector, specificity);
+    }
+    return {
+      declarations: rule.declarations,
+      specificity,
+      compiled: compileSelector(rule.selector),
+    };
+  });
+
   // Find all opening tags and their positions
   const elements: ParsedElement[] = [];
   const ancestorStack: AncestorInfo[] = [];
+
+  // Index elements by tag/class/id so rules targeting one of those only scan
+  // the matching bucket instead of every element.
+  const byTag = new Map<string, ParsedElement[]>();
+  const byClass = new Map<string, ParsedElement[]>();
+  const byId = new Map<string, ParsedElement[]>();
+  const indexElement = (map: Map<string, ParsedElement[]>, key: string, element: ParsedElement) => {
+    const bucket = map.get(key);
+    if (bucket) {
+      bucket.push(element);
+    } else {
+      map.set(key, [element]);
+    }
+  };
 
   // Track tag nesting for ancestor info
   // We'll do a single pass collecting opening/closing tags
@@ -524,6 +609,11 @@ export function inlineCSS(html: string, css: string): string {
     };
 
     elements.push(element);
+    indexElement(byTag, tagName, element);
+    for (const cls of new Set(classes)) {
+      indexElement(byClass, cls, element);
+    }
+    if (id) indexElement(byId, id, element);
 
     // Push to ancestor stack (unless void element)
     const isSelfClosing = fullTag.endsWith('/>') || voidElements.has(tagName);
@@ -534,13 +624,32 @@ export function inlineCSS(html: string, css: string): string {
 
   // Match rules to elements
   const elementMatches = new Map<ParsedElement, MatchedStyle[]>();
+  const noElements: ParsedElement[] = [];
 
-  for (let ruleIdx = 0; ruleIdx < rules.length; ruleIdx++) {
-    const rule = rules[ruleIdx];
-    const specificity = calculateSpecificity(rule.selector);
+  for (let ruleIdx = 0; ruleIdx < prepared.length; ruleIdx++) {
+    const rule = prepared[ruleIdx];
+    const target = rule.compiled.target;
 
-    for (const element of elements) {
-      if (selectorMatches(rule.selector, element)) {
+    // A target with unsupported syntax can never match — skip the scan.
+    if (!target.valid) continue;
+
+    // Fast path: any element matching the rule must carry the target's
+    // id/class/tag, so only the indexed bucket needs scanning. Targets naming
+    // none of those (universal, attribute-only, pseudo-only) fall back to the
+    // full element list.
+    let candidates: ParsedElement[];
+    if (target.ids.length > 0) {
+      candidates = byId.get(target.ids[0]) ?? noElements;
+    } else if (target.classes.length > 0) {
+      candidates = byClass.get(target.classes[0]) ?? noElements;
+    } else if (target.tag !== null) {
+      candidates = byTag.get(target.tag) ?? noElements;
+    } else {
+      candidates = elements;
+    }
+
+    for (const element of candidates) {
+      if (selectorMatches(rule.compiled, element)) {
         let matches = elementMatches.get(element);
         if (!matches) {
           matches = [];
@@ -548,7 +657,7 @@ export function inlineCSS(html: string, css: string): string {
         }
         matches.push({
           declarations: rule.declarations,
-          specificity,
+          specificity: rule.specificity,
           order: ruleIdx,
         });
       }

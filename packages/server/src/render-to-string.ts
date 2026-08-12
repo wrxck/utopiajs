@@ -43,6 +43,11 @@ function pushVNode(out: string[], node: VNode, depth: number): void {
     case 3: // VComment
       out.push(`<!--${escapeComment(node.text)}-->`);
       return;
+    case 4: // VFragment — only ever a render root; serialize bare children.
+      for (const child of node.children) {
+        pushVNode(out, child, depth + 1);
+      }
+      return;
   }
 }
 

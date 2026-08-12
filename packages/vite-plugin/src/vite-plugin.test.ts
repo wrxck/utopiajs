@@ -682,3 +682,25 @@ describe('<include src> template fragments', () => {
     expect(c.watched).toHaveLength(0);
   });
 });
+
+describe('fragments option', () => {
+  const MULTI_ROOT_SFC = `<template>
+  <header>top</header>
+  <main>body</main>
+</template>
+`;
+
+  it('is forwarded to the compiler when enabled', () => {
+    const plugin = getPlugin({ fragments: true });
+    const result = transform(plugin, MULTI_ROOT_SFC, '/src/Multi.utopia')!;
+    expect(result.code).toContain('createFragment');
+    expect(result.code).not.toContain("createElement('div')");
+  });
+
+  it('keeps the wrapper div by default', () => {
+    const plugin = getPlugin();
+    const result = transform(plugin, MULTI_ROOT_SFC, '/src/Multi.utopia')!;
+    expect(result.code).toContain("createElement('div')");
+    expect(result.code).not.toContain('createFragment');
+  });
+});

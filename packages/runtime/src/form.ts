@@ -147,14 +147,19 @@ export function createForm<T extends Record<string, FieldConfig<any>>>(config: T
     },
 
     handleSubmit(onSubmit) {
-      // Touch all fields to show errors.
+      // Touch every field (shows errors) and read validity in the same walk —
+      // validity doesn't depend on touched state, so reading inside the batch
+      // observes the same values a post-batch aggregate check did, without
+      // walking the fields a second time.
+      let allValid = true;
       batch(() => {
         for (const [, field] of fieldEntries) {
           field.touch();
+          if (allValid && !field.valid()) allValid = false;
         }
       });
 
-      if (valid()) {
+      if (allValid) {
         // read straight from the field closures rather than `this.data()` so a
         // destructured `const { handleSubmit } = createForm(...)` still works.
         const result: Record<string, any> = {};

@@ -298,6 +298,153 @@ describe('matchRoute', () => {
 });
 
 // ============================================================================
+// 3b. matchRoute static fast path
+// ============================================================================
+
+describe('matchRoute static fast path', () => {
+  const makeRoute = (path: string): Route => {
+    const { regex, params } = compilePattern(path);
+    return {
+      path,
+      pattern: regex,
+      params,
+      component: () => Promise.resolve({ default: () => {} }),
+    };
+  };
+
+  it('returns an identical RouteMatch to the linear scan for a static route', () => {
+    const staticRoute = makeRoute('/about');
+    const dynamicRoute = makeRoute('/:slug');
+    const routes: Route[] = [staticRoute, dynamicRoute];
+
+    const url = new URL('http://localhost/about?q=test#section');
+    const first = matchRoute(url, routes);
+    const second = matchRoute(url, routes); // served from the warmed cache
+
+    for (const match of [first, second]) {
+      expect(match).not.toBeNull();
+      // Route identity, not just path equality.
+      expect(match!.route).toBe(staticRoute);
+      expect(match!.params).toEqual({});
+      expect(match!.url).toBe(url);
+      expect(match!.url.search).toBe('?q=test');
+      expect(match!.url.hash).toBe('#section');
+    }
+    // Params objects are fresh per call, like the linear scan produces.
+    expect(first!.params).not.toBe(second!.params);
+  });
+
+  it('preserves precedence when the static route is declared before the param route', () => {
+    const staticRoute = makeRoute('/about');
+    const dynamicRoute = makeRoute('/:slug');
+    const routes: Route[] = [staticRoute, dynamicRoute];
+
+    const match = matchRoute(new URL('http://localhost/about'), routes);
+    expect(match).not.toBeNull();
+    expect(match!.route).toBe(staticRoute);
+    expect(match!.params).toEqual({});
+
+    // The param route still wins everything else.
+    const other = matchRoute(new URL('http://localhost/contact'), routes);
+    expect(other).not.toBeNull();
+    expect(other!.route).toBe(dynamicRoute);
+    expect(other!.params).toEqual({ slug: 'contact' });
+  });
+
+  it('drops the fast path when an earlier route is replaced in place', () => {
+    const staticFoo = makeRoute('/foo');
+    const staticAbout = makeRoute('/about');
+    const routes: Route[] = [staticFoo, staticAbout];
+
+    // Warm the cache: '/about' is served by the fast path.
+    const warm = matchRoute(new URL('http://localhost/about'), routes);
+    expect(warm!.route).toBe(staticAbout);
+
+    // Replace a DIFFERENT, earlier index in place — the cached winner's own
+    // index is untouched, but the linear scan would now hit /:slug first.
+    routes[0] = makeRoute('/:slug');
+    const after = matchRoute(new URL('http://localhost/about'), routes);
+    expect(after).not.toBeNull();
+    expect(after!.route).toBe(routes[0]);
+    expect(after!.params).toEqual({ slug: 'about' });
+  });
+
+  it('preserves precedence when the param route is declared before the static route', () => {
+    const dynamicRoute = makeRoute('/:slug');
+    const staticRoute = makeRoute('/about');
+    const routes: Route[] = [dynamicRoute, staticRoute];
+
+    // The linear scan reaches /:slug first, so it must keep winning — the
+    // fast path may not promote the shadowed static route.
+    const match = matchRoute(new URL('http://localhost/about'), routes);
+    expect(match).not.toBeNull();
+    expect(match!.route).toBe(dynamicRoute);
+    expect(match!.params).toEqual({ slug: 'about' });
+
+    // Repeated matches (cache warmed) agree.
+    const again = matchRoute(new URL('http://localhost/about'), routes);
+    expect(again!.route).toBe(dynamicRoute);
+    expect(again!.params).toEqual({ slug: 'about' });
+  });
+
+  it('applies trailing-slash normalization on the fast path', () => {
+    const staticRoute = makeRoute('/about');
+    const routes: Route[] = [staticRoute, makeRoute('/:slug')];
+
+    const match = matchRoute(new URL('http://localhost/about/'), routes);
+    expect(match).not.toBeNull();
+    expect(match!.route).toBe(staticRoute);
+    expect(match!.params).toEqual({});
+  });
+
+  it('matches the root route via the fast path', () => {
+    const rootRoute = makeRoute('/');
+    const routes: Route[] = [rootRoute, makeRoute('/:slug')];
+
+    const match = matchRoute(new URL('http://localhost/'), routes);
+    expect(match).not.toBeNull();
+    expect(match!.route).toBe(rootRoute);
+    expect(match!.params).toEqual({});
+  });
+
+  it('still returns null for unmatched paths after the cache is warmed', () => {
+    const routes: Route[] = [makeRoute('/'), makeRoute('/about')];
+
+    expect(matchRoute(new URL('http://localhost/about'), routes)).not.toBeNull();
+    expect(matchRoute(new URL('http://localhost/missing'), routes)).toBeNull();
+  });
+
+  it('agrees with the linear scan through a buildRouteTable-ordered table in both directions', () => {
+    // The same overlap expressed through the real table builder, whichever
+    // order the manifest declares the files in.
+    const manifests: Record<string, () => Promise<any>>[] = [
+      {
+        'src/routes/about/+page.utopia': () => Promise.resolve({}),
+        'src/routes/[slug]/+page.utopia': () => Promise.resolve({}),
+      },
+      {
+        'src/routes/[slug]/+page.utopia': () => Promise.resolve({}),
+        'src/routes/about/+page.utopia': () => Promise.resolve({}),
+      },
+    ];
+
+    for (const manifest of manifests) {
+      const routes = buildRouteTable(manifest);
+
+      const aboutMatch = matchRoute(new URL('http://localhost/about'), routes);
+      expect(aboutMatch).not.toBeNull();
+      expect(aboutMatch!.route.path).toBe('/about');
+      expect(aboutMatch!.params).toEqual({});
+
+      const slugMatch = matchRoute(new URL('http://localhost/other'), routes);
+      expect(slugMatch).not.toBeNull();
+      expect(slugMatch!.route.path).toBe('/:slug');
+      expect(slugMatch!.params).toEqual({ slug: 'other' });
+    }
+  });
+});
+
+// ============================================================================
 // 4. buildRouteTable
 // ============================================================================
 
@@ -401,6 +548,63 @@ describe('buildRouteTable', () => {
     // /blog/:slug should get blogLayout since it's in src/routes/blog/[slug]/
     // and src/routes/blog/ has a layout.
     expect(slugRoute!.layout).toBe(blogLayout);
+  });
+
+  it('resolves nearest layout and error across a deep tree (layouts at multiple levels)', () => {
+    const rootLayout = () => Promise.resolve({ default: 'RootLayout' });
+    const docsLayout = () => Promise.resolve({ default: 'DocsLayout' });
+    const advancedLayout = () => Promise.resolve({ default: 'AdvancedLayout' });
+    const rootError = () => Promise.resolve({ default: 'RootError' });
+    const deepError = () => Promise.resolve({ default: 'DeepError' });
+
+    const manifest: Record<string, () => Promise<any>> = {
+      'src/routes/+page.utopia': () => Promise.resolve({}),
+      'src/routes/+layout.utopia': rootLayout,
+      'src/routes/+error.utopia': rootError,
+      'src/routes/docs/+page.utopia': () => Promise.resolve({}),
+      'src/routes/docs/+layout.utopia': docsLayout,
+      'src/routes/docs/guides/+page.utopia': () => Promise.resolve({}),
+      'src/routes/docs/guides/advanced/+page.utopia': () => Promise.resolve({}),
+      'src/routes/docs/guides/advanced/+layout.utopia': advancedLayout,
+      'src/routes/docs/guides/advanced/deep/+page.utopia': () => Promise.resolve({}),
+      'src/routes/docs/guides/advanced/deep/+error.utopia': deepError,
+    };
+
+    const routes = buildRouteTable(manifest);
+    const byPath = (path: string): Route => routes.find((r) => r.path === path)!;
+
+    // Nearest-wins, not chain composition: each page gets exactly the single
+    // closest special file at or above its own directory.
+    expect(byPath('/').layout).toBe(rootLayout);
+    expect(byPath('/').error).toBe(rootError);
+
+    expect(byPath('/docs').layout).toBe(docsLayout);
+    expect(byPath('/docs').error).toBe(rootError);
+
+    // /docs/guides has no layout of its own — it skips up to docs, not root.
+    expect(byPath('/docs/guides').layout).toBe(docsLayout);
+    expect(byPath('/docs/guides').error).toBe(rootError);
+
+    expect(byPath('/docs/guides/advanced').layout).toBe(advancedLayout);
+    expect(byPath('/docs/guides/advanced').error).toBe(rootError);
+
+    // deep/ has an error boundary but no layout — layout comes from advanced/.
+    expect(byPath('/docs/guides/advanced/deep').layout).toBe(advancedLayout);
+    expect(byPath('/docs/guides/advanced/deep').error).toBe(deepError);
+  });
+
+  it('keeps first-in-manifest tie-breaking when two layouts share a directory', () => {
+    const firstLayout = () => Promise.resolve({ default: 'FirstLayout' });
+    const secondLayout = () => Promise.resolve({ default: 'SecondLayout' });
+    const manifest: Record<string, () => Promise<any>> = {
+      'src/routes/+layout.utopia': firstLayout,
+      'src/routes/+layout.ts': secondLayout,
+      'src/routes/+page.utopia': () => Promise.resolve({}),
+    };
+
+    const routes = buildRouteTable(manifest);
+    // The first special file in manifest insertion order wins the directory.
+    expect(routes[0].layout).toBe(firstLayout);
   });
 
   it('ignores non-page, non-layout, non-error files in manifest', () => {

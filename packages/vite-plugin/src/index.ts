@@ -30,6 +30,15 @@ export interface UtopiaPluginOptions {
    * @default 'src/routes'
    */
   routesDir?: string;
+
+  /**
+   * Compile multi-root templates, multi-child slot content and empty
+   * templates to real DOM fragments instead of wrapper `<div>`s. Forwarded
+   * to the compiler's `fragments` option. Off by default — removing the
+   * wrapper changes DOM shape. Not yet supported with hydration.
+   * @default false
+   */
+  fragments?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +275,7 @@ function inlineTemplateIncludes(code: string, id: string): { code: string; deps:
 function compileUtopiaSource(
   code: string,
   id: string,
+  fragments?: boolean,
 ): { result: ReturnType<typeof compile>; deps: string[] } {
   const deps: string[] = [];
   let source = code;
@@ -282,7 +292,7 @@ function compileUtopiaSource(
     deps.push(style.dep);
   }
 
-  return { result: compile(source, { filename: id }), deps };
+  return { result: compile(source, { filename: id, fragments }), deps };
 }
 
 /**
@@ -451,7 +461,7 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
       // Inline any `<include src>` template fragments and `<style src>`
       // stylesheet before compiling, and register each external file so Vite
       // watches it and HMR can find the owning component.
-      const { result, deps } = compileUtopiaSource(code, id);
+      const { result, deps } = compileUtopiaSource(code, id, options.fragments);
       for (const dep of deps) {
         registerExternalDep(dep, id);
         this.addWatchFile(dep);
@@ -525,7 +535,7 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
           }
 
           try {
-            const { result } = compileUtopiaSource(utopiaCode, utopiaId);
+            const { result } = compileUtopiaSource(utopiaCode, utopiaId, options.fragments);
             if (result.css) {
               cssCache.set(utopiaId, result.css);
             } else {
@@ -596,7 +606,7 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
           // Re-compile to refresh the CSS cache.
           let result: ReturnType<typeof compile>;
           try {
-            const compiled = compileUtopiaSource(source, file);
+            const compiled = compileUtopiaSource(source, file, options.fragments);
             result = compiled.result;
             for (const dep of compiled.deps) {
               registerExternalDep(dep, file);
@@ -640,7 +650,7 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
         // style changes.
         if (styleChanged) {
           try {
-            const { result, deps } = compileUtopiaSource(source, file);
+            const { result, deps } = compileUtopiaSource(source, file, options.fragments);
             for (const dep of deps) {
               registerExternalDep(dep, file);
             }

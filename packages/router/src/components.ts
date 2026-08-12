@@ -154,6 +154,7 @@ function createRouterViewNode(): Node {
         currentCleanup = null;
       }
       clearContainer(container);
+      snapshotFragmentRoots(result.node);
       container.appendChild(result.node);
       currentCleanup = result.cleanup;
     });
@@ -182,6 +183,42 @@ interface LoadResult {
 }
 
 /**
+ * A page compiled with the runtime's `fragments` option has a
+ * DocumentFragment root, which empties on insertion. Mirror the runtime's
+ * bookkeeping (the router deliberately has no runtime dependency): record
+ * the fragment's children before inserting it, and detach by moving the
+ * recorded roots back into the fragment.
+ */
+interface FragmentWithRoots extends Node {
+  __roots?: Node[];
+}
+
+const FRAGMENT_TYPE = 11;
+
+/** Record a fragment's children just before insertion empties it. */
+function snapshotFragmentRoots(node: Node): void {
+  if (node.nodeType === FRAGMENT_TYPE && node.childNodes.length > 0) {
+    (node as FragmentWithRoots).__roots = Array.from(node.childNodes);
+  }
+}
+
+/** Detach a node from the DOM, fragment-aware. */
+function detachNode(node: Node): void {
+  if (node.nodeType === FRAGMENT_TYPE) {
+    const roots = (node as FragmentWithRoots).__roots;
+    if (roots) {
+      for (const r of roots) {
+        node.appendChild(r);
+      }
+    }
+    return;
+  }
+  if (node.parentNode) {
+    node.parentNode.removeChild(node);
+  }
+}
+
+/**
  * Wrap a rendered node in a LoadResult whose cleanup disposes the rendered
  * component's effects and runs its onDestroy hooks before detaching it from
  * the DOM. Without the `__cleanup` call a navigation leaks the outgoing page's
@@ -198,9 +235,7 @@ function toLoadResult(node: Node, inner?: Node): LoadResult {
         (inner as DisposableNode).__cleanup?.();
       }
       (node as DisposableNode).__cleanup?.();
-      if (node.parentNode) {
-        node.parentNode.removeChild(node);
-      }
+      detachNode(node);
     },
   };
 }

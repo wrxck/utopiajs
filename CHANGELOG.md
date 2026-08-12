@@ -4,6 +4,87 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-08-12
+
+A performance release with one opt-in feature. Every hot path flagged in a
+full-framework audit was fixed — keyed list diffing, signal writes, route
+matching, route-table construction and email CSS inlining — and multi-root
+templates can now compile to real DOM fragments instead of a wrapper `<div>`.
+Default compiled output is unchanged; the fragment shape is strictly opt-in.
+
+### Added
+
+- `@matthesketh/utopia-compiler` / `@matthesketh/utopia-vite-plugin` — **opt-in
+  `fragments` option.** Multi-root templates, multi-child slot content and
+  empty templates historically compiled to a literal wrapper `<div>`, which
+  changed DOM shape: the wrapper broke flex/grid parenting and forced an extra
+  element into every such component. With `fragments: true` they compile to a
+  real `DocumentFragment` instead. Off by default because removing the wrapper
+  is observable — existing components keep their historical output
+  byte-for-byte, including root-level scoped-selector behaviour. Root-level
+  `u-if`/`u-else-if`/`u-else` chains keep their look-ahead handling inside a
+  fragment root. Not yet supported with hydration.
+
+- `@matthesketh/utopia-runtime` — **`createFragment(nodes)`** plus
+  fragment-aware insertion and removal. Inserting a `DocumentFragment` empties
+  it, so the runtime snapshots a fragment's children at insertion and
+  *reclaims* them on removal — moving them back into the fragment — which both
+  detaches a fragment-rooted subtree from the live DOM and leaves it ready to
+  mount again. `createIf` branch teardown, `mount`/`unmount` and router
+  navigation all tear fragment roots down correctly.
+
+- `@matthesketh/utopia-server` — **`VFragment` VNode.** The SSR mirror of
+  `createFragment`: flattened into the parent at insertion, serialised as bare
+  children when it is the render root, in both `renderToString` and
+  `renderToStream`.
+
+### Changed
+
+- `@matthesketh/utopia-runtime` — **keyed list reordering now computes a
+  longest increasing subsequence.** The previous reorder pass moved any node
+  not adjacent to its walk cursor, so promoting the last item of an n-item
+  list to the front cost n−1 DOM moves; it now costs one. Rows whose relative
+  order is unchanged are never touched.
+
+- `@matthesketh/utopia-runtime` — **duplicate list keys are disambiguated per
+  occurrence, not per index.** Reordering a list containing identical items
+  now keeps the same key set and reuses every node, instead of rebuilding the
+  ones whose index changed. The reconcile pass also keeps a persistent
+  key-to-entry map across updates rather than rebuilding it on every render.
+
+- `@matthesketh/utopia-core` — **signal writes with zero or one subscriber no
+  longer allocate.** The write path snapshotted its subscriber set into a
+  fresh array on every write; the overwhelmingly common cases now grab the
+  single subscriber reference directly.
+
+- `@matthesketh/utopia-router` — **route matching and route-table construction
+  are faster.** `matchRoute` consults an exact-path map for static routes
+  before falling back to the linear regex scan — populated only with routes
+  the scan itself would have chosen, so precedence cannot change, and
+  invalidated if the routes array is mutated. `buildRouteTable` pre-indexes
+  special files by directory, dropping layout/error resolution from
+  O(pages × depth × specials) to O(specials + pages × depth). Nearest-wins
+  layout semantics are unchanged and now pinned by tests.
+
+- `@matthesketh/utopia-email` — **CSS inlining is ~9× faster on large
+  documents.** Selectors are compiled once per rule instead of re-parsed per
+  rule × element, specificity is memoised, and elements are indexed by
+  tag/id/class so each rule scans only its candidate bucket. Output is
+  byte-identical — verified against 3,000 randomly generated documents.
+
+- `@matthesketh/utopia-runtime` — `createForm().handleSubmit` walks the field
+  list twice instead of four times; validity is read in the same pass that
+  touches the fields.
+
+- `@matthesketh/utopia-compiler` — nested closure code generation
+  (branches, slots) emits indentation once per line instead of re-copying the
+  buffer per nesting level.
+
+### Fixed
+
+- `@matthesketh/utopia-runtime` — two undocumented swallowed catches in
+  `createFor`'s disposal paths now carry their rationale.
+
 ## [0.13.2] - 2026-08-03
 
 A single-defect patch. `@matthesketh/utopia-router` could hand a click back to

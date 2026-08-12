@@ -52,6 +52,14 @@ export const HTML_ENTITY_RE = /&(?:#(\d+)|#x([0-9a-fA-F]+)|(\w+));/g;
 export interface TemplateCompileOptions {
   /** When set, every created element will receive this data attribute. */
   scopeId?: string;
+  /**
+   * Emit real DOM fragments for multi-root templates, multi-child slot
+   * content and empty templates instead of wrapping them in a literal
+   * `<div>`. Off by default — the wrapper changes DOM shape (flex/grid
+   * parenting, root-level scoped selectors), so existing components keep
+   * their historical output until they opt in.
+   */
+  fragments?: boolean;
 }
 
 export interface TemplateCompileResult {
@@ -561,6 +569,8 @@ function rootScope(): LocalScope {
 class CodeGenerator {
   private code: string[] = [];
   private varCounter: number = 0;
+  /** current closure-nesting prefix applied by emit(). */
+  private indent: string = '';
   private helpers: Set<string> = new Set();
   private scopeId: string | undefined;
   private deferredCallsStack: string[][] = [];
@@ -581,12 +591,27 @@ class CodeGenerator {
     );
 
     if (rootElements.length === 0) {
-      this.helpers.add('createElement');
-      this.emit(`const _root = createElement('div')`);
+      if (this.options.fragments) {
+        this.helpers.add('createFragment');
+        this.emit(`const _root = createFragment([])`);
+      } else {
+        this.helpers.add('createElement');
+        this.emit(`const _root = createElement('div')`);
+      }
       this.emit(`return _root`);
     } else if (rootElements.length === 1 && rootElements[0].type === NodeType.Element) {
       const rootVar = this.genNode(rootElements[0], scope);
       this.emit(`return ${rootVar}`);
+    } else if (this.options.fragments) {
+      // Multiple root nodes — a real fragment; each root element already
+      // carries the scope attribute, so no wrapper is needed for scoped css.
+      // genChildren (not a plain genNode loop) so root-level u-if/u-else-if/
+      // u-else sibling chains keep their look-ahead handling.
+      this.helpers.add('createFragment');
+      const fragVar = this.freshVar();
+      this.emit(`const ${fragVar} = createFragment([])`);
+      this.genChildren(fragVar, ast, scope);
+      this.emit(`return ${fragVar}`);
     } else {
       // Multiple root nodes — wrap in a <div>.
       this.helpers.add('createElement');
@@ -957,22 +982,16 @@ class CodeGenerator {
    */
   private genBranchFn(build: () => string): string {
     const fnVar = this.freshVar();
-    const savedCode = this.code;
-    this.code = [];
+    this.emit(`const ${fnVar} = () => {`);
+    this.indentPush();
     this.deferredCallsStack.push([]);
     const innerVar = build();
     const deferred = this.deferredCallsStack.pop()!;
     for (const line of deferred) {
       this.emit(line);
     }
-    const lines = [...this.code];
-    this.code = savedCode;
-
-    this.emit(`const ${fnVar} = () => {`);
-    for (const line of lines) {
-      this.emit(`  ${line}`);
-    }
-    this.emit(`  return ${innerVar}`);
+    this.emit(`return ${innerVar}`);
+    this.indentPop();
     this.emit(`}`);
     return fnVar;
   }
@@ -1019,11 +1038,18 @@ class CodeGenerator {
       ),
     };
 
+    // the buffer swap builds the row body at column zero (indent neutralised —
+    // the copy below re-prefixes against the CURRENT indent), because the
+    // render function's own header lines must precede body lines whose
+    // variables are allocated first.
     const savedCode = this.code;
+    const savedIndent = this.indent;
     this.code = [];
+    this.indent = '';
     const innerVar = this.genElement(strippedNode, innerScope);
     const innerLines = [...this.code];
     this.code = savedCode;
+    this.indent = savedIndent;
 
     const renderFnVar = this.freshVar();
     const itemArg = this.freshVar('_item');
@@ -1212,8 +1238,8 @@ class CodeGenerator {
 
     if (substantiveChildren.length > 0) {
       const slotFnVar = this.freshVar();
-      const savedCode = this.code;
-      this.code = [];
+      this.emit(`const ${slotFnVar} = () => {`);
+      this.indentPush();
       // a structural directive among the slot children emits a deferred
       // createIf/createFor that references variables declared in THIS closure.
       // give it its own frame so it is flushed inside the closure — otherwise
@@ -1225,6 +1251,17 @@ class CodeGenerator {
       let slotReturnVar: string | null;
       if (substantiveChildren.length === 1 && substantiveChildren[0].type === NodeType.Element) {
         slotReturnVar = this.genNode(substantiveChildren[0], scope);
+      } else if (this.options.fragments) {
+        // Multi-child slot content — a real fragment instead of a wrapper div.
+        this.helpers.add('createFragment');
+        const childVars: string[] = [];
+        for (const child of node.children) {
+          const childVar = this.genNode(child, scope);
+          if (childVar) childVars.push(childVar);
+        }
+        const fragVar = this.freshVar();
+        this.emit(`const ${fragVar} = createFragment([${childVars.join(', ')}])`);
+        slotReturnVar = fragVar;
       } else {
         this.helpers.add('createElement');
         this.helpers.add('appendChild');
@@ -1244,14 +1281,7 @@ class CodeGenerator {
         this.emit(line);
       }
       this.emit(`return ${slotReturnVar}`);
-
-      const slotLines = [...this.code];
-      this.code = savedCode;
-
-      this.emit(`const ${slotFnVar} = () => {`);
-      for (const line of slotLines) {
-        this.emit(`  ${line}`);
-      }
+      this.indentPop();
       this.emit(`}`);
 
       this.emit(
@@ -1299,7 +1329,20 @@ class CodeGenerator {
   }
 
   private emit(line: string): void {
-    this.code.push(line);
+    this.code.push(this.indent === '' ? line : this.indent + line);
+  }
+
+  /**
+   * Emit subsequent lines one closure level deeper. Prefixing at emission
+   * time replaces the old copy-the-buffer-and-re-emit pattern, which did
+   * O(lines × depth) string work for nested closures.
+   */
+  private indentPush(): void {
+    this.indent += '  ';
+  }
+
+  private indentPop(): void {
+    this.indent = this.indent.slice(0, -2);
   }
 
   private emitOrDefer(line: string): void {

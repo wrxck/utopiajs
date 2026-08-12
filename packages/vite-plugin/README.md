@@ -44,6 +44,7 @@ export default defineConfig({
 |--------|------|---------|-------------|
 | `include` | `FilterPattern` | `'**/*.utopia'` | Glob patterns to include |
 | `exclude` | `FilterPattern` | -- | Glob patterns to exclude |
+| `fragments` | `boolean` | `false` | Compile multi-root templates, multi-child slot content and empty templates to real DOM fragments instead of wrapper `<div>`s. Opt-in because removing the wrapper changes DOM shape (flex/grid parenting, root-level scoped selectors). Not yet supported with hydration. |
 
 **Features:**
 

@@ -84,6 +84,12 @@ function* vnodeChunks(node: VNode, depth: number): Generator<string> {
     case 3:
       yield `<!--${escapeComment(node.text)}-->`;
       return;
+    case 4:
+      // VFragment — only ever a render root; serialize bare children.
+      for (const child of node.children) {
+        yield* vnodeChunks(child, depth + 1);
+      }
+      return;
   }
 }
 
