@@ -1,8 +1,21 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 import { isUtopiaFile, toScriptText, UTOPIA_EXTENSION } from '@matthesketh/utopia-compiler';
 import type * as ts from 'typescript';
+
+// the compiler appends the default export when it assembles the module, so the
+// script alone has none and every import of a component reads as TS1192. this
+// declares the shape the compiler really emits. appended AFTER the script, so
+// every offset in the component is still its own.
+const COMPONENT_DEFAULT_EXPORT =
+  '\nexport default {} as { setup?: (props?: unknown) => unknown; render: (ctx?: unknown) => unknown };\n';
+
+// defineProps is a compiler macro: the compiler turns it into the setup
+// signature and it never exists at runtime. without an ambient declaration
+// every component that opts into props reads as "cannot find name".
+const MACROS_FILE = 'utopia-macros.d.ts';
+const MACROS = 'declare function defineProps<T = Record<string, unknown>>(): T;\n';
 
 export interface CheckResult {
   diagnostics: string[];
@@ -43,8 +56,9 @@ export function check(
   // an untitled buffer. without it every component is silently dropped and the
   // check passes while seeing nothing.
   const options: ts.CompilerOptions = { ...parsed.options, allowNonTsExtensions: true };
-  const roots = [...parsed.fileNames, ...extraRoots.map((f) => resolve(f))];
-  const host = utopiaCompilerHost(typescript, options);
+  const macrosPath = resolve(configDir, MACROS_FILE);
+  const roots = [...parsed.fileNames, ...extraRoots.map((f) => resolve(f)), macrosPath];
+  const host = utopiaCompilerHost(typescript, options, macrosPath);
   const program = typescript.createProgram(roots, options, host);
 
   const diagnostics = [
@@ -65,11 +79,28 @@ export function check(
  * A compiler host that reads a component as TypeScript and resolves an import
  * that names one.
  */
-function utopiaCompilerHost(typescript: typeof ts, options: ts.CompilerOptions): ts.CompilerHost {
+function utopiaCompilerHost(
+  typescript: typeof ts,
+  options: ts.CompilerOptions,
+  macrosPath: string,
+): ts.CompilerHost {
   const host = typescript.createCompilerHost(options, true);
   const getSourceFile = host.getSourceFile.bind(host);
+  const fileExists = host.fileExists.bind(host);
+
+  host.fileExists = (fileName) => fileName === macrosPath || fileExists(fileName);
 
   host.getSourceFile = (fileName, languageVersion, onError, shouldCreate) => {
+    if (fileName === macrosPath) {
+      return typescript.createSourceFile(
+        fileName,
+        MACROS,
+        languageVersion,
+        true,
+        typescript.ScriptKind.TS,
+      );
+    }
+
     if (!isUtopiaFile(fileName)) {
       return getSourceFile(fileName, languageVersion, onError, shouldCreate);
     }
@@ -84,7 +115,7 @@ function utopiaCompilerHost(typescript: typeof ts, options: ts.CompilerOptions):
 
     return typescript.createSourceFile(
       fileName,
-      toScriptText(source, fileName),
+      toScriptText(source, fileName) + COMPONENT_DEFAULT_EXPORT,
       languageVersion,
       true,
       typescript.ScriptKind.TS,
@@ -98,14 +129,16 @@ function utopiaCompilerHost(typescript: typeof ts, options: ts.CompilerOptions):
       const name = literal.text;
 
       if (name.endsWith(UTOPIA_EXTENSION)) {
-        const resolvedFileName = resolve(dirname(containingFile), name);
-        return {
-          resolvedModule: {
-            resolvedFileName,
-            extension: typescript.Extension.Ts,
-            isExternalLibraryImport: false,
-          },
-        };
+        const resolvedFileName = resolveUtopiaSpecifier(name, containingFile, compilerOptions);
+        if (resolvedFileName) {
+          return {
+            resolvedModule: {
+              resolvedFileName,
+              extension: typescript.Extension.Ts,
+              isExternalLibraryImport: false,
+            },
+          };
+        }
       }
 
       return typescript.resolveModuleName(
@@ -119,6 +152,47 @@ function utopiaCompilerHost(typescript: typeof ts, options: ts.CompilerOptions):
     });
 
   return host;
+}
+
+/**
+ * Resolve an import that names a component.
+ *
+ * A relative specifier resolves against the importing file. Anything else goes
+ * through the `paths` mapping, because an alias like `@/components/X.utopia` is
+ * not relative to the importer and resolving it as though it were produces a
+ * path that cannot exist.
+ */
+function resolveUtopiaSpecifier(
+  name: string,
+  containingFile: string,
+  options: ts.CompilerOptions,
+): string | undefined {
+  if (name.startsWith('./') || name.startsWith('../')) {
+    return resolve(dirname(containingFile), name);
+  }
+
+  const base = options.baseUrl ?? (options.pathsBasePath as string | undefined) ?? process.cwd();
+
+  for (const [pattern, targets] of Object.entries(options.paths ?? {})) {
+    const star = pattern.indexOf('*');
+
+    if (star < 0) {
+      if (name !== pattern) continue;
+      const hit = (targets ?? []).map((t) => resolve(base, t)).find(existsSync);
+      if (hit) return hit;
+      continue;
+    }
+
+    const prefix = pattern.slice(0, star);
+    const suffix = pattern.slice(star + 1);
+    if (!name.startsWith(prefix) || !name.endsWith(suffix)) continue;
+
+    const middle = name.slice(prefix.length, name.length - suffix.length);
+    const hit = (targets ?? []).map((t) => resolve(base, t.replace('*', middle))).find(existsSync);
+    if (hit) return hit;
+  }
+
+  return undefined;
 }
 
 function format(typescript: typeof ts, diagnostics: readonly ts.Diagnostic[]): string {

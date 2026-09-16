@@ -8,13 +8,14 @@
 // ---------------------------------------------------------------------------
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, realpathSync } from 'node:fs';
+import { type Dirent, existsSync, readdirSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
+import { isUtopiaFile } from '@matthesketh/utopia-compiler';
 import { utopiaTestPlugin } from '@matthesketh/utopia-test/plugin';
 import utopia from '@matthesketh/utopia-vite-plugin';
 import {
@@ -26,6 +27,10 @@ import {
   type PreviewOptions,
   type ServerOptions,
 } from 'vite';
+
+import { check } from '@/check';
+
+export { check, type CheckResult } from '@/check';
 
 // ---- Argument parsing -------------------------------------------------------
 
@@ -438,6 +443,7 @@ export function printHelp(): void {
     build    Build for production
     preview  Preview production build
     test     Run component tests
+    check    Type-check the project, components included
     mcp      Claude Code MCP server integration
     create   Create a new project
 
@@ -450,6 +456,66 @@ export function printHelp(): void {
     -h, --help       Show this help
     -v, --version    Show version
 `);
+}
+
+/**
+ * `utopia check` — type-check the project, components included.
+ *
+ * `tsc --noEmit` cannot take a component as a root and resolves no import that
+ * names one, so it passes while seeing none of them. This sees all of them.
+ */
+export function checkCommand(args: ParsedArgs): number {
+  const require = createRequire(import.meta.url);
+
+  let typescript: typeof import('typescript');
+  try {
+    typescript = require('typescript') as typeof import('typescript');
+  } catch {
+    console.error('utopia check requires the "typescript" package. install it with:');
+    console.error('  npm install -D typescript');
+    return 1;
+  }
+
+  const project = args.rest.find((a) => !a.startsWith('-')) ?? 'tsconfig.json';
+  const configPath = resolve(project);
+
+  if (!existsSync(configPath)) {
+    console.error(`utopia check: no tsconfig at ${configPath}`);
+    return 1;
+  }
+
+  const components = findComponents(resolve(dirname(configPath), 'src'));
+  const result = check(typescript, configPath, components);
+
+  for (const text of result.diagnostics) process.stdout.write(text);
+
+  if (result.errorCount > 0) {
+    console.error(
+      `utopia check: ${result.errorCount} error(s) across ${result.fileCount} component(s)`,
+    );
+    return 1;
+  }
+
+  console.log(`utopia check: clean — ${result.fileCount} component(s) checked`);
+  return 0;
+}
+
+function findComponents(dir: string, found: string[] = []): string[] {
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return found;
+  }
+
+  for (const entry of entries) {
+    if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+    const full = resolve(dir, entry.name);
+    if (entry.isDirectory()) findComponents(full, found);
+    else if (isUtopiaFile(entry.name)) found.push(full);
+  }
+
+  return found;
 }
 
 // ---- Main -------------------------------------------------------------------
@@ -469,6 +535,9 @@ export async function main(argv: string[] = process.argv): Promise<void> {
       break;
     case 'test':
       await test(args);
+      break;
+    case 'check':
+      process.exitCode = checkCommand(args);
       break;
     case 'mcp': {
       const sub = args.rest[0];
