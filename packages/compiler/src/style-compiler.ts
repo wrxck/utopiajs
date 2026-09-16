@@ -17,7 +17,13 @@
 // option).
 // ---------------------------------------------------------------------------
 
+import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
+
+// the package ships esm and cjs. bare require() exists only in cjs, so an
+// optional peer loaded that way is unreachable from esm and reports as missing
+// however it is installed.
+const requirePeer = createRequire(import.meta.url);
 
 // ---- regex constants --------------------------------------------------------
 
@@ -79,8 +85,7 @@ export function preprocessStyle(
 
   let sass: typeof import('sass');
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    sass = require('sass');
+    sass = requirePeer('sass') as typeof import('sass');
   } catch {
     throw new Error(
       `<style lang="${lang}"> requires the "sass" package. install it with: npm install -D sass`,

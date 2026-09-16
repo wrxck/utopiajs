@@ -1,4 +1,10 @@
+import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
+
+// the package ships esm and cjs. bare require() exists only in cjs, so an
+// optional peer loaded that way is unreachable from esm and reports as missing
+// however it is installed.
+const requirePeer = createRequire(import.meta.url);
 
 const TS_LANGS = new Set(['ts', 'typescript']);
 const JS_LANGS = new Set(['js', 'javascript']);
@@ -33,8 +39,7 @@ export function compileScript(source: string, lang: string | undefined, filename
 
   let typescript: typeof import('typescript');
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    typescript = require('typescript');
+    typescript = requirePeer('typescript') as typeof import('typescript');
   } catch {
     throw new Error(
       `<script lang="${lang}"> requires the "typescript" package. install it with: npm install -D typescript`,
