@@ -35,14 +35,21 @@
     "dev": "tsup src/index.ts --format esm --watch"
   },
   "dependencies": {
-    "@matthesketh/utopia-vite-plugin": "workspace:*",
-    "@matthesketh/utopia-test": "workspace:*"
+    "@matthesketh/utopia-compiler": "workspace:*",
+    "@matthesketh/utopia-test": "workspace:*",
+    "@matthesketh/utopia-vite-plugin": "workspace:*"
   },
   "peerDependencies": {
     "vite": "^6.0.0 || ^7.0.0 || ^8.0.0",
-    "vitest": "^4.0.0"
+    "vitest": "^4.0.0",
+    "typescript": ">=5.0.0"
   },
   "devDependencies": {
     "vite": "8.0.14"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
   }
 }
