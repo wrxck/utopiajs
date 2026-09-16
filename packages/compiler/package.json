@@ -49,10 +49,14 @@
     "@types/node": "25.9.1"
   },
   "peerDependencies": {
-    "sass": "^1.77.0"
+    "sass": "^1.77.0",
+    "typescript": ">=5.0.0"
   },
   "peerDependenciesMeta": {
     "sass": {
+      "optional": true
+    },
+    "typescript": {
       "optional": true
     }
   }
