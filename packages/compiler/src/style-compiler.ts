@@ -19,6 +19,8 @@
 
 import { dirname } from 'node:path';
 
+import { requirePeer } from './peer.js';
+
 // ---- regex constants --------------------------------------------------------
 
 /** matches a single whitespace character. */
@@ -79,8 +81,7 @@ export function preprocessStyle(
 
   let sass: typeof import('sass');
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    sass = require('sass');
+    sass = requirePeer('sass') as typeof import('sass');
   } catch {
     throw new Error(
       `<style lang="${lang}"> requires the "sass" package. install it with: npm install -D sass`,

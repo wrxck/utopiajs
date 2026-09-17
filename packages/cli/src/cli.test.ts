@@ -5,6 +5,7 @@
 
 import { PassThrough } from 'node:stream';
 
+import type { MockInstance } from 'vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
@@ -35,7 +36,7 @@ vi.mock('node:child_process', () => ({
   execFileSync: (...args: unknown[]) => execFileSyncMock(...args),
 }));
 
-const startVitestMock = vi.fn(async () => ({ close: vi.fn() }));
+const startVitestMock = vi.fn(async (..._args: unknown[]) => ({ close: vi.fn() }));
 vi.mock('vitest/node', () => ({
   startVitest: (...args: unknown[]) => startVitestMock(...args),
 }));
@@ -71,7 +72,7 @@ import {
 // ---------------------------------------------------------------------------
 
 let exitSpy: ReturnType<typeof vi.spyOn>;
-let logSpy: ReturnType<typeof vi.spyOn>;
+let logSpy: MockInstance<typeof console.log>;
 let errorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {

@@ -6,7 +6,10 @@
 // ---------------------------------------------------------------------------
 
 export { type A11yOptions, type A11yWarning, checkA11y } from '@/a11y';
+export { check, type CheckResult } from '@/check';
 export { parse, type SFCBlock, type SFCDescriptor, SFCParseError } from '@/parser';
+export { compileScript, needsTranspile } from '@/script-compiler';
+export { isUtopiaFile, toScriptText, UTOPIA_EXTENSION } from '@/script-text';
 export {
   compileStyle,
   generateScopeId,
@@ -24,6 +27,7 @@ export {
 
 import { type A11yOptions, type A11yWarning, checkA11y } from '@/a11y';
 import { parse } from '@/parser';
+import { compileScript } from '@/script-compiler';
 import { compileStyle, preprocessStyle } from '@/style-compiler';
 import { compileTemplate, parseTemplate } from '@/template-compiler';
 
@@ -125,7 +129,9 @@ export function compile(source: string, options: CompileOptions = {}): CompileRe
   // the user script can sit between them.
   const { imports, body } = splitModuleParts(renderModule);
 
-  const scriptContent = descriptor.script?.content ?? '';
+  const scriptLang =
+    typeof descriptor.script?.attrs.lang === 'string' ? descriptor.script.attrs.lang : undefined;
+  const scriptContent = compileScript(descriptor.script?.content ?? '', scriptLang, filename);
 
   // A component opts in to per-instance props by calling defineProps() in its
   // script. Without it, we keep the historical module-scope shape verbatim so
