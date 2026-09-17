@@ -55,10 +55,6 @@ export function compileScript(source: string, lang: string | undefined, filename
       // turns the constructs it cannot support into errors here rather than
       // into wrong output later.
       isolatedModules: true,
-      // a component script is always a module. without this a script that
-      // imports and exports nothing is read as a global one and gains a
-      // "use strict" prologue it does not need.
-      moduleDetection: typescript.ModuleDetectionKind.Force,
       // a binding used only in <template> looks unused to a transpiler that
       // sees the script alone, and ordinary elision would delete its import.
       verbatimModuleSyntax: true,
@@ -78,5 +74,7 @@ export function compileScript(source: string, lang: string | undefined, filename
     throw new Error(`<script lang="${lang}"> failed to compile in ${dirname(filename)}: ${detail}`);
   }
 
-  return result.outputText;
+  // the caller splices this into a setup function, where a prologue is a stray
+  // string expression and the export marker Force would add is a syntax error.
+  return result.outputText.replace(/^\s*['"]use strict['"];?\r?\n/, '');
 }

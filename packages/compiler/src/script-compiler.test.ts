@@ -84,3 +84,22 @@ describe('compileScript', () => {
     expect(out).toContain('const n = 1');
   });
 });
+
+// the output is spliced into a setup function, so any statement typescript adds
+// at the top level of the file becomes a statement inside a function body.
+describe('compileScript emits a function body, not a module', () => {
+  it('adds no export marker to a script that imports and exports nothing', () => {
+    const out = compileScript('const { level } = __uProps;\n', 'ts', '/x/Comp.utopia');
+    expect(out).not.toMatch(/\bexport\b/);
+  });
+
+  it('adds no use-strict prologue either', () => {
+    const out = compileScript('const n: number = 1;\n', 'ts', '/x/Comp.utopia');
+    expect(out.trimStart()).not.toMatch(/^['"]use strict['"]/);
+  });
+
+  it('still keeps an import a template alone uses', () => {
+    const out = compileScript("import { t } from './i18n';\n", 'ts', '/x/Comp.utopia');
+    expect(out).toContain("from './i18n'");
+  });
+});
