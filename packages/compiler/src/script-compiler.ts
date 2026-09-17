@@ -1,10 +1,6 @@
-import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 
-// the package ships esm and cjs. bare require() exists only in cjs, so an
-// optional peer loaded that way is unreachable from esm and reports as missing
-// however it is installed.
-const requirePeer = createRequire(import.meta.url);
+import { requirePeer } from './peer.js';
 
 const TS_LANGS = new Set(['ts', 'typescript']);
 const JS_LANGS = new Set(['js', 'javascript']);
@@ -59,6 +55,13 @@ export function compileScript(source: string, lang: string | undefined, filename
       // turns the constructs it cannot support into errors here rather than
       // into wrong output later.
       isolatedModules: true,
+      // a component script is always a module. without this a script that
+      // imports and exports nothing is read as a global one and gains a
+      // "use strict" prologue it does not need.
+      moduleDetection: typescript.ModuleDetectionKind.Force,
+      // a binding used only in <template> looks unused to a transpiler that
+      // sees the script alone, and ordinary elision would delete its import.
+      verbatimModuleSyntax: true,
       // the bundler owns source maps; an inline one here would be discarded.
       sourceMap: false,
     },

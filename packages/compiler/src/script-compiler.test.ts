@@ -40,6 +40,20 @@ describe('compileScript', () => {
     expect(out).toContain('export const y');
   });
 
+  it('keeps an import whose binding the script never mentions', () => {
+    const out = compileScript("import { t } from '@/lib/i18n';\nexport const v = 1;\n", 'ts', file);
+    expect(out).toContain("import { t } from '@/lib/i18n'");
+  });
+
+  it('keeps a child component import, which only the template ever names', () => {
+    const out = compileScript(
+      "import Row from '@/components/Row/Row.utopia';\nexport const v = 1;\n",
+      'ts',
+      file,
+    );
+    expect(out).toContain("import Row from '@/components/Row/Row.utopia'");
+  });
+
   it('elides an import used only as a type', () => {
     const out = compileScript(
       "import type { T } from '@/lib/t';\nexport const v: T = 1;\n",
