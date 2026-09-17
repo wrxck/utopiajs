@@ -1,15 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
-import { isUtopiaFile, toScriptText, UTOPIA_EXTENSION } from '@matthesketh/utopia-compiler';
 import type * as ts from 'typescript';
 
-// the compiler appends the default export when it assembles the module, so the
-// script alone has none and every import of a component reads as TS1192. this
-// declares the shape the compiler really emits. appended AFTER the script, so
-// every offset in the component is still its own.
-const COMPONENT_DEFAULT_EXPORT =
-  '\nexport default {} as { setup?: (props?: unknown) => unknown; render: (ctx?: unknown) => unknown };\n';
+import { isUtopiaFile, toScriptText, UTOPIA_EXTENSION } from '@/script-text';
+
+// a script alone has no default export, and only never suits whatever component type the host declares
+const COMPONENT_DEFAULT_EXPORT = '\nexport default undefined as unknown as never;\n';
 
 // defineProps is a compiler macro: the compiler turns it into the setup
 // signature and it never exists at runtime. without an ambient declaration

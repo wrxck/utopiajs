@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 export { type A11yOptions, type A11yWarning, checkA11y } from '@/a11y';
+export { check, type CheckResult } from '@/check';
 export { parse, type SFCBlock, type SFCDescriptor, SFCParseError } from '@/parser';
 export { compileScript, needsTranspile } from '@/script-compiler';
 export { isUtopiaFile, toScriptText, UTOPIA_EXTENSION } from '@/script-text';

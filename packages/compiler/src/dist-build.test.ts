@@ -26,6 +26,11 @@ describe.runIf(existsSync(join(dist, 'index.cjs')))('the built cjs bundle', () =
     );
     expect(out.code).toContain('const n = 1');
   });
+
+  it('exposes check, which a host runs to type-check its components', () => {
+    const m = require(join(dist, 'index.cjs')) as typeof import('./index.js');
+    expect(typeof m.check).toBe('function');
+  });
 });
 
 describe.runIf(existsSync(join(dist, 'index.js')))('the built esm bundle', () => {

@@ -50,6 +50,22 @@ beforeAll(() => {
     'export function takesNumber(n: number): number {\n  return n + 1;\n}\n',
   );
 
+  // a host declares its own component type, so the synthetic default export must not impose a shape
+  writeFileSync(
+    join(dir, 'src', 'mount.ts'),
+    [
+      `import Good from './Good.${'utopia'}';`,
+      'interface ComponentDefinition {',
+      '  render(ctx: { id: string }): string;',
+      '}',
+      'export function mount(c: ComponentDefinition): ComponentDefinition {',
+      '  return c;',
+      '}',
+      'export const mounted = mount(Good);',
+      '',
+    ].join('\n'),
+  );
+
   good = join(dir, 'src', `Good.${'utopia'}`);
   bad = join(dir, 'src', `Bad.${'utopia'}`);
 
@@ -98,6 +114,11 @@ describe('check', () => {
   it('passes a component that type-checks', () => {
     const result = check(ts, join(dir, 'tsconfig.json'), [good]);
     expect(result.errorCount).toBe(0);
+  });
+
+  it('lets a host mount a component as its own component type', () => {
+    const result = check(ts, join(dir, 'tsconfig.json'), [good]);
+    expect(result.diagnostics.join('\n')).not.toContain('mount.ts');
   });
 
   it('reports a broken tsconfig rather than throwing', () => {

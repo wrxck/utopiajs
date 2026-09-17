@@ -15,7 +15,7 @@ import { createInterface } from 'node:readline';
 import type { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
-import { isUtopiaFile } from '@matthesketh/utopia-compiler';
+import { check, isUtopiaFile } from '@matthesketh/utopia-compiler';
 import { utopiaTestPlugin } from '@matthesketh/utopia-test/plugin';
 import utopia from '@matthesketh/utopia-vite-plugin';
 import {
@@ -27,10 +27,6 @@ import {
   type PreviewOptions,
   type ServerOptions,
 } from 'vite';
-
-import { check } from '@/check';
-
-export { check, type CheckResult } from '@/check';
 
 // ---- Argument parsing -------------------------------------------------------
 
