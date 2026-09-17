@@ -1,6 +1,6 @@
 {
   "name": "@matthesketh/utopia-compiler",
-  "version": "0.14.0",
+  "version": "0.14.1-local.1",
   "description": "Compiler for .utopia single-file components",
   "type": "module",
   "license": "MIT",
@@ -39,7 +39,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "build": "tsup src/index.ts --format esm,cjs --dts --shims",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch"
   },
   "dependencies": {
