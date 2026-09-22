@@ -111,7 +111,6 @@ function createRawElement(tag: string): Element {
   return SVG_TAGS.has(tag) ? document.createElementNS(SVG_NS, tag) : document.createElement(tag);
 }
 
-/** Create a real DOM element for the given tag name. */
 /**
  * Elements whose content the HTML parser reads as one raw text run, so the
  * server cannot separate their text nodes. Hydration rebuilds their content
@@ -123,10 +122,13 @@ const RAW_TEXT_TAGS = new Set([
   'script',
   'style',
   'xmp',
+  'iframe',
   'noembed',
   'noframes',
-]);
+  'plaintext',
+]); // must match the server's RAW_TEXT_ELEMENTS (html-utils.ts)
 
+/** Create a real DOM element for the given tag name. */
 export function createElement(tag: string): Element {
   if (isHydrating) {
     // the tag has to match too: claiming a server <i> as the client's <b>

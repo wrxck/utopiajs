@@ -137,6 +137,11 @@ describe('hydration claims what the server rendered', () => {
     expect(textarea.textContent).toBe('Hi Bo');
   });
 
+  it('rebuilds iframe fallback content like the server writes it', async () => {
+    await roundTrip('<iframe>Hi {{ name() }}</iframe>', () => ({ name: signal('Ada') }));
+    expect(host.querySelector('iframe')!.textContent).toBe('Hi Ada');
+  });
+
   it('claims a u-if branch and toggles it afterwards', async () => {
     const { client, expected } = await roundTrip(
       '<div><b u-if="show()">yes</b><i>tail</i></div>',

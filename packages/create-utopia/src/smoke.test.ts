@@ -104,4 +104,9 @@ describe('template integrity', () => {
     expect(pkg).not.toContain('"^0.3.0"');
     expect(pkg).not.toContain('"^0.4.0"');
   });
+
+  it('tsconfig includes components, so utopia check sees them', () => {
+    const config = JSON.parse(readTemplateFile('tsconfig.json'));
+    expect(config.include).toContain('src/**/*');
+  });
 });

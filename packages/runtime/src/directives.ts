@@ -17,7 +17,14 @@ import {
 } from '@/component';
 import { insertBefore, removeNode } from '@/dom';
 import { beginRange, endRange, type RangeWalk, settleRange } from '@/hydration';
-import { cancelDeferred, deferUntilAttached, isDeferred, rangeOf, setRange } from '@/pending';
+import {
+  cancelDeferred,
+  deferUntilAttached,
+  isDeferred,
+  rangeOf,
+  runAttached,
+  setRange,
+} from '@/pending';
 import { transitionEnter, transitionLeave } from '@/transition';
 
 /** A DOM Node with optional cleanup/dispose callbacks attached by the runtime. */
@@ -503,10 +510,19 @@ export function createFor<T>(
         if (roots) {
           for (const r of roots) {
             parent.insertBefore(r, cursor);
+            // a row whose root is a u-if / u-for anchor renders now that it
+            // has a parent, not a microtask later.
+            runAttached(r);
           }
         } else {
           parent.insertBefore(e.node, cursor);
+          runAttached(e.node);
         }
+        // the insertion may just have rendered the row's branch in front of
+        // it, so read where the row now begins.
+        const now = e.nodes ?? rangeOf(e.node);
+        cursor = now && now.length > 0 ? now[0]! : e.node;
+        continue;
       }
       cursor = first;
     }
@@ -523,7 +539,8 @@ export function createFor<T>(
     // NOT scheduled — see createIf above.
   });
 
-  setRange(anchor, () => entries.flatMap((e) => e.nodes ?? rangeOf(e.node) ?? [e.node]));
+  // rangeOf expands nested ranges itself; expanding here too duplicated them.
+  setRange(anchor, () => entries.flatMap((e) => e.nodes ?? [e.node]));
 
   const disposeAll = (): void => {
     listDisposed = true;

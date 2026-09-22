@@ -19,6 +19,8 @@ export interface CheckResult {
   diagnostics: string[];
   errorCount: number;
   fileCount: number;
+  /** Absolute paths of the components the program checked. */
+  files: string[];
 }
 
 export interface CheckOptions {
@@ -77,6 +79,7 @@ export function check(
       diagnostics: [format(typescript, [read.error], pretty)],
       errorCount: 1,
       fileCount: 0,
+      files: [],
     };
   }
 
@@ -143,6 +146,7 @@ export function check(
     errorCount: diagnostics.filter((d) => d.category === typescript.DiagnosticCategory.Error)
       .length,
     fileCount: components.size,
+    files: [...components.keys()],
   };
 }
 
