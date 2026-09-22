@@ -66,6 +66,17 @@ const MAX_REDIRECT_DEPTH = 10;
 /** Current redirect depth -- used to detect infinite redirect loops. */
 let redirectDepth = 0;
 
+/**
+ * Identity of the latest navigation. A navigation whose guards are still
+ * running when a newer one starts must not commit afterwards: with async
+ * guards, the older one used to finish last and win, leaving the user on the
+ * page they had navigated away from.
+ */
+let navToken = 0;
+
+/** Navigations in flight; isNavigating is true while any is. */
+let inFlight = 0;
+
 /** The cleanup function to tear down event listeners. */
 let cleanup: (() => void) | null = null;
 
@@ -161,12 +172,30 @@ export function createRouter(routeTable: (Route | RouteConfig)[]): void {
       navIndex = targetIndex;
 
       const url = new URL(window.location.href);
+      const token = ++navToken;
+
+      // a history move that changes only the hash stays on the same page, as
+      // a hash link does. setting a fresh match remounted the page — losing
+      // its state — every time the user pressed back after an in-page link.
+      const prev = currentRoute.peek();
+      if (prev && prev.url.pathname === url.pathname && prev.url.search === url.search) {
+        const savedPos = scrollPositions.get(targetIndex);
+        if (url.hash) {
+          scrollToHash(url.hash.slice(1));
+        } else if (savedPos) {
+          requestAnimationFrame(() => window.scrollTo(savedPos.x, savedPos.y));
+        }
+        return;
+      }
+
       const match = matchRoute(url, routes);
 
       // Run beforeNavigate hooks (synchronous for popstate — async hooks
       // that return promises will be awaited, but we cannot cancel browser
       // back/forward; we can only skip updating the route).
       runBeforeNavigateHooks(currentRoute.peek(), match).then((result) => {
+        // a newer navigation started while the guards ran; it decides.
+        if (token !== navToken) return;
         if (result === false) {
           // Guard rejected -- restore the previous URL.
           const prev = currentRoute.peek();
@@ -254,13 +283,25 @@ export function createRouter(routeTable: (Route | RouteConfig)[]): void {
         return;
       }
 
-      // skip external links and non-HTTP protocols. a protocol-relative href
-      // (`//evil.com`) starts with `/` but is cross-origin, so exclude it first.
-      if (href.startsWith('//')) return;
-      if (!href.startsWith('/') && !isSameOriginAbsoluteUrl(href)) return;
+      // resolve the href the way the browser would, then skip anything that
+      // leaves the origin: external links, protocol-relative `//host` links,
+      // and non-http schemes (mailto:, tel:, javascript:), whose origin is
+      // opaque. relative hrefs (`?page=2`, `./next`, `details`) used to fall
+      // through to a full page load.
+      let target: URL;
+      try {
+        target = new URL(href, window.location.href);
+      } catch {
+        return;
+      }
+      if (target.origin !== window.location.origin) return;
+      // a same-origin link no route claims (a file download, a server-only
+      // page, an API endpoint) belongs to the browser; routing it client-side
+      // showed the 404 view for a URL the server can serve.
+      if (!matchRoute(target, routes)) return;
 
       event.preventDefault();
-      navigate(href);
+      navigate(target.pathname + target.search + target.hash);
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -304,6 +345,8 @@ export async function navigate(url: string, options: { replace?: boolean } = {})
     return;
   }
 
+  const token = ++navToken;
+  inFlight++;
   isNavigating.set(true);
 
   try {
@@ -334,6 +377,9 @@ export async function navigate(url: string, options: { replace?: boolean } = {})
 
     // Run beforeNavigate hooks.
     const hookResult = await runBeforeNavigateHooks(currentRoute.peek(), match);
+
+    // a newer navigation started while the guards ran; it decides.
+    if (token !== navToken) return;
 
     if (hookResult === false) {
       // Navigation cancelled by guard.
@@ -378,7 +424,8 @@ export async function navigate(url: string, options: { replace?: boolean } = {})
     }
   } finally {
     redirectDepth--;
-    isNavigating.set(false);
+    inFlight--;
+    isNavigating.set(inFlight > 0);
   }
 }
 
@@ -441,6 +488,8 @@ export function destroy(): void {
   beforeNavigateHooks = [];
   scrollPositions.clear();
   navIndex = 0;
+  navToken++;
+  inFlight = 0;
   currentRoute.set(null);
   isNavigating.set(false);
 }
@@ -473,21 +522,6 @@ function takeCapturedAnchor(event: Event): CapturedAnchor | undefined {
     capturedAnchors.delete(event);
   }
   return captured;
-}
-
-/**
- * Whether an href is an absolute URL on the current origin. A plain prefix
- * check is not sufficient: `https://example.com.evil.com` starts with
- * `https://example.com` yet is cross-origin.
- *
- * Relative or unparseable hrefs return false — they are not handled here.
- */
-function isSameOriginAbsoluteUrl(href: string): boolean {
-  try {
-    return new URL(href).origin === window.location.origin;
-  } catch {
-    return false;
-  }
 }
 
 /**
