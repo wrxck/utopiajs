@@ -193,12 +193,109 @@ export function setHead(config: HeadConfig): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// useHead — merged, per-caller head entries
+// ---------------------------------------------------------------------------
+
+/** One useHead() caller's current configuration. */
+interface HeadEntry {
+  order: number;
+  config: HeadConfig;
+}
+
+/** Live useHead() entries, in the order their callers first ran. */
+const entries: HeadEntry[] = [];
+let entryOrder = 0;
+
+/** Identity of a meta tag, matching findExistingMeta; null when it has none. */
+function metaKey(desc: MetaDescriptor): string | null {
+  if (desc.charset) return 'charset';
+  if (desc.httpEquiv) return `http-equiv:${desc.httpEquiv}`;
+  if (desc.property) return `property:${desc.property}`;
+  if (desc.name) return `name:${desc.name}`;
+  return null;
+}
+
+/** Identity of a link tag, matching findExistingLink. */
+function linkKey(desc: LinkDescriptor): string {
+  if (SINGLETON_RELS.has(desc.rel)) return `rel:${desc.rel}`;
+  if (desc.sizes) return `rel:${desc.rel}|sizes:${desc.sizes}`;
+  if (desc.type) return `rel:${desc.rel}|type:${desc.type}`;
+  return `rel:${desc.rel}|href:${desc.href}`;
+}
+
+/**
+ * Merge entries in order: a later entry's title, template and html attributes
+ * win, and its meta and link tags replace earlier ones with the same identity.
+ */
+function mergeEntries(list: HeadEntry[]): HeadConfig {
+  const merged: HeadConfig = {};
+  const metas = new Map<string, MetaDescriptor>();
+  const keylessMetas: MetaDescriptor[] = [];
+  const links = new Map<string, LinkDescriptor>();
+
+  for (const { config } of list) {
+    if (config.title !== undefined) merged.title = config.title;
+    if (config.titleTemplate !== undefined) merged.titleTemplate = config.titleTemplate;
+    if (config.htmlLang !== undefined) merged.htmlLang = config.htmlLang;
+    if (config.htmlDir !== undefined) merged.htmlDir = config.htmlDir;
+    if (config.themeColor !== undefined) merged.themeColor = config.themeColor;
+    for (const desc of config.meta ?? []) {
+      const key = metaKey(desc);
+      if (key === null) {
+        keylessMetas.push(desc);
+      } else {
+        metas.delete(key);
+        metas.set(key, desc);
+      }
+    }
+    for (const desc of config.link ?? []) {
+      const key = linkKey(desc);
+      links.delete(key);
+      links.set(key, desc);
+    }
+  }
+
+  merged.meta = [...metas.values(), ...keylessMetas];
+  merged.link = [...links.values()];
+  return merged;
+}
+
+function applyEntries(): void {
+  setHead(mergeEntries(entries));
+}
+
+let reapplyQueued = false;
+
+/** Re-apply after the current synchronous work (an entry was removed). */
+function queueReapply(): void {
+  if (reapplyQueued) return;
+  reapplyQueued = true;
+  queueMicrotask(() => {
+    reapplyQueued = false;
+    applyEntries();
+  });
+}
+
 /**
  * Create a reactive head manager. When signals used inside the config
  * function change, the head is automatically updated.
  *
+ * Every live useHead() caller contributes an entry, and the document head is
+ * the merge of all of them in the order they first ran: a later entry's title
+ * wins, and its meta and link tags replace earlier tags with the same
+ * identity. A layout and a page can therefore each declare their part of the
+ * head. (Each call used to clear every managed tag and apply only its own
+ * config, so the two erased each other, and one caller's cleanup removed the
+ * other's tags too.)
+ *
+ * The entry is removed when the returned cleanup runs or when the effect is
+ * disposed — which, inside a component's setup, happens on unmount.
+ *
+ * During server rendering (no `document`) this is a no-op.
+ *
  * @param configFn - Function that returns a HeadConfig (may read signals)
- * @returns Cleanup function that removes managed elements and stops the effect
+ * @returns Cleanup function that removes this entry's tags and stops the effect
  *
  * @example
  * ```ts
@@ -213,13 +310,33 @@ export function setHead(config: HeadConfig): void {
  * ```
  */
 export function useHead(configFn: () => HeadConfig): () => void {
+  if (typeof document === 'undefined') return () => {};
+
+  const entry: HeadEntry = { order: ++entryOrder, config: {} };
+
   const dispose = effect(() => {
-    setHead(configFn());
+    entry.config = configFn();
+    // (re-)insert in first-run order so precedence never depends on which
+    // entry changed last.
+    let i = entries.length;
+    while (i > 0 && entries[i - 1]!.order > entry.order) i--;
+    entries.splice(i, 0, entry);
+    applyEntries();
+    return () => {
+      // runs before each re-run (which re-inserts synchronously) and on
+      // disposal (which does not) — the queued re-apply covers the latter.
+      const at = entries.indexOf(entry);
+      if (at !== -1) entries.splice(at, 1);
+      queueReapply();
+    };
   });
 
+  let stopped = false;
   return () => {
+    if (stopped) return;
+    stopped = true;
     dispose();
-    clearManaged();
+    applyEntries();
   };
 }
 
@@ -228,5 +345,8 @@ export function useHead(configFn: () => HeadConfig): () => void {
  * Useful for cleanup in tests or HMR.
  */
 export function resetHead(): void {
+  // forget the live useHead() entries too, or the next apply would bring
+  // their tags straight back.
+  entries.length = 0;
   clearManaged();
 }
