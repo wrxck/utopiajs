@@ -3,9 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import ts from 'typescript';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { check } from '@/check';
+
+// each case builds a whole TypeScript program; the first loads the lib files cold.
+vi.setConfig({ testTimeout: 30_000 });
 
 // the fixture is written at runtime rather than committed: a component on disk
 // is a design surface in the consuming repo, and a type-checking fixture is not

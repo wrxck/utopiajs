@@ -9,9 +9,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import ts from 'typescript';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { check } from '@/check';
+
+// each case builds a whole TypeScript program; the first loads the lib files cold.
+vi.setConfig({ testTimeout: 30_000 });
 import { toScriptText } from '@/script-text';
 
 const EXT = 'utopia';
