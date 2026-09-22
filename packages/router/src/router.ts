@@ -290,7 +290,9 @@ export function createRouter(routeTable: (Route | RouteConfig)[]): void {
       // through to a full page load.
       let target: URL;
       try {
-        target = new URL(href, window.location.href);
+        // against the document base, as the browser does: a <base href>
+        // changes what `details` means.
+        target = new URL(href, document.baseURI);
       } catch {
         return;
       }

@@ -79,3 +79,27 @@ describe('hash-only history moves', () => {
     expect(currentRoute.peek()).toBe(before);
   });
 });
+
+describe('links under a <base href>', () => {
+  it('resolves a relative href against the base, as the browser does', async () => {
+    history.replaceState(null, '', '/app/section/list');
+    const base = document.createElement('base');
+    base.href = '/app/';
+    document.head.appendChild(base);
+    try {
+      createRouter([
+        { path: '/app/details', component: page },
+        { path: '/app/section/details', component: page },
+        { path: '/app/section/list', component: page },
+      ]);
+      const link = document.createElement('a');
+      link.setAttribute('href', 'details');
+      document.body.appendChild(link);
+      link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(location.pathname).toBe('/app/details');
+    } finally {
+      base.remove();
+    }
+  });
+});
