@@ -4,6 +4,113 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+A correctness and security release from a full-framework audit (see
+[CODEBASE_AUDIT.md](CODEBASE_AUDIT.md)). Server rendering and hydration now
+work end to end — including routed apps — the CLI scaffolds an app that runs,
+and several security defects are closed. Some fixes change observable output;
+read [docs/upgrade-0.15.md](docs/upgrade-0.15.md) before upgrading.
+
+### Security
+
+- `@matthesketh/utopia-runtime`, `@matthesketh/utopia-server`,
+  `@matthesketh/utopia-content` — **URL scheme guards read the URL as the
+  browser parses it.** `setAttr`, `u-html` sanitisation and the prerender
+  sanitiser missed `java\tscript:`, `java&#9;script:` and a leading control
+  character, all of which run as `javascript:`.
+- `@matthesketh/utopia-vite-plugin` — **`+server` API modules are no longer
+  bundled into client builds.** The route glob emitted every API route's
+  source as a public chunk.
+- `@matthesketh/utopia-content` — `renderMarkdown` removes `javascript:`,
+  `vbscript:` and non-media `data:` URLs from links and images, and the MCP
+  `create_entry` tool enforces its formats (it could write `.utopia`
+  component source).
+- `@matthesketh/utopia-ai` — `createMCPHandler` validates `Origin` by default
+  (loopback and a single `corsOrigin`), the DNS-rebinding defence the MCP
+  transport spec requires, and warns when created without `authorize`.
+
+### Fixed
+
+- **Hydration.** `hydrate()` could not claim ordinary server markup: adjacent
+  text merged into one node, an empty interpolation claimed its neighbour, and
+  `u-if`/`u-for` anchors were claimed before their branch or rows. The server
+  now writes `<!--|-->` between adjacent text nodes and `<!--[-->` before each
+  directive range; the client claims ranges on first render, inserts missing
+  nodes, removes unclaimed ones, and replaces an element whose tag differs.
+- `@matthesketh/utopia-server` — the SSR runtime lacked `mergeClass`,
+  `applyModel`, `setHtml` and `setSafeHtml`, so server rendering failed for a
+  static class merged with `:class`, `u-model` and `u-html`. It now serves
+  every value the client runtime exports, with a real `provide`/`inject` owner
+  chain. `u-else-if`/`u-else` branches and a root-level `u-if`/`u-for` were
+  missing from server output; class and style arrays rendered as `"0 1"`; a
+  component factory (`createRouterView`) failed to render.
+- `@matthesketh/utopia-router` — `RouterView` crashed any server render
+  (`document is not defined`); it now renders the route on the server and
+  hydrates. `defineProps` layouts received no slots and showed a blank page.
+  With async guards an older navigation could commit after a newer one.
+  Relative links (`?page=2`) caused a full reload. A hash-only back/forward
+  remounted the page.
+- `@matthesketh/utopia-server` — API responses kept only the last
+  `Set-Cookie`, corrupted binary bodies and buffered server-sent events; API
+  routes matched in glob order, so `api/[id]` shadowed `api/stats`.
+- `@matthesketh/utopia-core` — an `effect()`/`computed()` created in a
+  component `setup` kept running after unmount; a re-run could register its
+  effects with an unrelated `createRoot`; a `computed` that recomputed to an
+  equal value re-ran its dependants; a self-disposing effect leaked; a
+  throwing scheduled job dropped the rest of the queue; `persistedSignal`
+  threw when storage access was blocked.
+- `@matthesketh/utopia-runtime` — `u-transition` did nothing; lazy components
+  lost their props and slots, mounted after their scope was disposed, and
+  never hydrated; a root-level `u-if`/`u-for` inserted after a microtask
+  (every such route page) rendered nothing; `aria-*` booleans rendered as a
+  bare attribute or not at all.
+- `@matthesketh/utopia-compiler` — an unfilled `<slot />` threw on a real
+  server (`instanceof Node`); `u-else` in multi-child slot content rendered
+  unconditionally; `<slot>` fallback content was discarded; static attribute
+  entities were not decoded; a method handler (`@click="obj.method"`) lost
+  `this`; scoped CSS broke `:is()`/`:where()`/`:not()` lists; component CSS
+  never reached server renders, so every `.utopia` email went out unstyled.
+- `@matthesketh/utopia-helmet` — `useHead` callers erased each other's tags;
+  `useHead` failed on the server.
+- `create-utopia` — every router app crashed on mount (`RouterView` wrapped in
+  a definition); dependencies were pinned to `^0.7.0` and `vitest ^3`; the SSR
+  scaffold could not render routes or serve API routes; the AI example route
+  used Node `(req, res)`; the blog pages read the filesystem in the browser and
+  showed the first post for every slug.
+- `@matthesketh/utopia-test` — the `<test>` plugin overwrote and then deleted
+  a hand-written `X.utopia.test.ts`.
+- `@matthesketh/utopia-vite-plugin` — `defineConfig` discarded the user's
+  `ssr` options.
+- `@matthesketh/utopia-cli` — fractional `--port` values were accepted; MCP
+  errors could carry a string JSON-RPC code.
+- `@matthesketh/utopia-ts-plugin` — a `<script>` element in the template was
+  type-checked as the component script.
+
+### Added
+
+- `@matthesketh/utopia-router` — `withRoute(routes, url, render)` for server
+  rendering, and `compareRouteSpecificity`.
+- `@matthesketh/utopia-ai` — `sseResponse(stream)`, a server-sent-events
+  `Response` for fetch-style API routes.
+- `@matthesketh/utopia-compiler` — `emitStyles` compile option (the Vite
+  plugin enables it for server transforms).
+- `@matthesketh/utopia-server/ssr-runtime` — `setServerHtmlSanitizer(fn)` for
+  sanitised `u-html` on the server.
+- `@matthesketh/utopia-vite-plugin/client` and
+  `@matthesketh/utopia-content/client` — ambient types for
+  `virtual:utopia-routes`, `*.utopia` and `virtual:utopia-content`.
+- `@matthesketh/utopia-compiler` / `@matthesketh/utopia-cli` — `<script
+  lang="ts">` is transpiled, and `utopia check` type-checks components.
+
+### Changed
+
+- `@matthesketh/utopia-vite-plugin` — bundles `@matthesketh/utopia-*`
+  packages into server builds (`ssr.noExternal`).
+- `@matthesketh/utopia-router` — a same-origin link that no route matches is
+  left to the browser instead of showing the client 404 view.
+- `@matthesketh/utopia-server` — `HEAD` falls back to a route's `GET`.
+
 ## [0.14.0] - 2026-08-12
 
 A performance release with one opt-in feature. Every hot path flagged in a
