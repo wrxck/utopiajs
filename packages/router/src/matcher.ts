@@ -419,8 +419,10 @@ function segmentRank(segment: string): number {
  * static earlier wins. A summed score is not enough: '/a/:x' and '/:y/b'
  * score identically, yet '/a/b' should match '/a/:x' (static first segment),
  * not whichever happens to sort first alphabetically.
+ *
+ * Exported so other route tables (the server's API routes) order the same way.
  */
-function compareRouteSpecificity(a: Route, b: Route): number {
+export function compareRouteSpecificity(a: { path: string }, b: { path: string }): number {
   const segmentsA = a.path.split('/').filter(Boolean);
   const segmentsB = b.path.split('/').filter(Boolean);
 

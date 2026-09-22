@@ -138,8 +138,15 @@ describe('SSR runtime helpers', () => {
 
     it('sets value=true to empty string for non-boolean attrs', () => {
       const el = createElement('div');
+      setAttr(el, 'translate', true);
+      expect(el.attrs['translate']).toBe('');
+    });
+
+    it('writes aria-* true as the string "true", as the client does', () => {
+      // aria-hidden="" is treated as unset by assistive tech.
+      const el = createElement('div');
       setAttr(el, 'aria-hidden', true);
-      expect(el.attrs['aria-hidden']).toBe('');
+      expect(el.attrs['aria-hidden']).toBe('true');
     });
   });
 

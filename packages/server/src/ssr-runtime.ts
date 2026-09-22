@@ -652,16 +652,34 @@ function anchorRoot(el: VNode): VNode {
   return el;
 }
 
+/** A VNode, as opposed to a component definition object. */
+function isVNode(value: unknown): value is VNode {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    typeof (value as { type?: unknown }).type === 'number'
+  );
+}
+
 export function createComponent(
-  Component: ComponentDefinition,
+  Component: ComponentDefinition | (() => ComponentDefinition | VNode),
   props?: Record<string, unknown>,
   children?: Record<string, () => VNode>,
 ): VNode {
-  const el = anchorRoot(setupAndRender(Component, props ?? {}, children ?? {}));
+  // mirror the client: a function without `render` is a component factory
+  // (e.g. `createRouterView`), called for its definition — or for a node,
+  // which is used as is. The server used to treat it as a definition and
+  // fail with "Component.render is not a function".
+  const resolved =
+    typeof Component === 'function' && !('render' in Component) ? Component() : Component;
+  if (isVNode(resolved)) return resolved;
+  const def = resolved as ComponentDefinition;
+
+  const el = anchorRoot(setupAndRender(def, props ?? {}, children ?? {}));
 
   // Collect scoped styles
-  if (Component.styles) {
-    collectedStyles.add(Component.styles);
+  if (def.styles) {
+    collectedStyles.add(def.styles);
   }
 
   return el;

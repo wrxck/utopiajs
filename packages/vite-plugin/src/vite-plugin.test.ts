@@ -142,7 +142,15 @@ describe('plugin configuration', () => {
     expect(result.resolve.alias['@matthesketh/utopia-runtime']).toBe(
       '@matthesketh/utopia-server/ssr-runtime',
     );
-    expect(config({}, { isSsrBuild: false })).toBeUndefined();
+    // a client build or dev server gets no alias — only the noExternal rule,
+    // which affects server module resolution alone.
+    const client = config({}, { isSsrBuild: false });
+    expect(client.resolve).toBeUndefined();
+    expect(client.ssr.noExternal[0].test('@matthesketh/utopia-router')).toBe(true);
+    expect(client.ssr.noExternal[0].test('vite')).toBe(false);
+    // framework packages import the runtime themselves, so a server build
+    // must bundle them for the alias to reach those imports.
+    expect(result.ssr.noExternal[0].test('@matthesketh/utopia-router')).toBe(true);
   });
 });
 

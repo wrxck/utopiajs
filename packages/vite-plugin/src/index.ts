@@ -66,6 +66,9 @@ const VIRTUAL_ROUTES_ID = 'virtual:utopia-routes';
 /** Resolved virtual module ID (with \0 prefix). */
 const RESOLVED_VIRTUAL_ROUTES_ID = VIRTUAL_PREFIX + VIRTUAL_ROUTES_ID;
 
+/** Every framework package, bundled into server builds (see `config`). */
+const UTOPIA_PACKAGE_RE = /^@matthesketh\/utopia-/;
+
 /** Pattern matching route special files for HMR invalidation. */
 const ROUTE_FILE_RE = /\+(?:page|layout|error|server)\.\w+$/;
 
@@ -366,8 +369,15 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
     // -------------------------------------------------------------------
 
     config(userConfig, env) {
+      // framework packages that import the runtime themselves (the router's
+      // RouterView, for one) must be bundled into the server build: an
+      // externalised package is loaded by node directly, its runtime import
+      // never reaches the swap below, and it ran the DOM runtime on the
+      // server — `document is not defined`.
+      const ssr = { noExternal: [UTOPIA_PACKAGE_RE] };
       if (env.isSsrBuild) {
         return {
+          ssr,
           resolve: {
             alias: {
               '@matthesketh/utopia-runtime': '@matthesketh/utopia-server/ssr-runtime',
@@ -375,6 +385,7 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
           },
         };
       }
+      return { ssr };
     },
 
     configResolved() {
