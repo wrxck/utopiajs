@@ -23,7 +23,10 @@ export function toScriptText(source: string, filename = 'anonymous.utopia'): str
   const blanked = blank(source);
   if (!script || !script.content) return blanked;
 
-  const start = source.indexOf(script.content);
+  // search from the script block itself: the same text can appear earlier
+  // (a short script body repeated in the template), and the first match
+  // would put the script at the wrong offset.
+  const start = source.indexOf(script.content, script.start);
   if (start < 0) return blanked;
 
   return blanked.slice(0, start) + script.content + blanked.slice(start + script.content.length);

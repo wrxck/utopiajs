@@ -53,3 +53,12 @@ describe('toScriptText', () => {
     expect(toScriptText(noScript)).toHaveLength(noScript.length);
   });
 });
+
+describe('toScriptText — script text that also appears earlier', () => {
+  it('keeps the script at its own offset', () => {
+    const source = '<template><p>x</p></template>\n<script>x</script>';
+    const text = toScriptText(source);
+    expect(text.length).toBe(source.length);
+    expect(text.indexOf('x')).toBe(source.lastIndexOf('<script>x') + '<script>'.length);
+  });
+});

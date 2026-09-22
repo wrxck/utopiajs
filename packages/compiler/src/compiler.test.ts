@@ -2099,3 +2099,27 @@ describe('remaining branches', () => {
     expect(result.code).toContain('createComponent(Widget, {})');
   });
 });
+
+describe('scoped CSS — selector lists and nested parentheses', () => {
+  const scope = (source: string): string =>
+    compileStyle({ source, filename: 'f', scoped: true, scopeId: 'data-u-1' }).css;
+
+  it('does not split or scope inside :is() / :where() / :not()', () => {
+    expect(scope('.a:is(.b, .c) { color: red }')).toBe('.a[data-u-1]:is(.b, .c) { color: red }');
+    expect(scope('a:where(:hover, :focus-visible) {}')).toBe(
+      'a[data-u-1]:where(:hover, :focus-visible) {}',
+    );
+  });
+
+  it('leaves quoted attribute values alone', () => {
+    expect(scope('.x:not([data-k="a,b"]) > li:nth-child(2n+1)::before { x: y }')).toBe(
+      '.x:not([data-k="a,b"]) > li[data-u-1]:nth-child(2n+1)::before { x: y }',
+    );
+  });
+
+  it('still scopes each selector of a real list', () => {
+    expect(scope('h1, .a > .b:hover { m: 0 }')).toBe(
+      'h1[data-u-1], .a > .b[data-u-1]:hover { m: 0 }',
+    );
+  });
+});
