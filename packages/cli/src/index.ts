@@ -63,7 +63,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     const arg = flagArgs[i];
     if (arg === '--port' && flagArgs[i + 1]) {
       const n = Number(flagArgs[++i]);
-      if (Number.isNaN(n) || n < 0 || n > 65535) {
+      if (!Number.isInteger(n) || n < 0 || n > 65535) {
         console.error(`Invalid port: ${flagArgs[i]}`);
         process.exit(1);
       }
@@ -258,11 +258,16 @@ export function createMcpRequestHandler(
       }
       return { jsonrpc: '2.0', id: request.id, result };
     } catch (err: unknown) {
-      const e = err as { code?: number; message?: string };
+      const e = err as { code?: unknown; message?: string };
       return {
         jsonrpc: '2.0',
         id: request.id,
-        error: { code: e.code ?? -32603, message: e.message ?? 'Internal error' },
+        // a JSON-RPC error code is an integer. a node error carries a string
+        // code (ENOENT, EACCES) that clients reject as a malformed response.
+        error: {
+          code: Number.isInteger(e.code) ? (e.code as number) : -32603,
+          message: e.message ?? 'Internal error',
+        },
       };
     }
   };

@@ -707,3 +707,33 @@ describe('isDirectInvocation', () => {
     expect(isDirectInvocation(self, import.meta.url)).toBe(true);
   });
 });
+
+describe('argument and error edge cases', () => {
+  it('rejects a fractional port', () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => parseArgs(['node', 'utopia', 'dev', '--port', '3000.5'])).toThrow('exit');
+    exit.mockRestore();
+    error.mockRestore();
+  });
+
+  it('reports a node error with a string code as a JSON-RPC internal error', async () => {
+    const handle = createMcpRequestHandler([
+      {
+        definition: { name: 'read', description: 'read', inputSchema: {} },
+        handler: async () => {
+          throw Object.assign(new Error('no such file'), { code: 'ENOENT' });
+        },
+      },
+    ]);
+    const res = await handle({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'read' },
+    });
+    expect(res.error).toEqual({ code: -32603, message: 'no such file' });
+  });
+});
