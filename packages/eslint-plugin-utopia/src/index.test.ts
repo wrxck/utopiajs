@@ -40,3 +40,17 @@ describe('plugin object', () => {
     expect(messages[0].ruleId).toBe('utopia/no-undecoded-entities');
   });
 });
+
+describe('plugin meta', () => {
+  it('reports the published package version', async () => {
+    // hard-coded, so a release that bumps package.json must bump it too.
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const pkg = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, '..', 'package.json'), 'utf8'),
+    ) as { version: string };
+    const { meta } = await import('./parser');
+    expect(meta.version).toBe(pkg.version);
+    expect((plugin as { meta?: { version: string } }).meta?.version).toBe(pkg.version);
+  });
+});
