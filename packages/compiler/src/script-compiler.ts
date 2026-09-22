@@ -1,5 +1,3 @@
-import { dirname } from 'node:path';
-
 import { requirePeer } from './peer.js';
 
 const TS_LANGS = new Set(['ts', 'typescript']);
@@ -71,7 +69,7 @@ export function compileScript(source: string, lang: string | undefined, filename
     const detail = fatal
       .map((d) => typescript.flattenDiagnosticMessageText(d.messageText, ' '))
       .join('; ');
-    throw new Error(`<script lang="${lang}"> failed to compile in ${dirname(filename)}: ${detail}`);
+    throw new Error(`<script lang="${lang}"> failed to compile in ${filename}: ${detail}`);
   }
 
   // the caller splices this into a setup function, where a prologue is a stray

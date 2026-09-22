@@ -32,10 +32,8 @@ export function toScriptText(source: string, filename = 'anonymous.utopia'): str
   return blanked.slice(0, start) + script.content + blanked.slice(start + script.content.length);
 }
 
+// by UTF-16 unit, like every offset typescript reports. iterating by code
+// point turned each emoji into one space, not two, and moved every line after it.
 function blank(source: string): string {
-  let out = '';
-  for (const char of source) {
-    out += char === '\n' || char === '\r' ? char : ' ';
-  }
-  return out;
+  return source.replace(/[^\n\r]/g, ' ');
 }

@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 
 import type * as ts from 'typescript';
 
+import { parse } from '@/parser';
 import { isUtopiaFile, toScriptText, UTOPIA_EXTENSION } from '@/script-text';
 
 // a script alone has no default export, and only never suits whatever component type the host declares
@@ -20,6 +21,35 @@ export interface CheckResult {
   fileCount: number;
 }
 
+export interface CheckOptions {
+  /** Colour and source context in the output (default: when stdout is a TTY). */
+  pretty?: boolean;
+}
+
+/** What the host learned about each component while reading it. */
+interface ComponentInfo {
+  /** `<script lang="ts">` — plain JavaScript components are checked like `.js`. */
+  typescript: boolean;
+  /** The template, where script bindings are used. */
+  template: string;
+}
+
+/**
+ * "declared but never read" family. A component's bindings are read by its
+ * template, which the script view blanks out, so under noUnusedLocals these
+ * are false for any name the template mentions.
+ */
+const UNUSED_CODES = new Set([6133, 6138, 6192, 6196, 6198, 6199, 6205]);
+
+/**
+ * An import kept by verbatimModuleSyntax that names only a type. The compiler
+ * transpiles one component at a time with verbatimModuleSyntax (so a binding
+ * the template alone uses keeps its import), and a single-file transpile
+ * cannot know `Props` is a type: `import { Props }` ships as a runtime import
+ * of an export that does not exist. Only a whole-program check can see it.
+ */
+const TYPE_ONLY_IMPORT_CODES = new Set([1484, 1485]);
+
 /**
  * Type-check a project including its `.utopia` components.
  *
@@ -27,49 +57,146 @@ export interface CheckResult {
  * resolve an import that ends in it, so a plain `tsc --noEmit` silently omits
  * every component. This builds a program that does both.
  *
- * A component is presented as its script body with everything else blanked,
- * which keeps every offset identical to the file on disk — so a diagnostic
- * points at the component without any position mapping.
+ * Components are found through the tsconfig's own include/exclude (plus any
+ * `extraRoots`), and each is presented as its script body with everything else
+ * blanked, which keeps every offset identical to the file on disk — so a
+ * diagnostic points at the component without any position mapping.
  */
 export function check(
   typescript: typeof ts,
   configPath: string,
   extraRoots: string[] = [],
+  checkOptions: CheckOptions = {},
 ): CheckResult {
   const configDir = dirname(configPath);
+  const pretty = checkOptions.pretty ?? typescript.sys.writeOutputIsTTY?.() ?? false;
   const read = typescript.readConfigFile(configPath, typescript.sys.readFile);
 
   if (read.error) {
     return {
-      diagnostics: [format(typescript, [read.error])],
+      diagnostics: [format(typescript, [read.error], pretty)],
       errorCount: 1,
       fileCount: 0,
     };
   }
 
-  const parsed = typescript.parseJsonConfigFileContent(read.config, typescript.sys, configDir);
+  // the extra extension lets include/exclude pick components up exactly as
+  // they pick up .ts files.
+  const parsed = typescript.parseJsonConfigFileContent(
+    read.config,
+    typescript.sys,
+    configDir,
+    undefined,
+    configPath,
+    undefined,
+    [
+      {
+        extension: UTOPIA_EXTENSION,
+        isMixedContent: false,
+        scriptKind: typescript.ScriptKind.Deferred,
+      },
+    ],
+  );
   // .utopia is not an extension typescript accepts as a root of a compilation.
   // this is the switch that lifts that check - the same one the editor sets for
   // an untitled buffer. without it every component is silently dropped and the
   // check passes while seeing nothing.
   const options: ts.CompilerOptions = { ...parsed.options, allowNonTsExtensions: true };
   const macrosPath = resolve(configDir, MACROS_FILE);
-  const roots = [...parsed.fileNames, ...extraRoots.map((f) => resolve(f)), macrosPath];
-  const host = utopiaCompilerHost(typescript, options, macrosPath);
-  const program = typescript.createProgram(roots, options, host);
+  const roots = [
+    ...new Set([...parsed.fileNames, ...extraRoots.map((f) => resolve(f)), macrosPath]),
+  ];
+  const components = new Map<string, ComponentInfo>();
+  const hostDiagnostics: ts.Diagnostic[] = [];
+  const host = utopiaCompilerHost(typescript, options, macrosPath, components, hostDiagnostics);
+  const program = typescript.createProgram({
+    rootNames: roots,
+    options,
+    host,
+    configFileParsingDiagnostics: parsed.errors,
+  });
+
+  const semantic: ts.Diagnostic[] = [];
+  for (const file of program.getSourceFiles()) {
+    const component = components.get(file.fileName);
+    // a plain JavaScript component is checked the way tsc checks a .js file:
+    // only under checkJs. checking it as typescript failed every untyped one.
+    if (component && !component.typescript && !options.checkJs) continue;
+    for (const d of program.getSemanticDiagnostics(file)) {
+      if (component && isTemplateUseOfUnused(d, file, component)) continue;
+      semantic.push(d);
+    }
+  }
 
   const diagnostics = [
     ...program.getConfigFileParsingDiagnostics(),
+    ...program.getOptionsDiagnostics(),
+    ...program.getGlobalDiagnostics(),
+    ...hostDiagnostics,
     ...program.getSyntacticDiagnostics(),
-    ...program.getSemanticDiagnostics(),
+    ...semantic,
+    ...typeOnlyImportDiagnostics(typescript, program, roots, options, host, components),
   ];
 
   return {
-    diagnostics: diagnostics.length > 0 ? [format(typescript, diagnostics)] : [],
+    diagnostics: diagnostics.length > 0 ? [format(typescript, diagnostics, pretty)] : [],
     errorCount: diagnostics.filter((d) => d.category === typescript.DiagnosticCategory.Error)
       .length,
-    fileCount: roots.filter(isUtopiaFile).length,
+    fileCount: components.size,
   };
+}
+
+/** An "unused" diagnostic for a name the component's template does use. */
+function isTemplateUseOfUnused(
+  d: ts.Diagnostic,
+  file: ts.SourceFile,
+  component: ComponentInfo,
+): boolean {
+  if (!UNUSED_CODES.has(d.code) || d.start === undefined || d.length === undefined) return false;
+  const span = file.text.slice(d.start, d.start + d.length);
+  const names = span.match(/[A-Za-z_$][\w$]*/g) ?? [];
+  return names.some((name) =>
+    new RegExp(`(^|[^\\w$])${escapeRegExp(name)}($|[^\\w$])`).test(component.template),
+  );
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Run the TypeScript components through verbatimModuleSyntax, the setting the
+ * compiler transpiles them with, and report the imports it would ship for
+ * names that are only types.
+ */
+function typeOnlyImportDiagnostics(
+  typescript: typeof ts,
+  program: ts.Program,
+  roots: string[],
+  options: ts.CompilerOptions,
+  host: ts.CompilerHost,
+  components: Map<string, ComponentInfo>,
+): ts.Diagnostic[] {
+  const tsComponents = [...components].filter(([, c]) => c.typescript).map(([f]) => f);
+  if (tsComponents.length === 0 || options.verbatimModuleSyntax) {
+    // with the option already on, the main program reported them.
+    return [];
+  }
+  const strict = typescript.createProgram({
+    rootNames: roots,
+    options: { ...options, verbatimModuleSyntax: true },
+    host,
+    oldProgram: program,
+  });
+  const found: ts.Diagnostic[] = [];
+  for (const fileName of tsComponents) {
+    const file = strict.getSourceFile(fileName);
+    if (!file) continue;
+    for (const d of strict.getSemanticDiagnostics(file)) {
+      if (TYPE_ONLY_IMPORT_CODES.has(d.code)) found.push(d);
+    }
+  }
+  return found;
 }
 
 /**
@@ -80,10 +207,17 @@ function utopiaCompilerHost(
   typescript: typeof ts,
   options: ts.CompilerOptions,
   macrosPath: string,
+  components: Map<string, ComponentInfo>,
+  hostDiagnostics: ts.Diagnostic[],
 ): ts.CompilerHost {
   const host = typescript.createCompilerHost(options, true);
   const getSourceFile = host.getSourceFile.bind(host);
   const fileExists = host.fileExists.bind(host);
+  const cache = typescript.createModuleResolutionCache(
+    host.getCurrentDirectory(),
+    (f) => host.getCanonicalFileName(f),
+    options,
+  );
 
   host.fileExists = (fileName) => fileName === macrosPath || fileExists(fileName);
 
@@ -110,9 +244,35 @@ function utopiaCompilerHost(
       return undefined;
     }
 
+    // a malformed component is reported as a diagnostic and checked as empty,
+    // rather than crashing the whole run.
+    let text: string;
+    let info: ComponentInfo;
+    try {
+      const descriptor = parse(source, fileName);
+      const lang = descriptor.script?.attrs.lang;
+      info = {
+        typescript: lang === 'ts' || lang === 'typescript',
+        template: descriptor.template?.content ?? '',
+      };
+      text = toScriptText(source, fileName);
+    } catch (error) {
+      hostDiagnostics.push({
+        category: typescript.DiagnosticCategory.Error,
+        code: 0,
+        file: undefined,
+        start: undefined,
+        length: undefined,
+        messageText: error instanceof Error ? error.message : String(error),
+      });
+      info = { typescript: false, template: '' };
+      text = source.replace(/[^\n\r]/g, ' ');
+    }
+    components.set(fileName, info);
+
     return typescript.createSourceFile(
       fileName,
-      toScriptText(source, fileName) + COMPONENT_DEFAULT_EXPORT,
+      text + COMPONENT_DEFAULT_EXPORT,
       languageVersion,
       true,
       typescript.ScriptKind.TS,
@@ -121,7 +281,15 @@ function utopiaCompilerHost(
 
   // typescript resolves `./Foo.utopia` by probing for `./Foo.utopia.ts` and
   // giving up. the specifier names a real file, so answer with it directly.
-  host.resolveModuleNameLiterals = (literals, containingFile, redirected, compilerOptions) =>
+  // everything else resolves as tsc would: with the program's cache and each
+  // import's own resolution mode (import vs require under node16/nodenext).
+  host.resolveModuleNameLiterals = (
+    literals,
+    containingFile,
+    redirected,
+    compilerOptions,
+    containingSourceFile,
+  ) =>
     literals.map((literal) => {
       const name = literal.text;
 
@@ -138,13 +306,19 @@ function utopiaCompilerHost(
         }
       }
 
+      const mode = typescript.getModeForUsageLocation(
+        containingSourceFile,
+        literal,
+        compilerOptions,
+      );
       return typescript.resolveModuleName(
         name,
         containingFile,
         compilerOptions,
         host,
-        undefined,
+        cache,
         redirected,
+        mode,
       );
     });
 
@@ -192,10 +366,18 @@ function resolveUtopiaSpecifier(
   return undefined;
 }
 
-function format(typescript: typeof ts, diagnostics: readonly ts.Diagnostic[]): string {
-  return typescript.formatDiagnosticsWithColorAndContext(diagnostics, {
-    getCanonicalFileName: (f) => f,
+function format(
+  typescript: typeof ts,
+  diagnostics: readonly ts.Diagnostic[],
+  pretty: boolean,
+): string {
+  const host = {
+    getCanonicalFileName: (f: string) => f,
     getCurrentDirectory: typescript.sys.getCurrentDirectory,
     getNewLine: () => typescript.sys.newLine,
-  });
+  };
+  // plain text in pipes and CI logs, where colour codes are noise.
+  return pretty
+    ? typescript.formatDiagnosticsWithColorAndContext(diagnostics, host)
+    : typescript.formatDiagnostics(diagnostics, host);
 }
