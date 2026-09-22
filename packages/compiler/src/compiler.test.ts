@@ -1136,6 +1136,13 @@ describe('u-transition directive', () => {
     expect(result.code).toContain('duration: 300');
   });
 
+  it('rejects a duration modifier that is not whole milliseconds', () => {
+    // the value is emitted into code verbatim.
+    expect(() => compileTemplate('<div u-transition:fade.duration-abc>x</div>')).toThrow(
+      /duration must be whole milliseconds/,
+    );
+  });
+
   it('defaults transition name to fade when no name given', () => {
     const result = compileTemplate('<div u-transition>content</div>');
     expect(result.code).toContain('createTransition');

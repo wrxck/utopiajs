@@ -9,6 +9,7 @@
  * the same swap for the router's own import.
  */
 
+import { compileTemplate } from '@matthesketh/utopia-compiler';
 import { signal } from '@matthesketh/utopia-core';
 import { withRoute } from '@matthesketh/utopia-router';
 import { renderToString } from '@matthesketh/utopia-server';
@@ -87,5 +88,30 @@ describe('server rendering with a router', () => {
       renderToString(App as Parameters<typeof renderToString>[0]),
     );
     expect(html).toContain('<div data-utopia-not-found>Page not found</div>');
+  });
+});
+
+describe('slots on a server', () => {
+  // the compiled default slot tested `_ctx.children instanceof Node`, and a
+  // server has no Node global: every <slot /> rendered without content threw.
+  function serverRender(template: string): string {
+    const { code } = compileTemplate(template);
+    const body = code.replace(/^import[^\n]*\n/, '');
+    const helpers = ssrRuntime as unknown as Record<string, unknown>;
+    const names = Object.keys(helpers);
+    const render = new Function(...names, `${body}\nreturn __render`)(
+      ...names.map((n) => helpers[n]),
+    );
+    return renderToString({ render } as Parameters<typeof renderToString>[0]).html;
+  }
+
+  it('renders an unfilled default slot', () => {
+    expect(serverRender('<div><slot /></div>')).toBe('<div><!--slot--></div>');
+  });
+
+  it('renders slot fallback content', () => {
+    expect(serverRender('<div><slot><p>none yet</p></slot></div>')).toBe(
+      '<div><p>none yet</p></div>',
+    );
   });
 });
