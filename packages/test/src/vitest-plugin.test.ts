@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { utopiaTestPlugin } from './vitest-plugin';
 
@@ -224,5 +224,31 @@ describe('utopiaTestPlugin', () => {
     hotUpdate(plugin, component);
 
     expect(fs.existsSync(component + '.test.ts')).toBe(false);
+  });
+
+  it('never overwrites or deletes a hand-written test file of the same name', () => {
+    const component = write('src/Button.utopia', WITH_TEST);
+    const mine = write('src/Button.utopia.test.ts', "it('mine', () => {});\n");
+    process.env.VITEST = 'true';
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const plugin = utopiaTestPlugin({ include: [srcDir] });
+    buildStart(plugin);
+    hotUpdate(plugin, component);
+    buildEnd(plugin);
+
+    expect(fs.readFileSync(mine, 'utf-8')).toBe("it('mine', () => {});\n");
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('still refreshes a file it generated earlier', () => {
+    const component = write('src/Card.utopia', WITH_TEST);
+    write('src/Card.utopia.test.ts', '// Auto-generated from Card.utopia <test> block\nold\n');
+    process.env.VITEST = 'true';
+
+    const plugin = utopiaTestPlugin({ include: [srcDir], cleanup: false });
+    buildStart(plugin);
+    expect(fs.readFileSync(component + '.test.ts', 'utf-8')).toContain("describe('x'");
   });
 });

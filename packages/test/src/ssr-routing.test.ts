@@ -63,7 +63,7 @@ describe('server rendering with a router', () => {
   it('renders the page for the url inside its layout', async () => {
     const { App, table } = await routes();
     const { html } = await withRoute(table, '/', () =>
-      renderToString(App as Parameters<typeof renderToString>[0]),
+      renderToString(App as unknown as Parameters<typeof renderToString>[0]),
     );
     expect(html).toBe(HOME_HTML);
   });
@@ -71,7 +71,11 @@ describe('server rendering with a router', () => {
   it('keeps concurrent requests on their own routes', async () => {
     const { App, table } = await routes();
     const render = (url: string) =>
-      withRoute(table, url, () => renderToString(App as Parameters<typeof renderToString>[0]).html);
+      withRoute(
+        table,
+        url,
+        () => renderToString(App as unknown as Parameters<typeof renderToString>[0]).html,
+      );
     const [home, about, homeAgain] = await Promise.all([
       render('/'),
       render('/about'),
@@ -85,7 +89,7 @@ describe('server rendering with a router', () => {
   it('renders the not-found view for an unknown url', async () => {
     const { App, table } = await routes();
     const { html } = await withRoute(table, '/nope', () =>
-      renderToString(App as Parameters<typeof renderToString>[0]),
+      renderToString(App as unknown as Parameters<typeof renderToString>[0]),
     );
     expect(html).toContain('<div data-utopia-not-found>Page not found</div>');
   });
