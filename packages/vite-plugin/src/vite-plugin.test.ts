@@ -53,8 +53,13 @@ const SFC_NO_STYLE = `<template>
 </template>
 `;
 
-function transform(plugin: Plugin, code: string, id: string): { code: string } | undefined {
-  return (plugin.transform as unknown as AnyHook).call({}, code, id);
+function transform(
+  plugin: Plugin,
+  code: string,
+  id: string,
+  options?: { ssr?: boolean },
+): { code: string } | undefined {
+  return (plugin.transform as unknown as AnyHook).call({}, code, id, options);
 }
 
 function load(plugin: Plugin, id: string, options?: { ssr?: boolean }): string | undefined {
@@ -733,5 +738,18 @@ describe('fragments option', () => {
     const result = transform(plugin, MULTI_ROOT_SFC, '/src/Multi.utopia')!;
     expect(result.code).toContain("createElement('div')");
     expect(result.code).not.toContain('createFragment');
+  });
+});
+
+describe('server transforms carry component styles', () => {
+  const SFC = '<template><p class="a">x</p></template><style>.a { color: red }</style>';
+
+  it('puts the css on the definition for a server transform only', () => {
+    const plugin = getPlugin();
+    (plugin.configResolved as unknown as AnyHook).call({}, {});
+    const server = transform(plugin, SFC, '/src/A.utopia', { ssr: true })!;
+    expect(server.code).toContain('styles:');
+    const client = transform(plugin, SFC, '/src/A.utopia')!;
+    expect(client.code).not.toContain('styles:');
   });
 });

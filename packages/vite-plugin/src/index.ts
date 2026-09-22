@@ -279,6 +279,7 @@ function compileUtopiaSource(
   code: string,
   id: string,
   fragments?: boolean,
+  emitStyles?: boolean,
 ): { result: ReturnType<typeof compile>; deps: string[] } {
   const deps: string[] = [];
   let source = code;
@@ -295,7 +296,7 @@ function compileUtopiaSource(
     deps.push(style.dep);
   }
 
-  return { result: compile(source, { filename: id, fragments }), deps };
+  return { result: compile(source, { filename: id, fragments, emitStyles }), deps };
 }
 
 /**
@@ -472,14 +473,21 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
     // Transform .utopia files
     // -------------------------------------------------------------------
 
-    transform(code, id) {
+    transform(code, id, transformOptions) {
       if (!id.endsWith(UTOPIA_EXT)) return undefined;
       if (!filter(id)) return undefined;
 
       // Inline any `<include src>` template fragments and `<style src>`
       // stylesheet before compiling, and register each external file so Vite
-      // watches it and HMR can find the owning component.
-      const { result, deps } = compileUtopiaSource(code, id, options.fragments);
+      // watches it and HMR can find the owning component. A server transform
+      // also carries the CSS on the definition, where server renders (pages
+      // and emails) collect it.
+      const { result, deps } = compileUtopiaSource(
+        code,
+        id,
+        options.fragments,
+        transformOptions?.ssr === true,
+      );
       for (const dep of deps) {
         registerExternalDep(dep, id);
         this.addWatchFile(dep);

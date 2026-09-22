@@ -47,6 +47,15 @@ export interface CompileOptions {
    * root-level scoped selectors). Not yet supported with hydration.
    */
   fragments?: boolean;
+  /**
+   * Also put the compiled CSS on the component definition as `styles`.
+   * Server renders collect `styles` (renderToString returns it as `css`, and
+   * @matthesketh/utopia-email inlines it); without it a server render of a
+   * compiled component had no CSS at all. The Vite plugin turns this on for
+   * server transforms. Off by default: the client gets its CSS from the
+   * bundler, and `styles` would inject it a second time.
+   */
+  emitStyles?: boolean;
 }
 
 export interface CompileResult {
@@ -136,10 +145,11 @@ export function compile(source: string, options: CompileOptions = {}): CompileRe
   // A component opts in to per-instance props by calling defineProps() in its
   // script. Without it, we keep the historical module-scope shape verbatim so
   // every existing component compiles byte-for-byte identically.
+  const extra = options.emitStyles && css ? `, styles: ${JSON.stringify(css)}` : '';
   const code =
     usesDefineProps(scriptContent) && body
-      ? assemblePropsModule(imports, scriptContent, body)
-      : assembleModuleScope(imports, scriptContent, body);
+      ? assemblePropsModule(imports, scriptContent, body, extra)
+      : assembleModuleScope(imports, scriptContent, body, extra);
 
   return { code, css, a11y: a11yWarnings };
 }
@@ -148,7 +158,12 @@ export function compile(source: string, options: CompileOptions = {}): CompileRe
  * The original module-scope assembly: the user script runs once at import and
  * the render function closes over it. Components are effectively singletons.
  */
-function assembleModuleScope(imports: string, scriptContent: string, body: string): string {
+function assembleModuleScope(
+  imports: string,
+  scriptContent: string,
+  body: string,
+  extra = '',
+): string {
   const parts: string[] = [];
   if (imports) {
     parts.push(imports);
@@ -161,7 +176,7 @@ function assembleModuleScope(imports: string, scriptContent: string, body: strin
   if (body) {
     parts.push(body);
   }
-  parts.push(`${DEFAULT_EXPORT} { render: __render }`);
+  parts.push(`${DEFAULT_EXPORT} { render: __render${extra} }`);
 
   return parts.join('\n\n') + '\n';
 }
@@ -178,7 +193,12 @@ function assembleModuleScope(imports: string, scriptContent: string, body: strin
  * User `import` statements are hoisted to module scope because imports cannot
  * live inside a function body.
  */
-function assemblePropsModule(imports: string, scriptContent: string, body: string): string {
+function assemblePropsModule(
+  imports: string,
+  scriptContent: string,
+  body: string,
+  extra = '',
+): string {
   const { importLines, rest } = hoistImports(scriptContent);
 
   // a type parameter (defineProps<T>()) can contain `>` (arrows, nested
@@ -215,7 +235,9 @@ function assemblePropsModule(imports: string, scriptContent: string, body: strin
   parts.push(
     `function __setup(${PROPS_PARAM}) {\n${setupBody}\n\n${body}\n\n  return { __render };\n}`,
   );
-  parts.push(`${DEFAULT_EXPORT} { setup: __setup, render: (__ctx) => __ctx.__render(__ctx) }`);
+  parts.push(
+    `${DEFAULT_EXPORT} { setup: __setup, render: (__ctx) => __ctx.__render(__ctx)${extra} }`,
+  );
 
   return parts.join('\n\n') + '\n';
 }

@@ -2123,3 +2123,16 @@ describe('scoped CSS — selector lists and nested parentheses', () => {
     );
   });
 });
+
+describe('compile — emitStyles', () => {
+  const SFC = '<template><p class="a">x</p></template><style scoped>.a { color: red }</style>';
+
+  it('puts the compiled css on the definition when asked', () => {
+    const { code, css } = compile(SFC, { filename: 'A.utopia', emitStyles: true });
+    expect(code).toContain(`styles: ${JSON.stringify(css)}`);
+  });
+
+  it('leaves the definition alone by default', () => {
+    expect(compile(SFC, { filename: 'A.utopia' }).code).not.toContain('styles:');
+  });
+});
