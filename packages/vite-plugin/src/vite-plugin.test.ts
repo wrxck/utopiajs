@@ -462,6 +462,18 @@ describe('handleHotUpdate', () => {
 // =========================================================================
 
 describe('defineConfig', () => {
+  it('keeps the user ssr options while adding the framework packages', () => {
+    const config = defineConfig({
+      ssr: { target: 'webworker', external: ['pg'], noExternal: ['my-lib'] },
+    });
+    expect(config.ssr!.target).toBe('webworker');
+    expect(config.ssr!.external).toEqual(['pg']);
+    expect(config.ssr!.noExternal).toEqual(
+      expect.arrayContaining(['my-lib', '@matthesketh/utopia-router']),
+    );
+    expect(defineConfig({ ssr: { noExternal: true } }).ssr!.noExternal).toBe(true);
+  });
+
   it('injects the utopia plugin by default', () => {
     const config = defineConfig();
     const names = (config.plugins as Plugin[]).map((p) => p.name);

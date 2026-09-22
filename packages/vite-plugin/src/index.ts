@@ -782,14 +782,26 @@ export function defineConfig(userConfig: UserConfig = {}): UserConfig {
     },
 
     ssr: {
+      // keep the rest of the user's ssr options: this object used to replace
+      // them wholesale, silently dropping ssr.external, ssr.target and the like.
+      ...rest.ssr,
       // Ensure UtopiaJS packages are bundled during SSR builds so the
-      // runtime swap alias is applied correctly.
-      noExternal: [
-        '@matthesketh/utopia-core',
-        '@matthesketh/utopia-runtime',
-        '@matthesketh/utopia-router',
-        '@matthesketh/utopia-server',
-      ],
+      // runtime swap alias is applied correctly. `true` (bundle everything)
+      // already covers them.
+      noExternal:
+        rest.ssr?.noExternal === true
+          ? true
+          : [
+              ...(rest.ssr?.noExternal === undefined
+                ? []
+                : Array.isArray(rest.ssr.noExternal)
+                  ? rest.ssr.noExternal
+                  : [rest.ssr.noExternal]),
+              '@matthesketh/utopia-core',
+              '@matthesketh/utopia-runtime',
+              '@matthesketh/utopia-router',
+              '@matthesketh/utopia-server',
+            ],
     },
   };
 }
