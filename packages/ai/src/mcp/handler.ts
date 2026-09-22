@@ -10,16 +10,22 @@ import type { JsonRpcRequest } from '@/mcp/types';
 export interface MCPHandlerOptions {
   corsOrigin?: string;
   /**
-   * allow-list of permitted `Origin` header values. when set, any request
-   * carrying an `Origin` not in the list is rejected with 403. this is the
-   * primary defence against dns-rebinding attacks on a locally-bound server.
+   * allow-list of permitted `Origin` header values. any request carrying an
+   * `Origin` not in the list is rejected with 403 — the defence against
+   * dns-rebinding attacks the MCP transport spec requires.
+   *
+   * when omitted, the handler still validates `Origin`: it accepts loopback
+   * origins (localhost, 127.0.0.1, [::1]) and `corsOrigin` when that names a
+   * single origin. `corsOrigin: '*'` turns the check off. a request with no
+   * `Origin` header (a server-side client) is never affected.
    */
   allowedOrigins?: string[];
   /**
    * authorisation gate run before any request is dispatched to the server.
    * return false (or throw) to reject with 401. an mcp server exposes tool
-   * execution, so it must not be reachable on a network without an authz
-   * check — there is intentionally no default-allow for remote callers.
+   * execution: without this, every caller that can reach it can run its
+   * tools, so do not expose it on a network without one. (the handler warns
+   * once when it is created without an authorize function.)
    */
   authorize?: (req: IncomingMessage) => boolean | Promise<boolean>;
 }
@@ -49,8 +55,22 @@ export function createMCPHandler(
   options?: MCPHandlerOptions,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   const corsOrigin = options?.corsOrigin;
-  const allowedOrigins = options?.allowedOrigins;
   const authorize = options?.authorize;
+  // the origins a browser request may come from. with no explicit list,
+  // loopback plus a single configured cors origin; a wildcard cors origin
+  // is an explicit opt-out.
+  const isAllowedOrigin: (origin: string) => boolean = options?.allowedOrigins
+    ? (origin) => options.allowedOrigins!.includes(origin)
+    : corsOrigin === '*'
+      ? () => true
+      : (origin) => origin === corsOrigin || isLoopbackOrigin(origin);
+
+  if (!authorize && !warnedNoAuthorize) {
+    warnedNoAuthorize = true;
+    console.warn(
+      '[utopia-ai] createMCPHandler without an authorize option: every caller that can reach this server can run its tools.',
+    );
+  }
 
   return async (req: IncomingMessage, res: ServerResponse) => {
     // CORS headers (only set if explicitly configured)
@@ -66,11 +86,11 @@ export function createMCPHandler(
       return;
     }
 
-    // reject cross-origin requests early (dns-rebinding defence). only enforced
-    // when an allow-list is configured so existing same-origin setups are
-    // unaffected.
+    // reject cross-origin browser requests early (dns-rebinding defence). it
+    // used to run only when an allow-list was configured, so a server bound to
+    // localhost answered any web page that rebound a hostname to 127.0.0.1.
     const origin = req.headers.origin;
-    if (allowedOrigins && origin !== undefined && !allowedOrigins.includes(origin)) {
+    if (origin !== undefined && !isAllowedOrigin(origin)) {
       res.writeHead(403, { 'Content-Type': 'text/plain' });
       res.end('Forbidden');
       return;
@@ -190,6 +210,25 @@ function handleSSE(server: MCPServer, _req: IncomingMessage, res: ServerResponse
   _req.on('close', () => {
     clearInterval(keepAlive);
   });
+}
+
+let warnedNoAuthorize = false;
+
+/** An http(s) origin on the loopback interface. */
+function isLoopbackOrigin(origin: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+  return (
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1' ||
+    url.hostname === '[::1]' ||
+    url.hostname.endsWith('.localhost')
+  );
 }
 
 const DEFAULT_MAX_BODY_SIZE = 1024 * 1024; // 1 MB

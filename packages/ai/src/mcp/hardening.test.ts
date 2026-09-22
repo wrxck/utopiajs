@@ -3,6 +3,7 @@
 // redaction, and client endpoint validation.
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { Readable } from 'node:stream';
 
 import { describe, expect, it } from 'vitest';
 
@@ -154,5 +155,57 @@ describe('MCP client endpoint validation', () => {
 
   it('accepts an http(s) url', () => {
     expect(() => createMCPClient({ url: 'https://mcp.example.test/rpc' })).not.toThrow();
+  });
+});
+
+describe('origin validation without an allow-list', () => {
+  const post = (origin: string | undefined) => {
+    const body = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'echo', arguments: { id: 'x' } },
+    });
+    const req = Object.assign(Readable.from([Buffer.from(body)]), {
+      method: 'POST',
+      url: '/',
+      headers:
+        origin === undefined ? { host: 'localhost:3001' } : { host: 'localhost:3001', origin },
+    });
+    return req as unknown as Partial<IncomingMessage> & { headers: Record<string, string> };
+  };
+
+  it('rejects a foreign browser origin, as a dns-rebinding page would send', async () => {
+    let calls = 0;
+    const res = await drive(
+      serverWithTool(() => calls++),
+      { authorize: () => true },
+      post('http://evil.example'),
+    );
+    expect(res.statusCode).toBe(403);
+    expect(calls).toBe(0);
+  });
+
+  it('accepts loopback origins, the configured cors origin, and origin-less clients', async () => {
+    const server = serverWithTool(() => {});
+    for (const origin of ['http://localhost:5173', 'http://127.0.0.1:3000', undefined]) {
+      const res = await drive(server, { authorize: () => true }, post(origin));
+      expect(res.statusCode).toBe(200);
+    }
+    const cors = await drive(
+      server,
+      { authorize: () => true, corsOrigin: 'https://app.example' },
+      post('https://app.example'),
+    );
+    expect(cors.statusCode).toBe(200);
+  });
+
+  it('keeps a wildcard cors origin as an explicit opt-out', async () => {
+    const res = await drive(
+      serverWithTool(() => {}),
+      { authorize: () => true, corsOrigin: '*' },
+      post('http://anywhere.example'),
+    );
+    expect(res.statusCode).toBe(200);
   });
 });
