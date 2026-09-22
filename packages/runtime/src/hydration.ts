@@ -8,9 +8,12 @@
 //
 // The server/client contract (see @matthesketh/utopia-server's serializers):
 //
-//   - Adjacent non-empty text nodes are separated by a `<!--|-->` comment, so
+//   - Adjacent text nodes are separated by a `<!--|-->` comment, so
 //     `Hello {{ name }}!` arrives as three text nodes rather than one. An empty
-//     text node has no server markup at all; the client creates it in place.
+//     text node writes nothing, so a separator where a text node is due stands
+//     for an empty one, and the client creates it in the separator's place.
+//     Raw-text elements (<textarea>, <title>) cannot hold comments; their
+//     content is rebuilt rather than claimed.
 //   - Every `u-if` / `u-for` anchor is preceded by a `<!--[-->` comment that
 //     opens its range: `<!--[-->` branch-or-rows `<!--u-if-->`. The compiled
 //     code creates the anchor BEFORE it renders the branch, so the walker
@@ -149,13 +152,18 @@ export function exitNode(): void {
   hydrateEnd = frame ? frame.end : null;
 }
 
+/** The comment the server writes between adjacent text nodes. */
+export function isTextSeparator(node: Node): boolean {
+  return node.nodeType === 8 && (node as Comment).data === TEXT_SEPARATOR;
+}
+
 /**
  * After claiming a text node, drop the separator the server wrote after it so
  * the next text node claims its own server text.
  */
 export function skipTextSeparator(): void {
   const node = peekNode();
-  if (node && node.nodeType === 8 && (node as Comment).data === TEXT_SEPARATOR) {
+  if (node && isTextSeparator(node)) {
     hydrateNode = node.nextSibling;
     node.parentNode?.removeChild(node);
   }

@@ -102,6 +102,41 @@ describe('hydration claims what the server rendered', () => {
     expect(host.querySelector('span')!.textContent).toBe('after');
   });
 
+  it('keeps static text after an interpolation that rendered empty', async () => {
+    const { client, expected } = await roundTrip('<p>{{ pre() }}Hello {{ name() }}</p>', () => ({
+      pre: signal(''),
+      name: signal('Ada'),
+    }));
+    expect(host.innerHTML).toBe(expected);
+    expect(host.textContent).toBe('Hello Ada');
+    expect(warn).not.toHaveBeenCalled();
+
+    client.pre.set('» ');
+    client.name.set('Bo');
+    await runtime.nextTick();
+    expect(host.textContent).toBe('» Hello Bo');
+  });
+
+  it('keeps list rows whose first interpolation is empty', async () => {
+    const { expected } = await roundTrip(
+      '<ul><li u-for="x in xs()" :key="x.id">{{ x.badge }}Item {{ x.name }}</li></ul>',
+      () => ({ xs: signal([{ id: 1, badge: '', name: 'a' }]) }),
+    );
+    expect(host.innerHTML).toBe(expected);
+    expect(host.querySelector('li')!.textContent).toBe('Item a');
+  });
+
+  it('rebuilds raw-text element content instead of duplicating it', async () => {
+    const { client } = await roundTrip('<textarea>Hi {{ name() }}</textarea>', () => ({
+      name: signal('Ada'),
+    }));
+    const textarea = host.querySelector('textarea')!;
+    expect(textarea.value).toBe('Hi Ada');
+    client.name.set('Bo');
+    await runtime.nextTick();
+    expect(textarea.textContent).toBe('Hi Bo');
+  });
+
   it('claims a u-if branch and toggles it afterwards', async () => {
     const { client, expected } = await roundTrip(
       '<div><b u-if="show()">yes</b><i>tail</i></div>',
@@ -236,5 +271,50 @@ describe('the SSR runtime serves everything compiled output imports', () => {
   ])('server-renders %s', (_label, template, vars) => {
     const def = { render: build(template, vars, ssrRuntime as unknown as Helpers) };
     expect(() => renderToString(def as Parameters<typeof renderToString>[0])).not.toThrow();
+  });
+});
+
+describe('rows whose component root is a u-if', () => {
+  it('hydrate in order and keep their place when toggled', async () => {
+    // the row is a component whose template root is a u-if: its node in the
+    // list is the anchor, and its branch sits before it.
+    const rows = () => [
+      { id: 'a', on: signal(true) },
+      { id: 'b', on: signal(true) },
+      { id: 'c', on: signal(true) },
+    ];
+    const childTemplate = '<li u-if="row.on()">{{ row.id }}</li>';
+    const make = (helpers: Helpers, state: { rows: ReturnType<typeof rows> }) => {
+      const Child = {
+        setup: (props: Record<string, unknown>) => ({ row: props.row }),
+        render: (ctx: Record<string, unknown>) =>
+          build(childTemplate, { row: ctx.row }, helpers)({}),
+      };
+      return build(
+        '<ul><Child u-for="r in rows" :key="r.id" :row="r" /><li>end</li></ul>',
+        {
+          Child,
+          rows: state.rows,
+        },
+        helpers,
+      );
+    };
+    const serverState = { rows: rows() };
+    const { html } = renderToString({
+      render: make(ssrRuntime as unknown as Helpers, serverState),
+    } as Parameters<typeof renderToString>[0]);
+    host.innerHTML = html;
+    const client = { rows: rows() };
+    runtime.hydrate(
+      { render: make(runtime as unknown as Helpers, client) } as runtime.ComponentDefinition,
+      host,
+    );
+    expect(host.textContent).toBe('abcend');
+
+    client.rows[0]!.on.set(false);
+    await runtime.nextTick();
+    client.rows[0]!.on.set(true);
+    await runtime.nextTick();
+    expect(host.textContent).toBe('abcend');
   });
 });

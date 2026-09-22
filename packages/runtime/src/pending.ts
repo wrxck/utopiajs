@@ -24,6 +24,11 @@ export function deferUntilAttached(anchor: Node, render: () => void): void {
   waiting.set(anchor, render);
 }
 
+/** Whether a render is still waiting for `anchor` to be inserted. */
+export function isDeferred(anchor: Node): boolean {
+  return waiting.has(anchor);
+}
+
 /** Forget a waiting render (the directive rendered or was disposed). */
 export function cancelDeferred(anchor: Node): void {
   waiting.delete(anchor);
@@ -44,4 +49,41 @@ export function runAttached(node: Node): void {
     waiting.delete(node);
     render();
   }
+}
+
+// ---------------------------------------------------------------------------
+// directive ranges
+// ---------------------------------------------------------------------------
+
+/**
+ * The live nodes a u-if / u-for anchor owns, which sit before it. A list row
+ * whose root is such an anchor (a component whose template root is a u-if)
+ * occupies the whole range, and moving only the anchor left its branch
+ * behind — rows came out, or were reordered into, the wrong order.
+ */
+const ranges = new WeakMap<Node, () => Node[]>();
+
+/** Record how to read the nodes `anchor` owns. */
+export function setRange(anchor: Node, nodes: () => Node[]): void {
+  ranges.set(anchor, nodes);
+}
+
+/**
+ * Every node a row occupies, in document order: a directive anchor's range
+ * (expanded recursively) followed by the anchor, or null for a plain node.
+ */
+export function rangeOf(node: Node): Node[] | null {
+  const read = ranges.get(node);
+  if (!read) return null;
+  const out: Node[] = [];
+  for (const n of read()) {
+    const inner = n.nodeType === 11 ? ((n as FragmentWithRoots).__roots ?? []) : [n];
+    for (const m of inner) {
+      const nested = rangeOf(m);
+      if (nested) out.push(...nested);
+      else out.push(m);
+    }
+  }
+  out.push(node);
+  return out;
 }

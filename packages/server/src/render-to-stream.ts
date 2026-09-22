@@ -104,9 +104,9 @@ function* childChunks(
   let prevText = false;
   for (const child of children) {
     if (child.type === 2) {
-      if (child.text === '') continue;
       if (prevText && separateText) yield TEXT_SEPARATOR_HTML;
       prevText = true;
+      if (child.text === '') continue;
     } else {
       prevText = false;
     }

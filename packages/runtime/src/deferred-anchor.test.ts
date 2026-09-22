@@ -68,3 +68,23 @@ describe('a directive whose anchor is inserted late', () => {
     expect(host.querySelector('p')).toBeNull();
   });
 });
+
+describe('an anchor inserted synchronously', () => {
+  it('renders its branch exactly once', async () => {
+    let renders = 0;
+    const anchor = createComment('u-if');
+    createIf(
+      anchor,
+      () => true,
+      () => {
+        renders++;
+        return createElement('p');
+      },
+    );
+    const host = createElement('div');
+    appendChild(host, anchor); // before the directive's own microtask retry
+    await later();
+    expect(renders).toBe(1);
+    expect(host.querySelectorAll('p')).toHaveLength(1);
+  });
+});

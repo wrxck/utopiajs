@@ -17,7 +17,7 @@ import {
 } from '@/component';
 import { insertBefore, removeNode } from '@/dom';
 import { beginRange, endRange, type RangeWalk, settleRange } from '@/hydration';
-import { cancelDeferred, deferUntilAttached } from '@/pending';
+import { cancelDeferred, deferUntilAttached, isDeferred, rangeOf, setRange } from '@/pending';
 import { transitionEnter, transitionLeave } from '@/transition';
 
 /** A DOM Node with optional cleanup/dispose callbacks attached by the runtime. */
@@ -116,7 +116,10 @@ export function createIf(
         retryScheduled = true;
         queueMicrotask(() => {
           retryScheduled = false;
-          if (!disposed && anchor.parentNode) {
+          // only when the insertion hook has not rendered already: running
+          // again tore the fresh branch down and rebuilt it, remounting every
+          // child component in it.
+          if (!disposed && anchor.parentNode && isDeferred(anchor)) {
             cancelDeferred(anchor);
             applyBranch();
           }
@@ -161,6 +164,8 @@ export function createIf(
     // node identity, focus and caret preservation — the most delicate code in
     // the runtime — behind a queue, for nothing the user could ever see.
   });
+
+  setRange(anchor, () => currentNodes);
 
   const disposeAll = (): void => {
     if (disposed) return;
@@ -367,7 +372,10 @@ export function createFor<T>(
         retryScheduled = true;
         queueMicrotask(() => {
           retryScheduled = false;
-          if (!listDisposed && anchor.parentNode) anchorAttached.update((n) => n + 1);
+          if (!listDisposed && anchor.parentNode && isDeferred(anchor)) {
+            cancelDeferred(anchor);
+            anchorAttached.update((n) => n + 1);
+          }
         });
       }
       return;
@@ -484,7 +492,9 @@ export function createFor<T>(
     for (let i = n - 1; i >= 0; i--) {
       const e = next[i]!;
       e.pos = i;
-      const roots = e.nodes;
+      // a fragment row's recorded roots, or a directive-rooted row's whole
+      // range (read live: a u-if row's branch changes after it renders).
+      const roots = e.nodes ?? rangeOf(e.node);
       if (roots && roots.length === 0) continue; // empty row occupies nothing
       const first = roots ? roots[0]! : e.node;
       const last = roots ? roots[roots.length - 1]! : e.node;
@@ -512,6 +522,8 @@ export function createFor<T>(
     entries = next;
     // NOT scheduled — see createIf above.
   });
+
+  setRange(anchor, () => entries.flatMap((e) => e.nodes ?? rangeOf(e.node) ?? [e.node]));
 
   const disposeAll = (): void => {
     listDisposed = true;

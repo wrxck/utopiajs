@@ -19,6 +19,7 @@ import {
   exitNode,
   insertAtCursor,
   isHydrating,
+  isTextSeparator,
   peekNode,
   replaceAtCursor,
   skipTextSeparator,
@@ -111,6 +112,21 @@ function createRawElement(tag: string): Element {
 }
 
 /** Create a real DOM element for the given tag name. */
+/**
+ * Elements whose content the HTML parser reads as one raw text run, so the
+ * server cannot separate their text nodes. Hydration rebuilds their content
+ * instead of claiming it.
+ */
+const RAW_TEXT_TAGS = new Set([
+  'textarea',
+  'title',
+  'script',
+  'style',
+  'xmp',
+  'noembed',
+  'noframes',
+]);
+
 export function createElement(tag: string): Element {
   if (isHydrating) {
     // the tag has to match too: claiming a server <i> as the client's <b>
@@ -120,6 +136,12 @@ export function createElement(tag: string): Element {
       `<${tag}>`,
       () => createRawElement(tag),
     );
+    // `Hi {{ name }}` inside a <textarea> arrives as ONE text node; claiming
+    // it for the static part left the interpolation to add a second copy.
+    // start such an element empty, so its text is created fresh.
+    if (RAW_TEXT_TAGS.has(tag.toLowerCase())) {
+      while (el.firstChild) el.removeChild(el.firstChild);
+    }
     // Enter this element so child createElement/createTextNode calls walk
     // its children.
     enterNode(el);
@@ -138,6 +160,12 @@ export function createTextNode(text: string): Text {
       return node as Text;
     }
     const created = document.createTextNode(String(text));
+    if (node && isTextSeparator(node)) {
+      // a separator where a text node is due: this text was empty on the
+      // server. it stands in for the node, so take its place.
+      replaceAtCursor(node, created);
+      return created;
+    }
     if (node && text !== '') {
       // static text is never empty, so the server always wrote it: anything
       // else at the cursor is a mismatch.

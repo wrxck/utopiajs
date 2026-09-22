@@ -64,12 +64,16 @@ function pushChildren(
   selectValue: string | null,
   separateText: boolean,
 ): void {
+  // every pair of adjacent text nodes gets a separator, empty ones included:
+  // an empty text node writes nothing, so without the separator the client
+  // could not tell `{{ empty }}Hello` from `Hello` and claimed the static text
+  // for the interpolation.
   let prevText = false;
   for (const child of children) {
     if (child.type === 2) {
-      if (child.text === '') continue;
       if (prevText && separateText) out.push(TEXT_SEPARATOR_HTML);
       prevText = true;
+      if (child.text === '') continue;
     } else {
       prevText = false;
     }
