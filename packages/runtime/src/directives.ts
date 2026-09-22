@@ -17,6 +17,7 @@ import {
 } from '@/component';
 import { insertBefore, removeNode } from '@/dom';
 import { beginRange, endRange, type RangeWalk, settleRange } from '@/hydration';
+import { cancelDeferred, deferUntilAttached } from '@/pending';
 import { transitionEnter, transitionLeave } from '@/transition';
 
 /** A DOM Node with optional cleanup/dispose callbacks attached by the runtime. */
@@ -106,15 +107,24 @@ export function createIf(
   const applyBranch = (): void => {
     const parent = anchor.parentNode;
     if (!parent) {
+      // render as soon as the anchor is inserted: through the runtime's
+      // insertion paths at once, or through the raw DOM on the next microtask.
+      deferUntilAttached(anchor, () => {
+        if (!disposed) applyBranch();
+      });
       if (!retryScheduled) {
         retryScheduled = true;
         queueMicrotask(() => {
           retryScheduled = false;
-          if (!disposed && anchor.parentNode) applyBranch();
+          if (!disposed && anchor.parentNode) {
+            cancelDeferred(anchor);
+            applyBranch();
+          }
         });
       }
       return;
     }
+    cancelDeferred(anchor);
 
     teardownBranch();
 
@@ -155,6 +165,7 @@ export function createIf(
   const disposeAll = (): void => {
     if (disposed) return;
     disposed = true;
+    cancelDeferred(anchor);
     dispose();
     teardownBranch();
   };
@@ -347,7 +358,11 @@ export function createFor<T>(
       // the caller appends after render returns), the first reconcile runs
       // before the anchor is connected. dropping it silently rendered NOTHING
       // for the life of the page whenever the list never changed again, so
-      // retry on a microtask instead.
+      // reconcile once the anchor is inserted (see pending.ts), and on a
+      // microtask for a raw DOM insertion.
+      deferUntilAttached(anchor, () => {
+        if (!listDisposed) anchorAttached.update((n) => n + 1);
+      });
       if (!retryScheduled) {
         retryScheduled = true;
         queueMicrotask(() => {
@@ -358,6 +373,7 @@ export function createFor<T>(
       return;
     }
 
+    cancelDeferred(anchor);
     pass++;
     const n = items.length;
     const next: Entry[] = new Array(n);
@@ -499,6 +515,7 @@ export function createFor<T>(
 
   const disposeAll = (): void => {
     listDisposed = true;
+    cancelDeferred(anchor);
     reconcile();
     const parent = anchor.parentNode;
     for (const e of entries) {

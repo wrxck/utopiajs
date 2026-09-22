@@ -11,6 +11,7 @@
 import { createRoot } from '@matthesketh/utopia-core';
 
 import { reclaimFragment, snapshotFragmentRoots } from '@/fragment';
+import { runAttached } from '@/pending';
 
 // ---------------------------------------------------------------------------
 // Effect disposer capture mechanism
@@ -287,6 +288,7 @@ export function createComponentInstance(
       // 3. Insert into the target.
       snapshotFragmentRoots(instance.el);
       target.insertBefore(instance.el, anchor ?? null);
+      runAttached(instance.el);
 
       // 4. Inject scoped styles (once).
       if (definition.styles && !styleElement) {

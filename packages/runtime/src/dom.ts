@@ -23,6 +23,7 @@ import {
   replaceAtCursor,
   skipTextSeparator,
 } from '@/hydration';
+import { runAttached } from '@/pending';
 import { domScheduler } from '@/scheduler';
 
 // ---------------------------------------------------------------------------
@@ -825,6 +826,7 @@ export function addEventListener(
 export function insertBefore(parent: Node, node: Node, anchor: Node | null): void {
   snapshotFragmentRoots(node);
   parent.insertBefore(node, anchor);
+  runAttached(node);
 }
 
 /**
@@ -852,6 +854,7 @@ export function appendChild(parent: Node, child: Node): void {
   }
   snapshotFragmentRoots(child);
   parent.appendChild(child);
+  runAttached(child);
 }
 
 /**

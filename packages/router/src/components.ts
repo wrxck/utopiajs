@@ -231,8 +231,10 @@ function createRouterViewNode(): Node {
         currentCleanup = null;
       }
       clearContainer(container);
-      snapshotFragmentRoots(result.node);
-      container.appendChild(result.node);
+      // the runtime's insertion records a fragment's roots and renders a page
+      // whose root is a u-if / u-for anchor, which cannot render until it has
+      // a parent.
+      appendChild(container, result.node);
       currentCleanup = result.cleanup;
     });
   });
@@ -261,23 +263,15 @@ interface LoadResult {
 
 /**
  * A page compiled with the runtime's `fragments` option has a
- * DocumentFragment root, which empties on insertion. Mirror the runtime's
- * bookkeeping (the router deliberately has no runtime dependency): record
- * the fragment's children before inserting it, and detach by moving the
- * recorded roots back into the fragment.
+ * DocumentFragment root, which empties on insertion. The runtime's insertion
+ * records the fragment's children; detaching moves those recorded roots back
+ * into the fragment.
  */
 interface FragmentWithRoots extends Node {
   __roots?: Node[];
 }
 
 const FRAGMENT_TYPE = 11;
-
-/** Record a fragment's children just before insertion empties it. */
-function snapshotFragmentRoots(node: Node): void {
-  if (node.nodeType === FRAGMENT_TYPE && node.childNodes.length > 0) {
-    (node as FragmentWithRoots).__roots = Array.from(node.childNodes);
-  }
-}
 
 /** Detach a node from the DOM, fragment-aware. */
 function detachNode(node: Node): void {

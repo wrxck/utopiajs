@@ -8,7 +8,7 @@
 
 import { type ComponentDefinition, pushDisposer } from '@/component';
 import { createComponent } from '@/directives';
-import { createElement } from '@/dom';
+import { appendChild, createElement } from '@/dom';
 import { isHydrating } from '@/hydration';
 
 /** Context key carrying a lazy component's props from setup to render. */
@@ -103,7 +103,7 @@ export function defineLazy(
           }
           const node = createComponent(Component, props, slots);
           innerCleanup = (node as { __cleanup?: () => void }).__cleanup;
-          container.appendChild(node);
+          appendChild(container, node);
         })
         .catch((err) => {
           pendingLoads.delete(loader);
