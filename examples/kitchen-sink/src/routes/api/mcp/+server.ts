@@ -1,9 +1,8 @@
 // API route: POST /api/mcp
 // Demonstrates @matthesketh/utopia-ai MCP server with tools, resources, and prompts
 
-import type { IncomingMessage, ServerResponse } from 'node:http';
-
-import { createMCPHandler, createMCPServer } from '@matthesketh/utopia-ai/mcp';
+import { createMCPServer } from '@matthesketh/utopia-ai/mcp';
+import type { RequestEvent } from '@matthesketh/utopia-server';
 
 const mcp = createMCPServer({
   name: 'kitchen-sink-mcp',
@@ -115,13 +114,8 @@ const mcp = createMCPServer({
   ],
 });
 
-const handler = createMCPHandler(mcp);
-
-export async function POST(req: IncomingMessage, res: ServerResponse) {
-  handler(req, res);
-}
-
-export async function GET(req: IncomingMessage, res: ServerResponse) {
-  // SSE transport for MCP
-  handler(req, res);
+// JSON-RPC over POST. createMCPHandler serves a Node http server; an API
+// route hands the request straight to the MCP server instead.
+export async function POST({ request }: RequestEvent) {
+  return Response.json(await mcp.handleRequest(await request.json()));
 }

@@ -34,7 +34,7 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
   import { signal, computed, effect } from '@matthesketh/utopia-core';
 
   interface Task {

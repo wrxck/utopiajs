@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { createHandler } from '@matthesketh/utopia-server';
 import express from 'express';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -23,32 +24,33 @@ async function createServer() {
   }
 
   app.use('*', async (req, res) => {
-    const url = req.originalUrl;
+    // express rewrites req.url under a mount; the handler needs the real one.
+    req.url = req.originalUrl;
 
     try {
-      let template, render;
+      let template, entry;
 
       if (!isProduction) {
         template = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
-        template = await vite.transformIndexHtml(url, template);
-        const mod = await vite.ssrLoadModule('/src/entry-server.ts');
-        render = mod.render;
+        template = await vite.transformIndexHtml(req.url, template);
+        entry = await vite.ssrLoadModule('/src/entry-server.ts');
       } else {
         template = fs.readFileSync(path.resolve(__dirname, 'dist/client/index.html'), 'utf-8');
-        const mod = await import('./dist/server/entry-server.js');
-        render = mod.render;
+        entry = await import('./dist/server/entry-server.js');
       }
 
-      const { html: appHtml, css } = render(url);
-      let page = template;
-      page = page.replace('<!--ssr-head-->', css ? `<style>${css}</style>` : '');
-      page = page.replace('<!--ssr-outlet-->', appHtml);
-
-      res.status(200).set({ 'Content-Type': 'text/html' }).end(page);
+      // createHandler serves the +server API routes, renders the page into the
+      // <!--ssr-outlet--> and <!--ssr-head--> markers, and sets baseline
+      // security headers.
+      await createHandler({
+        template,
+        apiRoutes: entry.apiManifest,
+        render: (url) => entry.render(url),
+      })(req, res);
     } catch (e) {
       if (!isProduction) vite.ssrFixStacktrace(e);
       console.error(e);
-      res.status(500).end(e.message);
+      res.status(500).end('Internal Server Error');
     }
   });
 
