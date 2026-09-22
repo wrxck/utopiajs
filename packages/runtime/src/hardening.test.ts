@@ -412,10 +412,10 @@ describe('url scheme guards read the url as the browser parses it', () => {
 });
 
 describe('aria attributes keep an explicit false', () => {
-  it('writes aria-expanded="false" instead of removing it', () => {
+  it('writes aria-expanded as "true"/"false" instead of a bare or removed attribute', () => {
     const button = document.createElement('button');
     setAttr(button, 'aria-expanded', true);
-    expect(button.getAttribute('aria-expanded')).toBe('');
+    expect(button.getAttribute('aria-expanded')).toBe('true');
     setAttr(button, 'aria-expanded', false);
     expect(button.getAttribute('aria-expanded')).toBe('false');
   });

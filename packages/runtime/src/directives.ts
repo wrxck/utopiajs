@@ -17,6 +17,7 @@ import {
 } from '@/component';
 import { insertBefore, removeNode } from '@/dom';
 import { beginRange, endRange, type RangeWalk, settleRange } from '@/hydration';
+import { transitionEnter, transitionLeave } from '@/transition';
 
 /** A DOM Node with optional cleanup/dispose callbacks attached by the runtime. */
 interface DisposableNode extends Node {
@@ -55,6 +56,7 @@ export function createIf(
   let lastConditionTruthy: boolean | undefined;
   let disposed = false;
   let hydrationWalk: RangeWalk | null = null;
+  let initialised = false;
 
   // tear down the active branch: dispose the effects captured during its
   // render, run any child-component cleanup, then remove its nodes. without
@@ -71,7 +73,8 @@ export function createIf(
     currentDisposers = [];
     for (const node of currentNodes) {
       (node as DisposableNode).__cleanup?.();
-      removeNode(node);
+      // a `u-transition` element stays in place until its leave finishes.
+      if (!transitionLeave(node, () => removeNode(node))) removeNode(node);
     }
     currentNodes.length = 0;
   };
@@ -90,6 +93,8 @@ export function createIf(
     if (hydrationWalk) settleRange(hydrationWalk);
     currentNodes.push(node);
     insertBefore(parent, node, anchor);
+    // the first render (and hydration) is the initial state, not a change.
+    if (initialised) transitionEnter(node);
   };
 
   // render the current branch. when this if is itself a branch returned into an
@@ -126,6 +131,7 @@ export function createIf(
     } finally {
       hydrationWalk = null;
       if (walk) endRange(walk);
+      initialised = true;
     }
   };
 
@@ -437,7 +443,10 @@ export function createFor<T>(
             if (r.parentNode === parent) parent.removeChild(r);
           }
         } else if (e.node.parentNode === parent) {
-          parent.removeChild(e.node);
+          const node = e.node;
+          if (!transitionLeave(node, () => node.parentNode?.removeChild(node))) {
+            parent.removeChild(node);
+          }
         }
       }
     }
@@ -474,6 +483,14 @@ export function createFor<T>(
         }
       }
       cursor = first;
+    }
+
+    // rows added by an update play their enter transition; the first pass is
+    // the initial state.
+    if (pass > 1) {
+      for (const e of freshThisPass) {
+        if (!e.nodes) transitionEnter(e.node);
+      }
     }
 
     entries = next;
