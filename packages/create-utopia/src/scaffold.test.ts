@@ -266,7 +266,9 @@ describe('scaffoldProject — optional features', () => {
 
     const viteConfig = fs.readFileSync(path.join(root, 'vite.config.ts'), 'utf-8');
     expect(viteConfig).toContain("import content from '@matthesketh/utopia-content/vite'");
-    expect(viteConfig).toContain("plugins: [utopia(), content({ contentDir: 'content' })]");
+    expect(viteConfig).toContain(
+      "plugins: [utopia(), content({ contentDir: 'content', embedHtml: true })]",
+    );
 
     expect(fs.existsSync(path.join(root, 'src', 'routes', 'blog', '+page.utopia'))).toBe(true);
     expect(fs.existsSync(path.join(root, 'src', 'routes', 'blog', '[slug]', '+page.utopia'))).toBe(
@@ -541,5 +543,27 @@ describe('routed SSR scaffold', () => {
   it('references the plugin client types for TypeScript projects', () => {
     const env = fs.readFileSync(path.join(scaffold(), 'src', 'env.d.ts'), 'utf-8');
     expect(env).toContain('@matthesketh/utopia-vite-plugin/client');
+  });
+});
+
+describe('blog scaffold', () => {
+  it('reads posts from the build-time manifest, not the filesystem API', () => {
+    const root = scaffold({ useContent: true });
+    const list = fs.readFileSync(path.join(root, 'src', 'routes', 'blog', '+page.utopia'), 'utf-8');
+    const post = fs.readFileSync(
+      path.join(root, 'src', 'routes', 'blog', '[slug]', '+page.utopia'),
+      'utf-8',
+    );
+    for (const page of [list, post]) {
+      // getCollection/getEntry read node:fs and cannot run in a browser.
+      expect(page).toContain("from 'virtual:utopia-content'");
+      expect(page).not.toContain("from '@matthesketh/utopia-content'");
+    }
+    // the post page is a module-scope component: its slug must follow the route.
+    expect(post).toContain("getRouteParam('slug')");
+    expect(post).not.toContain('window.location');
+    expect(fs.readFileSync(path.join(root, 'src', 'env.d.ts'), 'utf-8')).toContain(
+      '@matthesketh/utopia-content/client',
+    );
   });
 });

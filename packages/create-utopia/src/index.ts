@@ -465,6 +465,16 @@ export const blog = defineCollection({
       'utf-8',
     );
 
+    // TypeScript projects need the manifest module's types.
+    const envDts = path.join(root, 'src', 'env.d.ts');
+    if (fs.existsSync(envDts)) {
+      fs.appendFileSync(
+        envDts,
+        '/// <reference types="@matthesketh/utopia-content/client" />\n',
+        'utf-8',
+      );
+    }
+
     // Update vite.config to include the content plugin
     const viteConfigPath = path.join(root, `vite.config.${ext}`);
     if (fs.existsSync(viteConfigPath)) {
@@ -477,7 +487,7 @@ export const blog = defineCollection({
       // Add content plugin to the plugins array
       viteConfig = viteConfig.replace(
         /plugins:\s*\[\s*utopia\(\)/,
-        "plugins: [utopia(), content({ contentDir: 'content' })",
+        "plugins: [utopia(), content({ contentDir: 'content', embedHtml: true })",
       );
       fs.writeFileSync(viteConfigPath, viteConfig, 'utf-8');
     }
@@ -495,7 +505,7 @@ export const blog = defineCollection({
   <div class="blog">
     <h1>Blog</h1>
     <div class="posts">
-      <article u-for="post in posts()" class="post-card">
+      <article u-for="post in posts" :key="post.slug" class="post-card">
         <h2>
           <a :href="'/blog/' + post.slug">{{ post.data.title }}</a>
         </h2>
@@ -510,17 +520,14 @@ export const blog = defineCollection({
 </template>
 
 <script${language === 'typescript' ? ' lang="ts"' : ''}>
-import { signal } from '@matthesketh/utopia-core';
-import { getCollection } from '@matthesketh/utopia-content';
-import '../../../content.config';
+// the content manifest is built from content/ by the content vite plugin, so
+// it works in the browser and during server rendering alike. (getCollection
+// reads the filesystem and belongs in server code.)
+import { collections } from 'virtual:utopia-content';
 
-const posts = signal([]);
-
-getCollection('blog', {
-  filter: (e) => !e.data.draft,
-  sort: 'date',
-  order: 'desc',
-}).then((entries) => posts.set(entries));
+const posts = (collections.blog ?? [])
+  .filter((entry) => !entry.data.draft)
+  .sort((a, b) => String(b.data.date).localeCompare(String(a.data.date)));
 </script>
 
 <style>
@@ -566,23 +573,23 @@ getCollection('blog', {
         <span u-for="tag in post().data.tags" class="tag">{{ tag }}</span>
       </div>
     </header>
-    <div class="content" u-html="post().html"></div>
+    <!-- markdown rendered at build time from your own content; the renderer
+         drops raw html and script urls, so it is rendered as is. -->
+    <div class="content" u-html.raw="post().html"></div>
     <a href="/blog" class="back">Back to blog</a>
   </article>
 </template>
 
 <script${language === 'typescript' ? ' lang="ts"' : ''}>
-import { signal } from '@matthesketh/utopia-core';
-import { getEntry } from '@matthesketh/utopia-content';
-import '../../../../content.config';
+import { computed } from '@matthesketh/utopia-core';
+import { getRouteParam } from '@matthesketh/utopia-router';
+import { collections } from 'virtual:utopia-content';
 
-const post = signal(null);
-
-// Extract slug from URL
-const slug = window.location.pathname.split('/').pop();
-if (slug) {
-  getEntry('blog', slug).then((entry) => post.set(entry));
-}
+// read the slug from the route, reactively: this script runs once, when the
+// page module first loads, so a slug read from the address bar here would
+// show the first post visited for every post after it.
+const slug = getRouteParam('slug');
+const post = computed(() => (collections.blog ?? []).find((entry) => entry.slug === slug()) ?? null);
 </script>
 
 <style>

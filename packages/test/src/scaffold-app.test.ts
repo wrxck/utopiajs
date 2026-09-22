@@ -8,6 +8,7 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import * as core from '@matthesketh/utopia-core';
@@ -66,5 +67,68 @@ describe('the scaffolded app', () => {
     expect(host.querySelector('[data-utopia-router-view]')!.textContent).not.toContain(
       'Welcome to UtopiaJS',
     );
+  });
+});
+
+describe('the scaffolded blog', () => {
+  it('lists posts and follows the route between posts', async () => {
+    // generate a real content project with the CLI's own scaffolder.
+    const { scaffoldProject } = await import('../../create-utopia/src/index');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'utopia-blog-'));
+    try {
+      scaffoldProject(path.join(root, 'app'), {
+        projectName: 'blog',
+        language: 'typescript',
+        useRouter: true,
+        useSSR: false,
+        useEmail: false,
+        useAI: false,
+        useContent: true,
+        cssPreprocessor: 'none',
+        initGit: false,
+      });
+      const routes = path.join(root, 'app', 'src', 'routes', 'blog');
+      const collections = {
+        blog: [
+          { slug: 'first', data: { title: 'First', date: '2026-01-01' }, html: '<p>one</p>' },
+          { slug: 'second', data: { title: 'Second', date: '2026-02-01' }, html: '<p>two</p>' },
+          { slug: 'hidden', data: { title: 'Hidden', date: '2026-03-01', draft: true } },
+        ],
+      };
+      const mods = { ...modules, 'virtual:utopia-content': { collections } };
+      const List = loadComponent(fs.readFileSync(path.join(routes, '+page.utopia'), 'utf8'), mods);
+      const Post = loadComponent(
+        fs.readFileSync(path.join(routes, '[slug]', '+page.utopia'), 'utf8'),
+        mods,
+      );
+
+      history.replaceState(null, '', '/blog');
+      router.createRouter([
+        { path: '/blog', component: async () => ({ default: List }) },
+        { path: '/blog/:slug', component: async () => ({ default: Post }) },
+      ]);
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      runtime.mount({ render: () => router.createRouterView().render() } as never, host);
+      await new Promise((r) => setTimeout(r, 0));
+
+      // newest first, drafts hidden
+      expect([...host.querySelectorAll('h2')].map((h) => h.textContent!.trim())).toEqual([
+        'Second',
+        'First',
+      ]);
+
+      await router.navigate('/blog/first');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(host.querySelector('h1')!.textContent).toBe('First');
+
+      // the page module is loaded once; its content must follow the route.
+      await router.navigate('/blog/second');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(host.querySelector('h1')!.textContent).toBe('Second');
+      expect(host.querySelector('.content')!.innerHTML).toBe('<p>two</p>');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });
