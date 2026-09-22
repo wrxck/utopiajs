@@ -65,8 +65,11 @@ so relative links (`?page=2`, `./next`) now route on the client. A same-origin
 link that no route matches is left to the browser — before, it showed the
 client 404 view.
 
-**What to do.** If you depended on the client 404 view for unknown links, add a
-catch-all route (`src/routes/[...rest]/+page.utopia`).
+**What to do.** Usually nothing. If you relied on the client 404 view for
+unknown links, note that a catch-all route (`src/routes/[...rest]/+page.utopia`)
+matches every same-origin link again, so links to server-only pages, API
+endpoints and downloads are then routed on the client too. Mark those links
+with `target` or `download`, or keep them outside the catch-all's reach.
 
 ## `useHead` callers merge (`@matthesketh/utopia-helmet`)
 
@@ -146,6 +149,18 @@ to mount:
 import { createRouterView as RouterView } from '@matthesketh/utopia-router'
 </script>
 ```
+
+## `utopia check` follows your tsconfig
+
+**What changed.** `utopia check` finds components through the tsconfig
+`include`/`exclude` (it used to walk `src/` only), checks plain-JS components
+only under `checkJs`, reports a type imported without `type` in a
+`<script lang="ts">` (the compiler would ship it as a runtime import of a
+missing export), and reports tsconfig errors it used to drop.
+
+**What to do.** Make sure your `include` covers your components
+(`"include": ["src/**/*"]`, not `"src/**/*.ts"`). Write type imports as
+`import type { Props } from './types'`.
 
 ## Smaller changes
 
