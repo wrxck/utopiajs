@@ -2,7 +2,7 @@
 // @matthesketh/utopia-content — Tests
 // ============================================================================
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -1391,6 +1391,22 @@ describe('Security — MCP tool input validation', () => {
     const result = res.result as { isError?: boolean } | undefined;
     expect(res.error !== undefined || result?.isError === true).toBe(true);
     expect(existsSync(join(tmpDir, 'blog', 'evil.utopia'))).toBe(false);
+  });
+
+  it('update_entry and delete_entry refuse an existing .utopia entry via MCP', async () => {
+    writeFileSync(join(tmpDir, 'blog', 'page.utopia'), '<template><p>x</p></template>');
+    const server = createServer();
+    for (const [name, args] of [
+      ['update_entry', { collection: 'blog', slug: 'page', body: '<script>evil()</script>' }],
+      ['delete_entry', { collection: 'blog', slug: 'page' }],
+    ] as const) {
+      const res = await server.handleRequest(rpc('tools/call', { name, arguments: args }));
+      const result = res.result as { isError?: boolean } | undefined;
+      expect(res.error !== undefined || result?.isError === true).toBe(true);
+    }
+    expect(readFileSync(join(tmpDir, 'blog', 'page.utopia'), 'utf8')).toBe(
+      '<template><p>x</p></template>',
+    );
   });
 
   it('create_entry rejects traversal slug via MCP', async () => {
