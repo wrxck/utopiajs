@@ -1247,7 +1247,7 @@ describe('createRoot()', () => {
     const outerSeen: number[] = [];
     const result = createRoot((disposeOuter) => {
       const s = signal(0);
-      effect(() => outerSeen.push(s()));
+      effect(() => void outerSeen.push(s()));
       createRoot((disposeInner) => {
         // inner root captures only its own effect
         effect(() => void s());

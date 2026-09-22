@@ -53,9 +53,23 @@ function flushJobs(): void {
     // picked up by the follow-up pass below, never re-run within this one.
     const jobs = Array.from(queue);
     queue.clear();
+    // a throwing job must not take the rest of the pass with it: the jobs
+    // after it are other bindings' updates, and dropping them left their DOM
+    // stale with nothing queued to repair it. run them all, then surface the
+    // first error.
+    let failed = false;
+    let firstError: unknown;
     for (let i = 0; i < jobs.length; i++) {
-      jobs[i]();
+      try {
+        jobs[i]();
+      } catch (err) {
+        if (!failed) {
+          failed = true;
+          firstError = err;
+        }
+      }
     }
+    if (failed) throw firstError;
   } finally {
     isFlushing = false;
     if (queue.size > 0) {
