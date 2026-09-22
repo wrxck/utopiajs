@@ -432,4 +432,41 @@ describe('createHandler — API responses reach the client intact', () => {
     const byId = await runHandler(apiOptions(manifest), makeReq('/api/42'));
     expect(byId.body).toBe('by id');
   });
+
+  it('ends the connection when a streamed body fails after the headers are sent', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error('upstream failed'));
+      },
+    });
+    const manifest = {
+      '/src/routes/api/fail/+server.ts': () => Promise.resolve({ GET: () => new Response(stream) }),
+    };
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let destroyed: unknown;
+    const res = new Writable({
+      write(_c, _e, cb) {
+        cb();
+      },
+    });
+    let headersSent = false;
+    Object.assign(res, {
+      writeHead: () => {
+        if (headersSent) throw new Error('ERR_HTTP_HEADERS_SENT');
+        headersSent = true;
+        return res;
+      },
+    });
+    Object.defineProperty(res, 'headersSent', { get: () => headersSent });
+    res.on('error', (err) => (destroyed = err));
+    await expect(
+      Promise.resolve(
+        createHandler(apiOptions(manifest))(makeReq('/api/fail'), res as unknown as ServerResponse),
+      ),
+    ).resolves.toBeUndefined();
+    expect(res.destroyed).toBe(true);
+    await new Promise((r) => setImmediate(r)); // destroy emits 'error' on the next tick
+    expect(String(destroyed)).toContain('upstream failed');
+    errorSpy.mockRestore();
+  });
 });

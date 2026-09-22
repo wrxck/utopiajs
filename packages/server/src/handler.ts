@@ -169,6 +169,13 @@ export function createHandler(
         }
       } catch (err) {
         console.error('[utopia] API route error:', err);
+        if (res.headersSent) {
+          // the body failed mid-stream: the status is gone, so end the
+          // connection rather than throw ERR_HTTP_HEADERS_SENT out of the
+          // handler (an unhandled rejection) and leave the client hanging.
+          res.destroy(err instanceof Error ? err : new Error(String(err)));
+          return;
+        }
         res.writeHead(500, { 'Content-Type': 'text/plain' });
         res.end('Internal Server Error');
         return;
