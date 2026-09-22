@@ -16,22 +16,15 @@ const MAX_SSE_BUFFER = 1024 * 1024;
 /**
  * Stream AI chat chunks as Server-Sent Events (SSE).
  *
- * Compatible with the UtopiaJS server handler pattern. Use this in
- * API routes to stream AI responses to the browser.
+ * For a Node `ServerResponse` — an Express or `http.createServer` handler.
+ * A UtopiaJS `+server.ts` API route returns a `Response` instead; use
+ * `sseResponse` there.
  *
  * ```ts
- * // +server.ts (API route)
- * import { createAI } from '@matthesketh/utopia-ai';
- * import { openaiAdapter } from '@matthesketh/utopia-ai/openai';
- * import { streamSSE } from '@matthesketh/utopia-ai';
- *
- * const ai = createAI(openaiAdapter({ apiKey: process.env.OPENAI_API_KEY }));
- *
- * export async function POST(req, res) {
- *   const { messages } = await parseBody(req);
- *   const stream = ai.stream({ messages });
- *   await streamSSE(res, stream);
- * }
+ * // express
+ * app.post('/api/chat', express.json(), async (req, res) => {
+ *   await streamSSE(res, ai.stream({ messages: req.body.messages }));
+ * });
  * ```
  *
  * Client-side consumption:
@@ -64,6 +57,61 @@ export async function streamSSE(
   } finally {
     res.end();
   }
+}
+
+/**
+ * Stream AI chat chunks as a Server-Sent Events `Response` — the form a
+ * UtopiaJS `+server.ts` API route returns. `streamSSE` writes to a Node
+ * `ServerResponse`, which API routes never receive: they are called with a
+ * fetch-style `RequestEvent` and must return a `Response`.
+ *
+ * ```ts
+ * // src/routes/api/chat/+server.ts
+ * export async function POST({ request }) {
+ *   const { messages } = await request.json();
+ *   return sseResponse(ai.stream({ messages }));
+ * }
+ * ```
+ *
+ * The body uses the same framing as `streamSSE` (`data: <json>` per chunk,
+ * then `data: [DONE]`), so `parseSSEStream` reads either. If the source stream
+ * throws, the response body errors rather than ending as if complete.
+ */
+export function sseResponse(
+  stream: AsyncIterable<ChatChunk>,
+  options?: { onChunk?: (chunk: ChatChunk) => void; headers?: Record<string, string> },
+): Response {
+  const encoder = new TextEncoder();
+  const iterator = stream[Symbol.asyncIterator]();
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await iterator.next();
+        if (done) {
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+          return;
+        }
+        options?.onChunk?.(value);
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(value)}\n\n`));
+      } catch (err) {
+        controller.error(err);
+      }
+    },
+    async cancel() {
+      // the client went away — stop the upstream model stream too.
+      await iterator.return?.();
+    },
+  });
+  return new Response(body, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'X-Accel-Buffering': 'no',
+      ...options?.headers,
+    },
+  });
 }
 
 /**
