@@ -73,7 +73,11 @@ describe('the scaffolded app', () => {
 describe('the scaffolded blog', () => {
   it('lists posts and follows the route between posts', async () => {
     // generate a real content project with the CLI's own scaffolder.
-    const { scaffoldProject } = await import('../../create-utopia/src/index');
+    // loaded by path: create-utopia is a CLI, not a dependency of this package.
+    const scaffolder = path.resolve(__dirname, '..', '..', 'create-utopia', 'src', 'index.ts');
+    const { scaffoldProject } = (await import(scaffolder)) as {
+      scaffoldProject(root: string, options: Record<string, unknown>): void;
+    };
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'utopia-blog-'));
     try {
       scaffoldProject(path.join(root, 'app'), {
