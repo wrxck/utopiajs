@@ -246,9 +246,10 @@ describe('SSR runtime helpers', () => {
         },
       );
 
-      // span should be before the anchor
-      expect(parent.children).toHaveLength(2);
-      expect((parent.children[0] as VElement).tag).toBe('span');
+      // range marker, then the span, then the anchor
+      expect(parent.children).toHaveLength(3);
+      expect(parent.children[0]).toEqual({ type: 3, text: '[', _parent: parent });
+      expect((parent.children[1] as VElement).tag).toBe('span');
     });
 
     it('renders false branch when condition is falsy', () => {
@@ -263,8 +264,8 @@ describe('SSR runtime helpers', () => {
         () => createElement('em'),
       );
 
-      expect(parent.children).toHaveLength(2);
-      expect((parent.children[0] as VElement).tag).toBe('em');
+      expect(parent.children).toHaveLength(3);
+      expect((parent.children[1] as VElement).tag).toBe('em');
     });
 
     it('renders nothing when condition is falsy and no false branch', () => {
@@ -278,8 +279,9 @@ describe('SSR runtime helpers', () => {
         () => createElement('span'),
       );
 
-      expect(parent.children).toHaveLength(1);
-      expect(parent.children[0]).toBe(anchor);
+      // an empty range still opens, so the client can find the anchor
+      expect(parent.children).toHaveLength(2);
+      expect(parent.children[1]).toBe(anchor);
     });
   });
 
@@ -300,11 +302,11 @@ describe('SSR runtime helpers', () => {
         },
       );
 
-      // 3 li + 1 anchor
-      expect(parent.children).toHaveLength(4);
-      expect((parent.children[0] as VElement).tag).toBe('li');
-      expect(((parent.children[0] as VElement).children[0] as VText).text).toBe('0: a');
-      expect(((parent.children[2] as VElement).children[0] as VText).text).toBe('2: c');
+      // range marker + 3 li + 1 anchor
+      expect(parent.children).toHaveLength(5);
+      expect((parent.children[1] as VElement).tag).toBe('li');
+      expect(((parent.children[1] as VElement).children[0] as VText).text).toBe('0: a');
+      expect(((parent.children[3] as VElement).children[0] as VText).text).toBe('2: c');
     });
 
     it('hands each row an inert scope', () => {
@@ -335,8 +337,8 @@ describe('SSR runtime helpers', () => {
       );
 
       expect(rebindsRun).toBe(0);
-      expect(((parent.children[0] as VElement).children[0] as VText).text).toBe('a');
-      expect(((parent.children[1] as VElement).children[0] as VText).text).toBe('b');
+      expect(((parent.children[1] as VElement).children[0] as VText).text).toBe('a');
+      expect(((parent.children[2] as VElement).children[0] as VText).text).toBe('b');
     });
   });
 
@@ -501,7 +503,7 @@ describe('renderToString', () => {
     };
 
     const { html } = renderToString(Component);
-    expect(html).toBe('<div><span>visible</span><!--u-if--></div>');
+    expect(html).toBe('<div><!--[--><span>visible</span><!--u-if--></div>');
   });
 
   it('renders list content (u-for)', () => {
@@ -525,7 +527,7 @@ describe('renderToString', () => {
     };
 
     const { html } = renderToString(Component);
-    expect(html).toBe('<ul><li>a</li><li>b</li><!--u-for--></ul>');
+    expect(html).toBe('<ul><!--[--><li>a</li><li>b</li><!--u-for--></ul>');
   });
 });
 
@@ -929,16 +931,17 @@ describe('SSR defineLazy', () => {
     );
 
     const node = createComponent(Lazy);
-    expect(serializeVNode(node)).toBe('<span>Loading...</span>');
+    // the client's container shape, so hydration can claim it.
+    expect(serializeVNode(node)).toBe('<div data-utopia-lazy><span>Loading...</span></div>');
   });
 
-  it('returns a comment node when no fallback is provided', () => {
+  it('renders an empty container when no fallback is provided', () => {
     const Lazy = defineLazy(() =>
       Promise.resolve({ default: { render: () => createElement('div') } }),
     );
 
     const node = createComponent(Lazy);
-    expect(serializeVNode(node)).toContain('<!--');
+    expect(serializeVNode(node)).toBe('<div data-utopia-lazy></div>');
   });
 });
 

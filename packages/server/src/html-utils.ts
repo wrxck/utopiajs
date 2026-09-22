@@ -78,3 +78,41 @@ export const VOID_ELEMENTS = new Set([
   'track',
   'wbr',
 ]);
+
+/**
+ * Comment written between two adjacent non-empty text nodes. HTML has no way
+ * to express two text nodes side by side — the parser merges them — so the
+ * client's hydration walker could not tell `Hello {{ name }}!` apart from one
+ * text node. Must match the runtime's TEXT_SEPARATOR.
+ */
+export const TEXT_SEPARATOR_HTML = '<!--|-->';
+
+/**
+ * Elements whose content the HTML parser reads as raw text: a comment inside
+ * them is literal text, so no separator may be written there.
+ */
+export const RAW_TEXT_ELEMENTS = new Set([
+  'script',
+  'style',
+  'textarea',
+  'title',
+  'xmp',
+  'iframe',
+  'noembed',
+  'noframes',
+  'plaintext',
+]);
+
+/**
+ * Whether `<option>` `el` is the one a `u-model` on its `<select>` selects:
+ * its `value` attribute, or its text when it has none (the DOM's rule).
+ */
+export function optionMatches(
+  el: { attrs: Record<string, string>; children: { type: number; text?: string }[] },
+  value: string,
+): boolean {
+  if ('value' in el.attrs) return el.attrs['value'] === value;
+  let text = '';
+  for (const c of el.children) if (c.type === 2) text += c.text ?? '';
+  return text.trim() === value;
+}

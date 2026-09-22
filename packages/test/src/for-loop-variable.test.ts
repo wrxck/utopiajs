@@ -273,14 +273,15 @@ describe('u-for row scope on the SSR and hydration paths', () => {
   it('server-renders exactly what a first client render produces', () => {
     // a server render is a single pass: no row is ever reused, so its scope
     // is inert and the rows evaluate the same expressions against the same
-    // items. the two runtimes must agree byte for byte or hydration has
-    // nothing to attach to.
+    // items. the two runtimes must agree node for node or hydration has
+    // nothing to attach to — the server only adds the `<!--[-->` marker that
+    // opens the list's range for the hydration walker.
     const serverHtml = renderToString(buildServer(TEMPLATE, { items: signal(rows()) })).html;
 
     host.appendChild(build(TEMPLATE, { items: signal(rows()) })({}));
 
-    expect(serverHtml).toBe('<ul><li>alpha</li><li>beta</li><!--u-for--></ul>');
-    expect(host.innerHTML).toBe(serverHtml);
+    expect(serverHtml).toBe('<ul><!--[--><li>alpha</li><li>beta</li><!--u-for--></ul>');
+    expect(host.innerHTML).toBe(serverHtml.replace('<!--[-->', ''));
   });
 
   it('hydrates onto the server nodes and leaves the rows live', async () => {
@@ -294,9 +295,8 @@ describe('u-for row scope on the SSR and hydration paths', () => {
     runtime.hydrate({ render: build(TEMPLATE, { items }) }, host);
 
     // the walker claimed the server's own nodes rather than building new
-    // ones. (u-for hydration is only partial today — the server emits the
-    // list anchor after the rows while the client creates it first — but the
-    // row scope adds no nodes, so the claim sequence is untouched.)
+    // ones: the anchor is found through the server's range marker, and the
+    // rows claim the nodes in the range.
     expect(host.querySelector('li')).toBe(serverRow);
     expect(serverRow.firstChild).toBe(serverText);
 

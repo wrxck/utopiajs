@@ -203,8 +203,19 @@ const SAFE_ATTRS = new Set([
 /** URI-bearing attributes that must not contain javascript:/data:/vbscript: values. */
 const URI_ATTRS = new Set(['href', 'src', 'action', 'cite', 'poster', 'data']);
 
-/** Schemes that are forbidden in URI attributes. */
-const DANGEROUS_SCHEME_RE = /^\s*(?:javascript|data|vbscript)\s*:/i;
+/** Schemes that are forbidden in URI attributes (tested on the parsed view). */
+const DANGEROUS_SCHEME_RE = /^(?:javascript|data|vbscript):/i;
+
+/**
+ * The URL as the browser's parser reads its scheme: leading C0 controls and
+ * spaces stripped and every ASCII tab or newline deleted. Without this,
+ * `java&#9;script:` — which the HTML parser decodes to `java\tscript:` —
+ * passed the scheme test and still ran as a javascript: URL.
+ */
+function urlSchemeView(value: string): string {
+  // eslint-disable-next-line no-control-regex -- matching C0 controls is the point
+  return value.replace(/[\t\n\r]/g, '').replace(/^[\u0000-\u0020]+/, '');
+}
 
 /**
  * Tags whose entire subtree (including text content) must be dropped.
@@ -274,7 +285,7 @@ export function sanitiseHtml(html: string): string {
 
       // Block dangerous URI schemes in URI-bearing attributes.
       if (URI_ATTRS.has(name)) {
-        if (DANGEROUS_SCHEME_RE.test(attr.value)) {
+        if (DANGEROUS_SCHEME_RE.test(urlSchemeView(attr.value))) {
           attrsToRemove.push(attr.name);
         }
         // Safe URIs (http, https, mailto, relative paths, etc.) are kept.

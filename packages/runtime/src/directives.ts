@@ -16,6 +16,7 @@ import {
   stopCapturingDisposers,
 } from '@/component';
 import { insertBefore, removeNode } from '@/dom';
+import { beginRange, endRange, type RangeWalk, settleRange } from '@/hydration';
 
 /** A DOM Node with optional cleanup/dispose callbacks attached by the runtime. */
 interface DisposableNode extends Node {
@@ -53,6 +54,7 @@ export function createIf(
   let currentDisposers: (() => void)[] = [];
   let lastConditionTruthy: boolean | undefined;
   let disposed = false;
+  let hydrationWalk: RangeWalk | null = null;
 
   // tear down the active branch: dispose the effects captured during its
   // render, run any child-component cleanup, then remove its nodes. without
@@ -85,6 +87,7 @@ export function createIf(
     } finally {
       currentDisposers = stopCapturingDisposers(prev);
     }
+    if (hydrationWalk) settleRange(hydrationWalk);
     currentNodes.push(node);
     insertBefore(parent, node, anchor);
   };
@@ -110,10 +113,19 @@ export function createIf(
 
     teardownBranch();
 
-    if (lastConditionTruthy) {
-      renderBranch(renderTrue, parent);
-    } else if (renderFalse) {
-      renderBranch(renderFalse, parent);
+    // while hydrating, the first branch claims the server's nodes between the
+    // range marker and our anchor instead of building new ones; whatever it
+    // does not claim (a branch the client does not render) is removed.
+    const walk = (hydrationWalk = beginRange(anchor));
+    try {
+      if (lastConditionTruthy) {
+        renderBranch(renderTrue, parent);
+      } else if (renderFalse) {
+        renderBranch(renderFalse, parent);
+      }
+    } finally {
+      hydrationWalk = null;
+      if (walk) endRange(walk);
     }
   };
 
@@ -235,6 +247,9 @@ export function createFor<T>(
     seenPass: number;
   };
   let entries: Entry[] = [];
+  // set during the first reconcile of a hydrating list: each row claims the
+  // next server row in the range instead of building a fresh one.
+  let hydrationWalk: RangeWalk | null = null;
   // persistent key → entry index, updated incrementally on add/remove so a
   // reconcile doesn't rebuild the whole map just to look up survivors.
   const byKey = new Map<string | number, Entry>();
@@ -288,6 +303,7 @@ export function createFor<T>(
       throw err;
     }
     const disposers = stopCapturingDisposers(prev);
+    if (hydrationWalk) settleRange(hydrationWalk);
     const dispose = (): void => {
       for (const d of disposers) {
         try {
@@ -348,6 +364,7 @@ export function createFor<T>(
     let movedBack = false;
 
     const freshThisPass: Entry[] = [];
+    hydrationWalk = beginRange(anchor);
     try {
       for (let i = 0; i < n; i++) {
         const item = items[i] as T;
@@ -398,6 +415,10 @@ export function createFor<T>(
         }
       }
       throw err;
+    } finally {
+      // server rows the client did not claim (a shorter client list) go.
+      if (hydrationWalk) endRange(hydrationWalk);
+      hydrationWalk = null;
     }
 
     // remove nodes whose keys are gone, disposing their captured effects. a

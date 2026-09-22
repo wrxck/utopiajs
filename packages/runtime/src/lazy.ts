@@ -8,6 +8,11 @@
 
 import { type ComponentDefinition, pushDisposer } from '@/component';
 import { createComponent } from '@/directives';
+import { createElement } from '@/dom';
+import { isHydrating } from '@/hydration';
+
+/** Context key carrying a lazy component's props from setup to render. */
+const LAZY_PROPS = '$lazyProps';
 
 /** Cache for loaded modules, keyed by loader function. */
 const moduleCache = new Map<() => Promise<{ default: ComponentDefinition }>, ComponentDefinition>();
@@ -30,15 +35,29 @@ export function defineLazy(
   fallback?: () => Node,
 ): ComponentDefinition {
   return {
+    // pass the props through setup so render can forward them. a render-only
+    // definition receives just `{ $slots }` — the props given to the lazy
+    // component never reached the component it loads.
+    setup(props: Record<string, unknown>) {
+      return { [LAZY_PROPS]: props };
+    },
     render(ctx: Record<string, unknown>) {
-      // Check cache first.
+      const props = (ctx[LAZY_PROPS] as Record<string, unknown> | undefined) ?? {};
+      const slots = ctx.$slots as Record<string, () => Node> | undefined;
+
+      // Check cache first. While hydrating, the server markup is the
+      // container with the fallback in it (a server render cannot wait for the
+      // module), so even a cached module goes through the container and swaps
+      // in once hydration has finished.
       const cached = moduleCache.get(loader);
-      if (cached) {
-        return createComponent(cached, ctx);
+      if (cached && !isHydrating) {
+        return createComponent(cached, props, slots);
       }
 
-      // create a container for the swap.
-      const container = document.createElement('div');
+      // create a container for the swap. createElement claims the server's
+      // container while hydrating; a plain document.createElement left it
+      // detached, so the component never appeared on a hydrated page.
+      const container = createElement('div') as HTMLElement;
       container.setAttribute('data-utopia-lazy', '');
 
       // the real component mounts asynchronously, outside any disposer-capture
@@ -46,16 +65,21 @@ export function defineLazy(
       // scope — otherwise the lazy component's effects + onDestroy leaked on
       // unmount.
       let innerCleanup: (() => void) | undefined;
-      pushDisposer(() => innerCleanup?.());
+      let disposed = false;
+      pushDisposer(() => {
+        disposed = true;
+        innerCleanup?.();
+      });
 
-      // show fallback while loading.
-      if (fallback) {
+      // show fallback while loading. a hydrating container already holds the
+      // server-rendered fallback, and it is replaced when the module arrives.
+      if (fallback && !isHydrating) {
         const fallbackNode = fallback();
         container.appendChild(fallbackNode);
       }
 
       // Reuse in-flight promise if one exists (dedup).
-      let loadPromise = pendingLoads.get(loader);
+      let loadPromise = cached ? Promise.resolve({ default: cached }) : pendingLoads.get(loader);
       if (!loadPromise) {
         loadPromise = loader();
         pendingLoads.set(loader, loadPromise);
@@ -67,14 +91,17 @@ export function defineLazy(
           moduleCache.set(loader, Component);
           pendingLoads.delete(loader);
 
-          // Don't mutate if container has been detached from the DOM.
-          if (!container.parentNode) return;
+          // the surrounding scope was torn down while the module loaded (the
+          // user navigated away). the detached container still has a parent
+          // inside the discarded subtree, so that check alone mounted the
+          // component anyway — with nothing left to ever dispose it.
+          if (disposed || !container.parentNode) return;
 
           // clear fallback and mount real component.
           while (container.firstChild) {
             container.removeChild(container.firstChild);
           }
-          const node = createComponent(Component, ctx);
+          const node = createComponent(Component, props, slots);
           innerCleanup = (node as { __cleanup?: () => void }).__cleanup;
           container.appendChild(node);
         })
@@ -82,8 +109,7 @@ export function defineLazy(
           pendingLoads.delete(loader);
           console.error('Failed to load lazy component:', err);
 
-          // Don't mutate if container has been detached from the DOM.
-          if (!container.parentNode) return;
+          if (disposed || !container.parentNode) return;
 
           while (container.firstChild) {
             container.removeChild(container.firstChild);
