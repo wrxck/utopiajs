@@ -423,16 +423,23 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
     // Load virtual CSS modules
     // -------------------------------------------------------------------
 
-    load(id) {
+    load(id, loadOptions) {
       if (!id.startsWith(VIRTUAL_PREFIX)) return undefined;
 
       // Virtual routes module.
       if (id === RESOLVED_VIRTUAL_ROUTES_ID) {
-        const globPattern = `/${routesDir}/**/+{page,layout,error,server}.{utopia,ts,js}`;
+        // +server modules are server code. every file a glob matches becomes a
+        // chunk of the build that imports it, so globbing them into the client
+        // module published each API route's source as a fetchable asset —
+        // whatever it held. only a server build sees them.
+        const globPattern = `/${routesDir}/**/+{page,layout,error}.{utopia,ts,js}`;
+        const apiManifest = loadOptions?.ssr
+          ? `const apiManifest = import.meta.glob('/${routesDir}/**/+server.{ts,js}');`
+          : `const apiManifest = {};`;
         return [
           `import { buildRouteTable } from '@matthesketh/utopia-router';`,
           `const manifest = import.meta.glob(${JSON.stringify(globPattern)});`,
-          `const apiManifest = import.meta.glob('/${routesDir}/**/+server.{ts,js}');`,
+          apiManifest,
           `const routes = buildRouteTable(manifest);`,
           `export default routes;`,
           `export { routes, apiManifest };`,

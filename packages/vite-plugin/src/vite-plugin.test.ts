@@ -57,8 +57,8 @@ function transform(plugin: Plugin, code: string, id: string): { code: string } |
   return (plugin.transform as unknown as AnyHook).call({}, code, id);
 }
 
-function load(plugin: Plugin, id: string): string | undefined {
-  return (plugin.load as unknown as AnyHook).call({}, id);
+function load(plugin: Plugin, id: string, options?: { ssr?: boolean }): string | undefined {
+  return (plugin.load as unknown as AnyHook).call({}, id, options);
 }
 
 // =========================================================================
@@ -78,10 +78,21 @@ describe('virtual:utopia-routes', () => {
     const code = load(plugin, '\0virtual:utopia-routes')!;
     expect(code).toContain('import { buildRouteTable }');
     expect(code).toContain('import.meta.glob');
-    expect(code).toContain('+{page,layout,error,server}');
+    expect(code).toContain('+{page,layout,error}');
     expect(code).toContain('src/routes');
     expect(code).toContain('export default routes');
     expect(code).toContain('apiManifest');
+  });
+
+  it('never globs +server modules into a client build', () => {
+    // every globbed file becomes a chunk of the importing build, so a client
+    // glob of +server files shipped API route source as public assets.
+    const client = load(getPlugin(), '\0virtual:utopia-routes')!;
+    expect(client).not.toContain('+server');
+    expect(client).toContain('const apiManifest = {};');
+
+    const server = load(getPlugin(), '\0virtual:utopia-routes', { ssr: true })!;
+    expect(server).toContain(`import.meta.glob('/src/routes/**/+server.{ts,js}')`);
   });
 
   it('respects custom routesDir option', () => {
