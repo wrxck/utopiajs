@@ -131,10 +131,18 @@ export default {
 };
 ```
 
-Import the manifest in route components:
+Import the manifest in route components — it works in the browser and during
+server rendering, unlike `getCollection` / `getEntry`, which read the
+filesystem and belong in server code:
 
 ```ts
 import { collections } from 'virtual:utopia-content';
+```
+
+For its types, reference the client declarations once (e.g. in `src/env.d.ts`):
+
+```ts
+/// <reference types="@matthesketh/utopia-content/client" />
 ```
 
 ## Blog Template
@@ -190,7 +198,7 @@ interface ContentEntry {
 
 ### `renderMarkdown(source, options?)`
 
-Render markdown to HTML. Options: `remarkPlugins`, `rehypePlugins`, `highlight` (default: true).
+Render markdown to HTML. Options: `remarkPlugins`, `rehypePlugins`, `highlight` (default: true). Raw HTML in the markdown is dropped, and `javascript:`, `vbscript:` and non-media `data:` URLs are removed from links and images.
 
 ### `parseFrontmatter(content)`
 

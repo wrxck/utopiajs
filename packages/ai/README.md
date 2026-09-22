@@ -52,13 +52,19 @@ const result = await ai.run({
 | Export | Description |
 |--------|-------------|
 | `createAI(adapter, options?)` | Create an AI instance with hooks and retry |
-| `streamSSE(res, stream)` | Stream chat chunks as Server-Sent Events |
+| `sseResponse(stream)` | Stream chat chunks as a Server-Sent Events `Response` — for `+server.ts` API routes |
+| `streamSSE(res, stream)` | Stream chat chunks as Server-Sent Events to a Node `ServerResponse` (Express, `http`) |
 | `parseSSEStream(response)` | Parse SSE events from a fetch Response (browser) |
 | `collectStream(stream)` | Collect a stream into a single string |
 
 **Adapters:** `@matthesketh/utopia-ai/openai`, `@matthesketh/utopia-ai/anthropic`, `@matthesketh/utopia-ai/google`, `@matthesketh/utopia-ai/ollama`.
 
 **MCP (`@matthesketh/utopia-ai/mcp`):** `createMCPServer`, `createMCPClient`, `createMCPHandler`.
+
+`createMCPHandler` validates the `Origin` header on every request: without
+`allowedOrigins` it accepts loopback origins and a single `corsOrigin`
+(`corsOrigin: '*'` turns the check off). Pass `authorize` whenever the server is
+reachable from a network — without it, every caller can run its tools.
 
 See [docs/ai.md](../../docs/ai.md) for full documentation on adapters, streaming, tool calling, MCP, and type reference.
 

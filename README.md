@@ -49,7 +49,7 @@ pnpm add -D @matthesketh/utopia-vite-plugin
 - **Component lifecycle** — `onMount()` and `onDestroy()` hooks
 - **Error boundaries** — `createErrorBoundary()` for graceful error handling with fallback UI
 - **Lazy components** — `defineLazy()` for code-split components with async loading
-- **CSS transitions** — `createTransition()` with `performEnter`/`performLeave` for animated mount/unmount
+- **CSS transitions** — `u-transition="fade"` plays enter/leave classes on `u-if` branches and `u-for` rows; `createTransition()` with `performEnter`/`performLeave` for manual control
 
 ### Routing & SSR
 - **SvelteKit-style file-based routing** — `+page.utopia`, `+layout.utopia`, `[param]`, `[...rest]`, `(group)`

@@ -51,8 +51,17 @@ export default defineConfig({
 - Compiles `.utopia` files via `@matthesketh/utopia-compiler`
 - Extracts CSS to virtual modules processed by Vite's CSS pipeline
 - Granular HMR: style-only changes skip component re-render
-- SSR alias: swaps `@matthesketh/utopia-runtime` to `@matthesketh/utopia-server/ssr-runtime` in SSR builds and dev SSR
+- SSR alias: swaps `@matthesketh/utopia-runtime` to `@matthesketh/utopia-server/ssr-runtime` in SSR builds and dev SSR, and bundles every `@matthesketh/utopia-*` package into the server build so their own runtime imports reach the swap
+- Server transforms carry each component's CSS on its definition (`emitStyles`), so `renderToString` and email rendering collect it
+- `virtual:utopia-routes` globs `+server` API modules into server builds only
 - Resolves `.utopia` as a file extension for bare imports
+
+**Types:** reference the ambient declarations for `virtual:utopia-routes` and
+`*.utopia` imports once, e.g. in `src/env.d.ts`:
+
+```ts
+/// <reference types="@matthesketh/utopia-vite-plugin/client" />
+```
 
 See [docs/architecture.md](../../docs/architecture.md) and [docs/ssr.md](../../docs/ssr.md) for details.
 
