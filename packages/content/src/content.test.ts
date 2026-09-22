@@ -1373,6 +1373,26 @@ describe('Security — MCP tool input validation', () => {
     expect(res.error).toBeDefined();
   });
 
+  it('create_entry refuses to write component source (.utopia) via MCP', async () => {
+    // the tool schema lists md/json/yaml, but nothing enforced it: an MCP
+    // client could write executable .utopia source into the content tree.
+    const server = createServer();
+    const res = await server.handleRequest(
+      rpc('tools/call', {
+        name: 'create_entry',
+        arguments: {
+          collection: 'blog',
+          slug: 'evil',
+          body: '<script>x</script>',
+          format: 'utopia',
+        },
+      }),
+    );
+    const result = res.result as { isError?: boolean } | undefined;
+    expect(res.error !== undefined || result?.isError === true).toBe(true);
+    expect(existsSync(join(tmpDir, 'blog', 'evil.utopia'))).toBe(false);
+  });
+
   it('create_entry rejects traversal slug via MCP', async () => {
     const server = createServer();
     const res = await server.handleRequest(
