@@ -6,7 +6,7 @@
 // disposes any partially-created effects and renders a fallback UI.
 // ============================================================================
 
-import { startCapturingDisposers, stopCapturingDisposers } from '@/component';
+import { pushDisposer, startCapturingDisposers, stopCapturingDisposers } from '@/component';
 
 /**
  * Create an error boundary that catches errors during rendering.
@@ -22,12 +22,24 @@ export function createErrorBoundary(tryFn: () => Node, catchFn: (error: Error) =
     const node = tryFn();
     const disposers = stopCapturingDisposers(prev);
 
-    // Attach cleanup to the node for disposal on unmount.
-    (node as Node & { __cleanup?: () => void }).__cleanup = () => {
+    // Attach cleanup to the node for disposal on unmount, and forward it to
+    // the surrounding scope like createComponent does. The node hook alone is
+    // only reached when the boundary is itself a branch root; nested anywhere
+    // else, its effects outlived the branch that contained it.
+    let cleaned = false;
+    const cleanup = (): void => {
+      if (cleaned) return;
+      cleaned = true;
       for (const dispose of disposers) {
-        dispose();
+        try {
+          dispose();
+        } catch {
+          /* dispose path must not throw */
+        }
       }
     };
+    (node as Node & { __cleanup?: () => void }).__cleanup = cleanup;
+    pushDisposer(cleanup);
 
     return node;
   } catch (err) {

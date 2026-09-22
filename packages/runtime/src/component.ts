@@ -8,6 +8,8 @@
  * so anything else would be a cycle.
  */
 
+import { createRoot } from '@matthesketh/utopia-core';
+
 import { reclaimFragment, snapshotFragmentRoots } from '@/fragment';
 
 // ---------------------------------------------------------------------------
@@ -142,6 +144,13 @@ export function inject<T = unknown>(key: unknown, fallback?: T): T | undefined {
  * setup inside the scope means effects created during setup are disposed
  * together with render-created ones instead of leaking.
  *
+ * Both phases also run inside a reactive root. The capture scope only sees the
+ * runtime's own bindings (`createEffect`, `createIf`, child components); a
+ * plain `effect()` or `computed()` the component's `<script>` creates in
+ * `setup` reports to core's root instead, and without one it stayed
+ * subscribed to its sources — and kept running — after the component
+ * unmounted. The root's dispose is captured like any other disposer.
+ *
  * An owner is pushed around both phases so provide()/inject() resolve against
  * this component, and a child created during render links to it as its parent.
  */
@@ -156,26 +165,37 @@ export function runSetupAndRender(
   disposers: (() => void)[];
 } {
   let el: Node;
-  let lifecycle: { mount: (() => void)[]; destroy: (() => void)[] };
+  // assigned inside the createRoot callback, which always runs synchronously.
+  let lifecycle!: { mount: (() => void)[]; destroy: (() => void)[] };
   let disposers: (() => void)[];
 
   const owner = pushOwner();
   const prev = startCapturingDisposers();
+  let rootDispose: (() => void) | null = null;
   try {
-    startCapturingLifecycle();
-    let ctx: Record<string, unknown>;
-    try {
-      ctx = definition.setup ? definition.setup(props) : {};
-    } finally {
-      // Always close the lifecycle capture, even when setup throws, so a
-      // faulty component cannot poison the next component's capture.
-      lifecycle = stopCapturingLifecycle();
-    }
-    el = definition.render({ ...ctx, $slots: slots });
-  } finally {
-    disposers = stopCapturingDisposers(prev);
+    el = createRoot((dispose) => {
+      rootDispose = dispose;
+      startCapturingLifecycle();
+      let ctx: Record<string, unknown>;
+      try {
+        ctx = definition.setup ? definition.setup(props) : {};
+      } finally {
+        // Always close the lifecycle capture, even when setup throws, so a
+        // faulty component cannot poison the next component's capture.
+        lifecycle = stopCapturingLifecycle();
+      }
+      return definition.render({ ...ctx, $slots: slots });
+    });
+  } catch (err) {
+    // a failed setup/render drops everything it created so far.
+    stopCapturingDisposers(prev);
     popOwner(owner);
+    (rootDispose as (() => void) | null)?.();
+    throw err;
   }
+  disposers = stopCapturingDisposers(prev);
+  popOwner(owner);
+  disposers.push(rootDispose!);
 
   return {
     el,
