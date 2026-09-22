@@ -34,18 +34,19 @@ afterEach(() => {
 // =========================================================================
 
 describe('template integrity', () => {
-  it('template package.json has v0.7.0 dependency versions', () => {
+  it('template package.json leaves framework versions to the scaffolder', () => {
     const pkg = JSON.parse(readTemplateFile('package.json'));
     const deps = pkg.dependencies;
     const devDeps = pkg.devDependencies;
 
-    // All utopia packages should reference ^0.7.0
-    expect(deps['@matthesketh/utopia-core']).toBe('^0.7.0');
-    expect(deps['@matthesketh/utopia-runtime']).toBe('^0.7.0');
-    expect(deps['@matthesketh/utopia-router']).toBe('^0.7.0');
-    expect(devDeps['@matthesketh/utopia-cli']).toBe('^0.7.0');
-    expect(devDeps['@matthesketh/utopia-test']).toBe('^0.7.0');
-    expect(devDeps['@matthesketh/utopia-vite-plugin']).toBe('^0.7.0');
+    // replaced with this CLI's own version at scaffold time (a hard-coded
+    // ^0.7.0 installed a months-old release into every new project).
+    expect(deps['@matthesketh/utopia-core']).toBe('{{utopiaVersion}}');
+    expect(deps['@matthesketh/utopia-runtime']).toBe('{{utopiaVersion}}');
+    expect(deps['@matthesketh/utopia-router']).toBe('{{utopiaVersion}}');
+    expect(devDeps['@matthesketh/utopia-cli']).toBe('{{utopiaVersion}}');
+    expect(devDeps['@matthesketh/utopia-test']).toBe('{{utopiaVersion}}');
+    expect(devDeps['@matthesketh/utopia-vite-plugin']).toBe('{{utopiaVersion}}');
   });
 
   it('main.ts exists and imports virtual:utopia-routes', () => {
@@ -64,11 +65,15 @@ describe('template integrity', () => {
     expect(content).toContain('RouterView');
   });
 
-  it('App.utopia wraps createRouterView as a component definition', () => {
+  it('App.utopia uses createRouterView itself as the RouterView component', () => {
     const content = readTemplateFile('src/App.utopia');
-    expect(content).toContain('createRouterView');
-    // Should define RouterView as an object with render(), not just alias the import
-    expect(content).toContain('render()');
+    // createRouterView is a component factory. wrapping it as
+    // `{ render() { return createRouterView() } }` returned a definition where
+    // a DOM node was due, and every scaffolded app crashed on mount.
+    expect(content).toContain(
+      "import { createRouterView as RouterView } from '@matthesketh/utopia-router'",
+    );
+    expect(content).not.toContain('render()');
   });
 
   it('entry-client.ts exists for SSR setup', () => {

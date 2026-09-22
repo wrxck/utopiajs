@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { createHandler } from '@matthesketh/utopia-server';
 import express from 'express';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -26,41 +27,48 @@ async function createServer() {
   }
 
   app.use('*', async (req, res) => {
-    const url = req.originalUrl;
+    // express rewrites req.url under a mount; the handler needs the real one.
+    req.url = req.originalUrl;
 
     try {
       let template;
-      let render;
+      let entry;
 
       if (!isProduction) {
         // In dev, read index.html and transform it through Vite
         template = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
-        template = await vite.transformIndexHtml(url, template);
+        template = await vite.transformIndexHtml(req.url, template);
 
         // Load the server entry through Vite so it gets HMR
-        const mod = await vite.ssrLoadModule('/src/entry-server.ts');
-        render = mod.render;
+        entry = await vite.ssrLoadModule('/src/entry-server.ts');
       } else {
         // In production, use the pre-built files
         template = fs.readFileSync(path.resolve(__dirname, 'dist/client/index.html'), 'utf-8');
-        const mod = await import('./dist/server/entry-server.js');
-        render = mod.render;
+        entry = await import('./dist/server/entry-server.js');
       }
 
-      const { html: appHtml, css } = render(url);
-
-      // Inject the rendered HTML and CSS into the template
-      let page = template;
-      page = page.replace('<!--ssr-head-->', css ? `<style>${css}</style>` : '');
-      page = page.replace('<!--ssr-outlet-->', appHtml);
-
-      res.status(200).set({ 'Content-Type': 'text/html' }).end(page);
+      // createHandler serves +server API routes, renders the page into the
+      // <!--ssr-outlet--> and <!--ssr-head--> markers, and sets baseline
+      // security headers.
+      const handler = createHandler({
+        template,
+        apiRoutes: entry.apiManifest,
+        render: async (url) => {
+          try {
+            return await entry.render(url);
+          } catch (e) {
+            if (!isProduction) vite.ssrFixStacktrace(e);
+            throw e;
+          }
+        },
+      });
+      await handler(req, res);
     } catch (e) {
       if (!isProduction) {
         vite.ssrFixStacktrace(e);
       }
       console.error(e);
-      res.status(500).end(e.message);
+      res.status(500).end('Internal Server Error');
     }
   });
 

@@ -9,13 +9,7 @@
 </template>
 
 <script>
-  import { createRouterView } from '@matthesketh/utopia-router';
-
-  const RouterView = {
-    render() {
-      return createRouterView();
-    },
-  };
+  import { createRouterView as RouterView } from '@matthesketh/utopia-router';
 </script>
 
 <style>
