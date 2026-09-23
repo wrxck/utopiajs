@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 import type * as ts from 'typescript';
@@ -21,6 +21,13 @@ export interface CheckResult {
   fileCount: number;
   /** Absolute paths of the components the program checked. */
   files: string[];
+  /**
+   * Components under the config directory that the tsconfig does not exclude
+   * but the program never reached (an include of `*.ts` only, a solution
+   * config with `files: []`, a route page nothing imports). Empty when the
+   * config itself failed to parse.
+   */
+  unreached: string[];
 }
 
 export interface CheckOptions {
@@ -80,6 +87,7 @@ export function check(
       errorCount: 1,
       fileCount: 0,
       files: [],
+      unreached: [],
     };
   }
 
@@ -147,7 +155,48 @@ export function check(
       .length,
     fileCount: components.size,
     files: [...components.keys()],
+    unreached:
+      parsed.errors.length > 0
+        ? []
+        : unreachedComponents(typescript, read.config, configDir, configPath, components),
   };
+}
+
+/**
+ * Components the tsconfig would allow (its exclude applied) that the program
+ * did not check. Compared by real path, so a symlinked component counts once.
+ */
+function unreachedComponents(
+  typescript: typeof ts,
+  config: Record<string, unknown>,
+  configDir: string,
+  configPath: string,
+  components: Map<string, ComponentInfo>,
+): string[] {
+  const everything = typescript.parseJsonConfigFileContent(
+    { ...config, files: undefined, include: ['**/*'] },
+    typescript.sys,
+    configDir,
+    undefined,
+    configPath,
+    undefined,
+    [
+      {
+        extension: UTOPIA_EXTENSION,
+        isMixedContent: false,
+        scriptKind: typescript.ScriptKind.Deferred,
+      },
+    ],
+  );
+  const real = (f: string): string => {
+    try {
+      return realpathSync(f);
+    } catch {
+      return resolve(f);
+    }
+  };
+  const checked = new Set([...components.keys()].map(real));
+  return everything.fileNames.filter((f) => isUtopiaFile(f) && !checked.has(real(f)));
 }
 
 /** An "unused" diagnostic for a name the component's template does use. */

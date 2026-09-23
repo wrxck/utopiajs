@@ -8,7 +8,7 @@
  */
 
 import { signal } from '@matthesketh/utopia-core';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createFor, createIf } from '@/directives';
 import { appendChild, createComment, createElement } from '@/dom';
@@ -118,5 +118,75 @@ describe('directive ranges', () => {
     // rendered at once, each branch before its own anchor, rows in order
     expect(host.textContent).toBe('123');
     expect(nodes.map((n) => (n.nodeType === 1 ? n.textContent : '|')).join('')).toBe('1|2|3||');
+  });
+});
+
+describe('anchor-rooted rows render after the pass commits', () => {
+  it('surfaces a throwing branch without stranding rows', () => {
+    const host = createElement('div');
+    const list = createComment('u-for');
+    appendChild(host, list);
+    const items = signal(['a']);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const dispose = createFor(
+      list,
+      () => items(),
+      (x) => {
+        const a = createComment('u-if');
+        createIf(
+          a,
+          () => true,
+          () => {
+            if (x === 'bad') throw new Error('branch failed');
+            const p = createElement('p');
+            p.textContent = x;
+            return p;
+          },
+        );
+        return a;
+      },
+      (x) => x,
+    );
+    items.set(['a', 'bad', 'c']);
+    items.set(['c']);
+    expect(host.textContent).toBe('c');
+    dispose();
+    expect(host.innerHTML).toBe('<!--u-for-->');
+    errors.mockRestore();
+  });
+
+  it('does not subscribe the list to what a branch reads', () => {
+    const host = createElement('div');
+    const list = createComment('u-for');
+    appendChild(host, list);
+    const items = signal([1]);
+    const other = signal('x');
+    let reconciles = 0;
+    createFor(
+      list,
+      () => {
+        reconciles++;
+        return items();
+      },
+      (n) => {
+        const a = createComment('u-if');
+        createIf(
+          a,
+          () => true,
+          () => {
+            const p = createElement('p');
+            p.textContent = `${n}:${other()}`;
+            return p;
+          },
+        );
+        return a;
+      },
+      (n) => n,
+    );
+    items.set([1, 2]);
+    const before = reconciles;
+    other.set('y');
+    other.set('z');
+    expect(reconciles).toBe(before);
   });
 });

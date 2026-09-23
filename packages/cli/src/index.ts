@@ -8,9 +8,9 @@
 // ---------------------------------------------------------------------------
 
 import { execFileSync } from 'node:child_process';
-import { type Dirent, existsSync, readdirSync, realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
@@ -493,11 +493,9 @@ export function checkCommand(args: ParsedArgs): number {
   // a component the tsconfig does not reach (an include of *.ts only, a
   // solution config with `files: []`, a route page nothing imports) is not
   // checked at all — say so rather than report it as clean.
-  const checked = new Set(result.files.map((f) => resolve(f)));
-  const missed = findComponents(dirname(configPath)).filter((f) => !checked.has(f));
-  if (missed.length > 0) {
+  if (result.unreached.length > 0) {
     console.warn(
-      `utopia check: ${missed.length} component(s) are outside this tsconfig and were not checked, e.g. ${missed[0]}. ` +
+      `utopia check: ${result.unreached.length} component(s) are outside this tsconfig and were not checked, e.g. ${result.unreached[0]}. ` +
         'Add them to "include" (for example "src/**/*").',
     );
   }
@@ -511,25 +509,6 @@ export function checkCommand(args: ParsedArgs): number {
 
   console.log(`utopia check: clean — ${result.fileCount} component(s) checked`);
   return 0;
-}
-
-/** Every component under `dir`, skipping node_modules, build output and dot-directories. */
-function findComponents(dir: string, found: string[] = []): string[] {
-  let entries: Dirent[];
-  try {
-    entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return found;
-  }
-  for (const entry of entries) {
-    if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('.')) {
-      continue;
-    }
-    const full = resolve(dir, entry.name);
-    if (entry.isDirectory()) findComponents(full, found);
-    else if (entry.name.endsWith('.utopia')) found.push(full);
-  }
-  return found;
 }
 
 function loadTypescript(configPath: string): typeof import('typescript') {

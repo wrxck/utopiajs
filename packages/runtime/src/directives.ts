@@ -5,7 +5,7 @@
  * constructs (`@if`, `@for`) and child components in .utopia templates.
  */
 
-import { effect, signal } from '@matthesketh/utopia-core';
+import { effect, signal, untrack } from '@matthesketh/utopia-core';
 
 import type { ComponentDefinition } from '@/component';
 import {
@@ -495,6 +495,9 @@ export function createFor<T>(
     // adjacency check repaired that only incidentally, at the price of O(n)
     // moves for a single displaced row).
     const stable = movedBack ? lisPositions(oldIdx) : null;
+    // rows whose root is a u-if / u-for anchor render once inserted — after
+    // the pass is committed below, so a throwing branch cannot strand rows.
+    const attached: Node[] = [];
     let cursor: Node = anchor;
     for (let i = n - 1; i >= 0; i--) {
       const e = next[i]!;
@@ -510,19 +513,12 @@ export function createFor<T>(
         if (roots) {
           for (const r of roots) {
             parent.insertBefore(r, cursor);
-            // a row whose root is a u-if / u-for anchor renders now that it
-            // has a parent, not a microtask later.
-            runAttached(r);
+            attached.push(r);
           }
         } else {
           parent.insertBefore(e.node, cursor);
-          runAttached(e.node);
+          attached.push(e.node);
         }
-        // the insertion may just have rendered the row's branch in front of
-        // it, so read where the row now begins.
-        const now = e.nodes ?? rangeOf(e.node);
-        cursor = now && now.length > 0 ? now[0]! : e.node;
-        continue;
       }
       cursor = first;
     }
@@ -536,6 +532,15 @@ export function createFor<T>(
     }
 
     entries = next;
+
+    // render the rows that were waiting for a parent now, not a microtask
+    // later. untracked: a branch's reads must not subscribe the whole list.
+    // each branch renders before its own anchor, so order needs no fix-up.
+    if (attached.length > 0) {
+      untrack(() => {
+        for (const n of attached) runAttached(n);
+      });
+    }
     // NOT scheduled — see createIf above.
   });
 
