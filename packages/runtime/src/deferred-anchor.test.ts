@@ -122,7 +122,7 @@ describe('directive ranges', () => {
 });
 
 describe('anchor-rooted rows render after the pass commits', () => {
-  it('surfaces a throwing branch without stranding rows', () => {
+  it('surfaces a throwing branch without stranding rows', async () => {
     const host = createElement('div');
     const list = createComment('u-for');
     appendChild(host, list);
@@ -147,7 +147,15 @@ describe('anchor-rooted rows render after the pass commits', () => {
       },
       (x) => x,
     );
-    items.set(['a', 'bad', 'c']);
+    items.set(['z', 'bad', 'c']);
+    // the failure is reported, and the other rows still render
+    expect(errors).toHaveBeenCalledWith(
+      'Error in effect:',
+      expect.objectContaining({ message: 'branch failed' }),
+    );
+    await later();
+    expect(host.textContent).toContain('z');
+    expect(host.textContent).toContain('c');
     items.set(['c']);
     expect(host.textContent).toBe('c');
     dispose();
