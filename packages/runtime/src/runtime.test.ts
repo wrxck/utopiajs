@@ -249,8 +249,15 @@ describe('DOM helpers', () => {
     // --- value = true maps to empty string attribute -----------------------
 
     it('sets attribute to empty string when value is true (non-boolean attr)', () => {
+      setAttr(el, 'translate', true);
+      expect(el.getAttribute('translate')).toBe('');
+    });
+
+    it('writes aria-* true as the string "true"', () => {
+      // aria-hidden="" is not "true" to assistive tech: an empty aria state
+      // is treated as unset, so the element was never hidden.
       setAttr(el, 'aria-hidden', true);
-      expect(el.getAttribute('aria-hidden')).toBe('');
+      expect(el.getAttribute('aria-hidden')).toBe('true');
     });
   });
 
@@ -2826,7 +2833,7 @@ describe('Hydration — mismatch recovery', () => {
 
 describe('select value before options mount', () => {
   it('re-applies the bound value once options exist', async () => {
-    const raf = (cb) => setTimeout(cb, 0);
+    const raf = ((cb: () => void) => setTimeout(cb, 0)) as unknown as typeof requestAnimationFrame;
     const orig = globalThis.requestAnimationFrame;
     globalThis.requestAnimationFrame = raf;
     try {

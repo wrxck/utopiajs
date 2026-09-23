@@ -94,6 +94,9 @@ Implementation details:
 - **Diamond dependency handling** — each subscriber is notified at most once per batch
 - **Conditional tracking** — subscriptions are rebuilt on each execution, so `if` branches only track what they actually read
 - **Auto-batching** — a single `signal.set()` call automatically batches its downstream notifications
+- **Equal values stop propagation** — a subscriber notified only through a `computed` first refreshes that computed, and skips its own run when the computed recomputed to an `Object.is`-equal value. `effect(() => fetchPage(page()))` with `page = computed(() => Math.floor(offset() / 10))` fetches once per page, not once per offset change.
+- **Ownership** — an `effect` or `computed` belongs to the `createRoot` it was created under and runs under that root every time it re-runs, so effects a re-run creates join the same root. A component's `setup` and `render` run inside a root the component owns, so a plain `effect()` / `computed()` in a `<script>` is disposed on unmount.
+- **Nested effects are not owned by their parent effect** — an `effect` created inside another effect's body lives until its own dispose or its root's, not until the outer effect re-runs (the same rule as Vue and Preact signals). Return a cleanup that disposes it when it must follow the outer effect.
 - **Synchronous notification** — `signal.set()` notifies its subscribers *inside* the call, before it returns. A plain `effect` therefore re-runs partway through whatever function did the write. Anything the effect reads that is not itself reactive (a persisted copy, a global default, a DOM attribute) must be updated BEFORE the write, or use a scheduler so the effect runs after the synchronous work finishes.
 
 ## Template Directives
@@ -105,7 +108,8 @@ Implementation details:
 | `:attr="expr"` | Dynamic attribute | `createEffect(() => setAttr(el, 'attr', _ctx.expr))` |
 | `u-if="cond"` | Conditional | `createComment('u-if')` + `createIf(anchor, () => cond, renderTrue)` |
 | `u-for="item in list()"` | List rendering | `createComment('u-for')` + `createFor(anchor, () => list, renderFn, key?)` |
-| `u-model="sig"` | Two-way binding | `createEffect(() => setAttr(el, 'value', sig()))` + `addEventListener(el, 'input', ...)` |
+| `u-model="sig"` | Two-way binding | `applyModel(el, sig, opts?)` |
+| `u-transition="fade"` | CSS enter/leave classes | `createTransition(el, { name })` — `createIf` / `createFor` play `fade-enter-*` on a branch or row added after the first render and hold a removed one until `fade-leave-*` finishes |
 
 ### The `u-for` row scope
 

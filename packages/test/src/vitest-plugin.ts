@@ -30,6 +30,9 @@ export interface UtopiaTestPluginOptions {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** First line of every generated file; anything else is the user's. */
+const GENERATED_HEADER = '// Auto-generated from ';
+
 /** Recursively find all .utopia files under a directory. */
 function findUtopiaFiles(dir: string): string[] {
   const results: string[] = [];
@@ -96,8 +99,20 @@ export function utopiaTestPlugin(options: UtopiaTestPluginOptions = {}): Plugin 
     const testContent = descriptor.test.content;
     const basename = path.basename(utopiaPath);
 
+    // never overwrite (and later delete) a test file someone wrote by hand
+    // under the same name — only a file carrying our header is ours.
+    if (!generatedFiles.has(testPath) && fs.existsSync(testPath)) {
+      const existing = fs.readFileSync(testPath, 'utf-8');
+      if (!existing.startsWith(GENERATED_HEADER)) {
+        console.warn(
+          `[utopia-test] ${testPath} exists and was not generated; its <test> block in ${basename} is skipped.`,
+        );
+        return;
+      }
+    }
+
     const output = [
-      `// Auto-generated from ${basename} <test> block`,
+      `${GENERATED_HEADER}${basename} <test> block`,
       `import self from './${basename}';`,
       '',
       testContent.trim(),

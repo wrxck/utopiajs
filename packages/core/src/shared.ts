@@ -47,7 +47,9 @@ export interface SharedSignal<T> extends Signal<T> {
  * ```
  *
  * @param key          A unique channel name for this shared state.
- * @param initialValue The initial value (used if no other tab has broadcast yet).
+ * @param initialValue The initial value. A new tab does not ask the others for
+ *                     theirs: it starts here and picks up another tab's value
+ *                     the next time that tab sets it.
  * @param options      Optional custom serialization.
  * @returns A SharedSignal with cross-tab sync.
  */

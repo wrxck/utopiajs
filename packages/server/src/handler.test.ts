@@ -3,7 +3,7 @@
 // ============================================================================
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { Readable } from 'node:stream';
+import { Readable, Writable } from 'node:stream';
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -14,8 +14,9 @@ import { serializeHead } from './render-to-string';
 
 interface CapturedResponse {
   statusCode: number;
-  headers: Record<string, string>;
+  headers: Record<string, string | string[]>;
   body: string;
+  bytes: Buffer;
 }
 
 function makeReq(
@@ -34,19 +35,33 @@ function makeReq(
 
 function runHandler(options: HandlerOptions, req: IncomingMessage): Promise<CapturedResponse> {
   return new Promise((resolve) => {
-    const captured: CapturedResponse = { statusCode: 0, headers: {}, body: '' };
-    const res = {
-      writeHead(status: number, headers?: Record<string, string>) {
+    const captured: CapturedResponse = {
+      statusCode: 0,
+      headers: {},
+      body: '',
+      bytes: Buffer.alloc(0),
+    };
+    const chunks: Buffer[] = [];
+    // a real writable, so a streamed body can be piped to it as to a socket.
+    const res = new Writable({
+      write(chunk: Buffer, _enc, cb) {
+        chunks.push(Buffer.from(chunk));
+        cb();
+      },
+    });
+    Object.assign(res, {
+      writeHead(status: number, headers?: Record<string, string | string[]>) {
         captured.statusCode = status;
         if (headers) Object.assign(captured.headers, headers);
         return res;
       },
-      end(body?: string) {
-        captured.body = body ?? '';
-        resolve(captured);
-      },
-    } as unknown as ServerResponse;
-    createHandler(options)(req, res);
+    });
+    res.on('finish', () => {
+      captured.bytes = Buffer.concat(chunks);
+      captured.body = captured.bytes.toString('utf8');
+      resolve(captured);
+    });
+    createHandler(options)(req, res as unknown as ServerResponse);
   });
 }
 
@@ -313,5 +328,145 @@ describe('handleApiRequest — path normalization and method dispatch', () => {
     });
     expect(routes).toHaveLength(1);
     expect(routes[0].path).toBe('/api/data');
+  });
+});
+
+describe('createHandler — API responses reach the client intact', () => {
+  const apiOptions = (
+    manifest: Record<string, () => Promise<Record<string, unknown>>>,
+  ): HandlerOptions => ({
+    template,
+    render: async () => ({ html: 'page', css: '' }),
+    apiRoutes: manifest,
+  });
+
+  it('keeps every Set-Cookie header', async () => {
+    const manifest = {
+      '/src/routes/api/login/+server.ts': () =>
+        Promise.resolve({
+          POST: () => {
+            const headers = new Headers();
+            headers.append('Set-Cookie', 'session=abc; HttpOnly');
+            headers.append('Set-Cookie', 'csrf=xyz');
+            return new Response(null, { status: 204, headers });
+          },
+        }),
+    };
+    const res = await runHandler(apiOptions(manifest), makeReq('/api/login', 'POST', ''));
+    expect(res.statusCode).toBe(204);
+    expect(res.headers['set-cookie']).toEqual(['session=abc; HttpOnly', 'csrf=xyz']);
+  });
+
+  it('sends a binary body byte for byte', async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00, 0xc3]);
+    const manifest = {
+      '/src/routes/api/image/+server.ts': () =>
+        Promise.resolve({
+          GET: () => new Response(png, { headers: { 'Content-Type': 'image/png' } }),
+        }),
+    };
+    const res = await runHandler(apiOptions(manifest), makeReq('/api/image'));
+    expect([...res.bytes]).toEqual([...png]);
+  });
+
+  it('streams a body instead of buffering it until it ends', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        controller.enqueue(new TextEncoder().encode('data: first\n\n'));
+        await gate;
+        controller.enqueue(new TextEncoder().encode('data: second\n\n'));
+        controller.close();
+      },
+    });
+    const manifest = {
+      '/src/routes/api/events/+server.ts': () =>
+        Promise.resolve({ GET: () => new Response(stream) }),
+    };
+
+    const firstChunk = new Promise<string>((resolve) => {
+      const res = new Writable({
+        write(chunk: Buffer, _enc, cb) {
+          resolve(Buffer.from(chunk).toString());
+          cb();
+        },
+      });
+      Object.assign(res, { writeHead: () => res });
+      createHandler(apiOptions(manifest))(makeReq('/api/events'), res as unknown as ServerResponse);
+    });
+    // the first event arrives while the stream is still open.
+    expect(await firstChunk).toBe('data: first\n\n');
+    release();
+  });
+
+  it('sends no body for HEAD', async () => {
+    const manifest = {
+      '/src/routes/api/head/+server.ts': () =>
+        Promise.resolve({ HEAD: () => new Response('ignored') }),
+    };
+    const res = await runHandler(apiOptions(manifest), makeReq('/api/head', 'HEAD'));
+    expect(res.body).toBe('');
+  });
+
+  it('answers HEAD from the GET handler when there is no HEAD export', async () => {
+    const manifest = {
+      '/src/routes/api/doc/+server.ts': () =>
+        Promise.resolve({ GET: () => new Response('body', { headers: { 'X-Doc': '1' } }) }),
+    };
+    const res = await runHandler(apiOptions(manifest), makeReq('/api/doc', 'HEAD'));
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['x-doc']).toBe('1');
+    expect(res.body).toBe('');
+  });
+
+  it('prefers a static API route over a dynamic sibling', async () => {
+    const manifest = {
+      '/src/routes/api/[id]/+server.ts': () =>
+        Promise.resolve({ GET: () => new Response('by id') }),
+      '/src/routes/api/stats/+server.ts': () =>
+        Promise.resolve({ GET: () => new Response('stats') }),
+    };
+    const res = await runHandler(apiOptions(manifest), makeReq('/api/stats'));
+    expect(res.body).toBe('stats');
+    const byId = await runHandler(apiOptions(manifest), makeReq('/api/42'));
+    expect(byId.body).toBe('by id');
+  });
+
+  it('ends the connection when a streamed body fails after the headers are sent', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error('upstream failed'));
+      },
+    });
+    const manifest = {
+      '/src/routes/api/fail/+server.ts': () => Promise.resolve({ GET: () => new Response(stream) }),
+    };
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let destroyed: unknown;
+    const res = new Writable({
+      write(_c, _e, cb) {
+        cb();
+      },
+    });
+    let headersSent = false;
+    Object.assign(res, {
+      writeHead: () => {
+        if (headersSent) throw new Error('ERR_HTTP_HEADERS_SENT');
+        headersSent = true;
+        return res;
+      },
+    });
+    Object.defineProperty(res, 'headersSent', { get: () => headersSent });
+    res.on('error', (err) => (destroyed = err));
+    await expect(
+      Promise.resolve(
+        createHandler(apiOptions(manifest))(makeReq('/api/fail'), res as unknown as ServerResponse),
+      ),
+    ).resolves.toBeUndefined();
+    expect(res.destroyed).toBe(true);
+    await new Promise((r) => setImmediate(r)); // destroy emits 'error' on the next tick
+    expect(String(destroyed)).toContain('upstream failed');
+    errorSpy.mockRestore();
   });
 });

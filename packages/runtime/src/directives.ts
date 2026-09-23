@@ -5,7 +5,7 @@
  * constructs (`@if`, `@for`) and child components in .utopia templates.
  */
 
-import { effect, signal } from '@matthesketh/utopia-core';
+import { effect, signal, untrack } from '@matthesketh/utopia-core';
 
 import type { ComponentDefinition } from '@/component';
 import {
@@ -16,6 +16,16 @@ import {
   stopCapturingDisposers,
 } from '@/component';
 import { insertBefore, removeNode } from '@/dom';
+import { beginRange, endRange, type RangeWalk, settleRange } from '@/hydration';
+import {
+  cancelDeferred,
+  deferUntilAttached,
+  isDeferred,
+  rangeOf,
+  runAttached,
+  setRange,
+} from '@/pending';
+import { transitionEnter, transitionLeave } from '@/transition';
 
 /** A DOM Node with optional cleanup/dispose callbacks attached by the runtime. */
 interface DisposableNode extends Node {
@@ -53,6 +63,8 @@ export function createIf(
   let currentDisposers: (() => void)[] = [];
   let lastConditionTruthy: boolean | undefined;
   let disposed = false;
+  let hydrationWalk: RangeWalk | null = null;
+  let initialised = false;
 
   // tear down the active branch: dispose the effects captured during its
   // render, run any child-component cleanup, then remove its nodes. without
@@ -69,7 +81,8 @@ export function createIf(
     currentDisposers = [];
     for (const node of currentNodes) {
       (node as DisposableNode).__cleanup?.();
-      removeNode(node);
+      // a `u-transition` element stays in place until its leave finishes.
+      if (!transitionLeave(node, () => removeNode(node))) removeNode(node);
     }
     currentNodes.length = 0;
   };
@@ -85,8 +98,11 @@ export function createIf(
     } finally {
       currentDisposers = stopCapturingDisposers(prev);
     }
+    if (hydrationWalk) settleRange(hydrationWalk);
     currentNodes.push(node);
     insertBefore(parent, node, anchor);
+    // the first render (and hydration) is the initial state, not a change.
+    if (initialised) transitionEnter(node);
   };
 
   // render the current branch. when this if is itself a branch returned into an
@@ -98,22 +114,44 @@ export function createIf(
   const applyBranch = (): void => {
     const parent = anchor.parentNode;
     if (!parent) {
+      // render as soon as the anchor is inserted: through the runtime's
+      // insertion paths at once, or through the raw DOM on the next microtask.
+      deferUntilAttached(anchor, () => {
+        if (!disposed) applyBranch();
+      });
       if (!retryScheduled) {
         retryScheduled = true;
         queueMicrotask(() => {
           retryScheduled = false;
-          if (!disposed && anchor.parentNode) applyBranch();
+          // only when the insertion hook has not rendered already: running
+          // again tore the fresh branch down and rebuilt it, remounting every
+          // child component in it.
+          if (!disposed && anchor.parentNode && isDeferred(anchor)) {
+            cancelDeferred(anchor);
+            applyBranch();
+          }
         });
       }
       return;
     }
+    cancelDeferred(anchor);
 
     teardownBranch();
 
-    if (lastConditionTruthy) {
-      renderBranch(renderTrue, parent);
-    } else if (renderFalse) {
-      renderBranch(renderFalse, parent);
+    // while hydrating, the first branch claims the server's nodes between the
+    // range marker and our anchor instead of building new ones; whatever it
+    // does not claim (a branch the client does not render) is removed.
+    const walk = (hydrationWalk = beginRange(anchor));
+    try {
+      if (lastConditionTruthy) {
+        renderBranch(renderTrue, parent);
+      } else if (renderFalse) {
+        renderBranch(renderFalse, parent);
+      }
+    } finally {
+      hydrationWalk = null;
+      if (walk) endRange(walk);
+      initialised = true;
     }
   };
 
@@ -134,9 +172,12 @@ export function createIf(
     // the runtime — behind a queue, for nothing the user could ever see.
   });
 
+  setRange(anchor, () => currentNodes);
+
   const disposeAll = (): void => {
     if (disposed) return;
     disposed = true;
+    cancelDeferred(anchor);
     dispose();
     teardownBranch();
   };
@@ -235,6 +276,9 @@ export function createFor<T>(
     seenPass: number;
   };
   let entries: Entry[] = [];
+  // set during the first reconcile of a hydrating list: each row claims the
+  // next server row in the range instead of building a fresh one.
+  let hydrationWalk: RangeWalk | null = null;
   // persistent key → entry index, updated incrementally on add/remove so a
   // reconcile doesn't rebuild the whole map just to look up survivors.
   const byKey = new Map<string | number, Entry>();
@@ -288,6 +332,7 @@ export function createFor<T>(
       throw err;
     }
     const disposers = stopCapturingDisposers(prev);
+    if (hydrationWalk) settleRange(hydrationWalk);
     const dispose = (): void => {
       for (const d of disposers) {
         try {
@@ -325,17 +370,25 @@ export function createFor<T>(
       // the caller appends after render returns), the first reconcile runs
       // before the anchor is connected. dropping it silently rendered NOTHING
       // for the life of the page whenever the list never changed again, so
-      // retry on a microtask instead.
+      // reconcile once the anchor is inserted (see pending.ts), and on a
+      // microtask for a raw DOM insertion.
+      deferUntilAttached(anchor, () => {
+        if (!listDisposed) anchorAttached.update((n) => n + 1);
+      });
       if (!retryScheduled) {
         retryScheduled = true;
         queueMicrotask(() => {
           retryScheduled = false;
-          if (!listDisposed && anchor.parentNode) anchorAttached.update((n) => n + 1);
+          if (!listDisposed && anchor.parentNode && isDeferred(anchor)) {
+            cancelDeferred(anchor);
+            anchorAttached.update((n) => n + 1);
+          }
         });
       }
       return;
     }
 
+    cancelDeferred(anchor);
     pass++;
     const n = items.length;
     const next: Entry[] = new Array(n);
@@ -348,6 +401,7 @@ export function createFor<T>(
     let movedBack = false;
 
     const freshThisPass: Entry[] = [];
+    hydrationWalk = beginRange(anchor);
     try {
       for (let i = 0; i < n; i++) {
         const item = items[i] as T;
@@ -398,6 +452,10 @@ export function createFor<T>(
         }
       }
       throw err;
+    } finally {
+      // server rows the client did not claim (a shorter client list) go.
+      if (hydrationWalk) endRange(hydrationWalk);
+      hydrationWalk = null;
     }
 
     // remove nodes whose keys are gone, disposing their captured effects. a
@@ -416,7 +474,10 @@ export function createFor<T>(
             if (r.parentNode === parent) parent.removeChild(r);
           }
         } else if (e.node.parentNode === parent) {
-          parent.removeChild(e.node);
+          const node = e.node;
+          if (!transitionLeave(node, () => node.parentNode?.removeChild(node))) {
+            parent.removeChild(node);
+          }
         }
       }
     }
@@ -434,11 +495,16 @@ export function createFor<T>(
     // adjacency check repaired that only incidentally, at the price of O(n)
     // moves for a single displaced row).
     const stable = movedBack ? lisPositions(oldIdx) : null;
+    // rows whose root is a u-if / u-for anchor render once inserted — after
+    // the pass is committed below, so a throwing branch cannot strand rows.
+    const attached: Node[] = [];
     let cursor: Node = anchor;
     for (let i = n - 1; i >= 0; i--) {
       const e = next[i]!;
       e.pos = i;
-      const roots = e.nodes;
+      // a fragment row's recorded roots, or a directive-rooted row's whole
+      // range (read live: a u-if row's branch changes after it renders).
+      const roots = e.nodes ?? rangeOf(e.node);
       if (roots && roots.length === 0) continue; // empty row occupies nothing
       const first = roots ? roots[0]! : e.node;
       const last = roots ? roots[roots.length - 1]! : e.node;
@@ -447,20 +513,43 @@ export function createFor<T>(
         if (roots) {
           for (const r of roots) {
             parent.insertBefore(r, cursor);
+            attached.push(r);
           }
         } else {
           parent.insertBefore(e.node, cursor);
+          attached.push(e.node);
         }
       }
       cursor = first;
     }
 
+    // rows added by an update play their enter transition; the first pass is
+    // the initial state.
+    if (pass > 1) {
+      for (const e of freshThisPass) {
+        if (!e.nodes) transitionEnter(e.node);
+      }
+    }
+
     entries = next;
+
+    // render the rows that were waiting for a parent now, not a microtask
+    // later. untracked: a branch's reads must not subscribe the whole list.
+    // each branch renders before its own anchor, so order needs no fix-up.
+    if (attached.length > 0) {
+      untrack(() => {
+        for (const n of attached) runAttached(n);
+      });
+    }
     // NOT scheduled — see createIf above.
   });
 
+  // rangeOf expands nested ranges itself; expanding here too duplicated them.
+  setRange(anchor, () => entries.flatMap((e) => e.nodes ?? [e.node]));
+
   const disposeAll = (): void => {
     listDisposed = true;
+    cancelDeferred(anchor);
     reconcile();
     const parent = anchor.parentNode;
     for (const e of entries) {

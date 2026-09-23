@@ -196,4 +196,38 @@ describe('persistedSignal', () => {
     s.close();
     localStorage.removeItem(key);
   });
+
+  it('falls back to memory when the storage throws on access', () => {
+    // a sandboxed iframe or blocked site data raises SecurityError on every
+    // storage call; the signal must still work.
+    const blocked = {
+      getItem() {
+        throw new Error('SecurityError');
+      },
+      setItem() {
+        throw new Error('SecurityError');
+      },
+    } as unknown as Storage;
+    const s = persistedSignal('blocked', 1, { storage: blocked, syncTabs: false });
+    expect(s()).toBe(1);
+    s.set(2);
+    expect(s()).toBe(2);
+  });
+
+  it('falls back to memory when reading localStorage itself throws', () => {
+    const desc = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new Error('SecurityError');
+      },
+    });
+    try {
+      const s = persistedSignal('blocked-global', 'a', { syncTabs: false });
+      expect(s()).toBe('a');
+    } finally {
+      if (desc) Object.defineProperty(globalThis, 'localStorage', desc);
+      else delete (globalThis as { localStorage?: unknown }).localStorage;
+    }
+  });
 });

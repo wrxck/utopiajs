@@ -4,7 +4,7 @@
 
 export type { AI, CreateAIOptions, RunOptions, ToolHandler } from '@/ai';
 export { createAI } from '@/ai';
-export { collectStream, parseSSEStream, streamSSE } from '@/streaming';
+export { collectStream, parseSSEStream, sseResponse, streamSSE } from '@/streaming';
 export type {
   AIAdapter,
   AIHooks,

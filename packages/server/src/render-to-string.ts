@@ -6,6 +6,9 @@ import {
   escapeAttr,
   escapeComment,
   escapeHtml,
+  optionMatches,
+  RAW_TEXT_ELEMENTS,
+  TEXT_SEPARATOR_HTML,
   validateAttr,
   validateTag,
   VOID_ELEMENTS,
@@ -25,17 +28,17 @@ export function serializeVNode(node: VNode, depth: number = 0): string {
   // re-copied each already-materialised subtree string into its parent —
   // quadratic in total html size × depth. a single array + join is linear.
   const out: string[] = [];
-  pushVNode(out, node, depth);
+  pushVNode(out, node, depth, null);
   return out.join('');
 }
 
-function pushVNode(out: string[], node: VNode, depth: number): void {
+function pushVNode(out: string[], node: VNode, depth: number, selectValue: string | null): void {
   if (depth > MAX_VNODE_DEPTH) {
     throw new Error(`VNode tree exceeded maximum depth of ${MAX_VNODE_DEPTH}`);
   }
   switch (node.type) {
     case 1: // VElement
-      pushElement(out, node, depth);
+      pushElement(out, node, depth, selectValue);
       return;
     case 2: // VText
       out.push(escapeHtml(node.text));
@@ -44,16 +47,44 @@ function pushVNode(out: string[], node: VNode, depth: number): void {
       out.push(`<!--${escapeComment(node.text)}-->`);
       return;
     case 4: // VFragment — only ever a render root; serialize bare children.
-      for (const child of node.children) {
-        pushVNode(out, child, depth + 1);
-      }
+      pushChildren(out, node.children, depth, selectValue, true);
       return;
   }
 }
 
-function pushElement(out: string[], el: VElement, depth: number): void {
+/**
+ * Serialize a child list. Adjacent non-empty text nodes get a separator
+ * comment between them (not inside raw-text elements, where it would be
+ * literal text) so the client's hydration walker sees them as separate nodes.
+ */
+function pushChildren(
+  out: string[],
+  children: VNode[],
+  depth: number,
+  selectValue: string | null,
+  separateText: boolean,
+): void {
+  // every pair of adjacent text nodes gets a separator, empty ones included:
+  // an empty text node writes nothing, so without the separator the client
+  // could not tell `{{ empty }}Hello` from `Hello` and claimed the static text
+  // for the interpolation.
+  let prevText = false;
+  for (const child of children) {
+    if (child.type === 2) {
+      if (prevText && separateText) out.push(TEXT_SEPARATOR_HTML);
+      prevText = true;
+      if (child.text === '') continue;
+    } else {
+      prevText = false;
+    }
+    pushVNode(out, child, depth + 1, selectValue);
+  }
+}
+
+function pushElement(out: string[], el: VElement, depth: number, selectValue: string | null): void {
   // validate the tag once and reuse for both the opening and closing tag.
   const tag = validateTag(el.tag);
+  const lowerTag = tag.toLowerCase();
   out.push(`<${tag}`);
 
   // attributes
@@ -65,18 +96,29 @@ function pushElement(out: string[], el: VElement, depth: number): void {
       out.push(` ${validateAttr(name)}="${escapeAttr(value)}"`);
     }
   }
+  if (
+    selectValue !== null &&
+    lowerTag === 'option' &&
+    !('selected' in el.attrs) &&
+    optionMatches(el, selectValue)
+  ) {
+    out.push(' selected');
+  }
 
   // void elements — no closing tag, no children.
-  if (VOID_ELEMENTS.has(el.tag.toLowerCase())) {
+  if (VOID_ELEMENTS.has(lowerTag)) {
     out.push('>');
     return;
   }
 
   out.push('>');
 
-  // children
-  for (const child of el.children) {
-    pushVNode(out, child, depth + 1);
+  if (el.html !== undefined) {
+    out.push(el.html);
+  } else {
+    const childSelect =
+      lowerTag === 'select' && el._modelValue !== undefined ? el._modelValue : selectValue;
+    pushChildren(out, el.children, depth, childSelect, !RAW_TEXT_ELEMENTS.has(lowerTag));
   }
 
   out.push(`</${tag}>`);

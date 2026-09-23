@@ -37,6 +37,29 @@ export interface PersistedSignal<T> extends Signal<T> {
  * SSR-safe: when no storage backend exists the signal behaves like a plain
  * in-memory signal seeded with `initialValue`.
  */
+/**
+ * `localStorage`, or null when there is none. Reading the global can itself
+ * throw — a sandboxed iframe or a browser with site data blocked raises a
+ * SecurityError on access — and `typeof` does not guard a throwing getter.
+ */
+function defaultStorage(): Storage | null {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Read a key, treating an inaccessible store as empty. */
+function readRaw(store: Storage | null, key: string): string | null {
+  if (!store) return null;
+  try {
+    return store.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 export function persistedSignal<T>(
   key: string,
   initialValue: T,
@@ -46,19 +69,16 @@ export function persistedSignal<T>(
   const deserialize = options.deserialize ?? (JSON.parse as (raw: string) => T);
   const syncTabs = options.syncTabs ?? true;
 
-  const store: Storage | null =
-    options.storage ?? (typeof localStorage !== 'undefined' ? localStorage : null);
+  const store: Storage | null = options.storage ?? defaultStorage();
 
   // seed from storage if a value is present, otherwise fall back to the initial.
   let start = initialValue;
-  if (store) {
-    const raw = store.getItem(key);
-    if (raw !== null) {
-      try {
-        start = deserialize(raw);
-      } catch {
-        // corrupt/foreign value — keep the initial rather than throwing.
-      }
+  const raw = readRaw(store, key);
+  if (raw !== null) {
+    try {
+      start = deserialize(raw);
+    } catch {
+      // corrupt/foreign value — keep the initial rather than throwing.
     }
   }
 
@@ -74,7 +94,7 @@ export function persistedSignal<T>(
   };
 
   // persist the seed only if storage had nothing yet, so first read is sticky.
-  if (store && store.getItem(key) === null) {
+  if (store && raw === null) {
     write(start);
   }
 

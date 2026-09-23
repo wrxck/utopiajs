@@ -1,0 +1,30 @@
+<template>
+  <table class="card" role="presentation" width="100%">
+    <tr>
+      <td>
+        <h1 class="title">Welcome, {{ props.name }}!</h1>
+        <p class="body">Thanks for trying the UtopiaJS kitchen sink.</p>
+      </td>
+    </tr>
+  </table>
+</template>
+
+<script>
+  const props = defineProps();
+</script>
+
+<style>
+  .card {
+    background: #ffffff;
+    padding: 24px;
+  }
+
+  .title {
+    color: #1a1a1a;
+    font-size: 24px;
+  }
+
+  .body {
+    color: #555555;
+  }
+</style>

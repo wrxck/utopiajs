@@ -7,7 +7,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { serializeVNode } from './render-to-string';
 import {
   appendChild,
+  applyModel,
   createComment,
+  createComponent,
   createComponentInstance,
   createElement,
   createErrorBoundary,
@@ -17,14 +19,20 @@ import {
   createTransition,
   effect,
   flushStyles,
+  inject,
   insertBefore,
+  mergeClass,
   mount,
   nextTick,
   onDestroy,
   onMount,
+  provide,
   queueJob,
   removeNode,
   setAttr,
+  setHtml,
+  setSafeHtml,
+  setServerHtmlSanitizer,
   useEventListener,
   useInterval,
   useTimeout,
@@ -275,5 +283,184 @@ describe('createErrorBoundary — non-Error throws', () => {
       },
     );
     expect(serializeVNode(node)).toBe('<div>plain string failure</div>');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parity with the client runtime's attribute handling
+// ---------------------------------------------------------------------------
+
+describe('setAttr — class and style values the client accepts', () => {
+  it('renders class arrays and nested arrays like the client', () => {
+    const el = createElement('div');
+    setAttr(el, 'class', ['a', { b: true, c: false }, ['d']]);
+    expect(el.attrs.class).toBe('a b d');
+  });
+
+  it('merges a static class with a bound one', () => {
+    expect(mergeClass('btn', ['primary', { active: true }])).toBe('btn primary active');
+    expect(mergeClass('btn', '')).toBe('btn');
+  });
+
+  it('renders style arrays with later entries winning', () => {
+    const el = createElement('div');
+    setAttr(el, 'style', ['color: red; margin: 0', { color: 'blue', fontSize: '2px' }]);
+    expect(el.attrs.style).toBe('color: blue; margin: 0; font-size: 2px');
+  });
+});
+
+describe('setAttr — url and aria guards match the client', () => {
+  it.each(['java\tscript:alert(1)', '\u0001javascript:alert(1)', 'java\nscript:x'])(
+    'drops %j on href',
+    (value) => {
+      const el = createElement('a');
+      setAttr(el, 'href', value);
+      expect(el.attrs.href).toBeUndefined();
+    },
+  );
+
+  it('writes aria booleans as "true"/"false"', () => {
+    const el = createElement('button');
+    setAttr(el, 'aria-expanded', false);
+    expect(el.attrs['aria-expanded']).toBe('false');
+    setAttr(el, 'aria-expanded', true);
+    expect(el.attrs['aria-expanded']).toBe('true');
+  });
+});
+
+describe('u-html on the server', () => {
+  it('writes trusted html verbatim for u-html.raw', () => {
+    const el = createElement('div');
+    setHtml(el, () => '<b>x</b>');
+    expect(serializeVNode(el)).toBe('<div><b>x</b></div>');
+  });
+
+  it('leaves sanitised u-html empty when no server sanitiser is installed', () => {
+    const el = createElement('div');
+    setSafeHtml(el, () => '<img src=x onerror=alert(1)>');
+    expect(serializeVNode(el)).toBe('<div></div>');
+  });
+
+  it('uses an installed server sanitiser', () => {
+    setServerHtmlSanitizer((html) => html.replace(/<img[^>]*>/g, ''));
+    try {
+      const el = createElement('div');
+      setSafeHtml(el, () => '<p>ok</p><img src=x onerror=alert(1)>');
+      expect(serializeVNode(el)).toBe('<div><p>ok</p></div>');
+    } finally {
+      setServerHtmlSanitizer(null);
+    }
+  });
+});
+
+describe('u-model initial state on the server', () => {
+  it('renders value, checked, textarea text and the selected option', () => {
+    const text = createElement('input');
+    applyModel(text, () => 'hello');
+    expect(serializeVNode(text)).toBe('<input value="hello">');
+
+    const box = createElement('input');
+    box.attrs.type = 'checkbox';
+    applyModel(box, () => true);
+    expect(serializeVNode(box)).toBe('<input type="checkbox" checked>');
+
+    const radio = createElement('input');
+    radio.attrs.type = 'radio';
+    radio.attrs.value = 'b';
+    applyModel(radio, () => 'b');
+    expect(serializeVNode(radio)).toBe('<input type="radio" value="b" checked>');
+
+    const area = createElement('textarea');
+    applyModel(area, () => 'a < b');
+    expect(serializeVNode(area)).toBe('<textarea>a &lt; b</textarea>');
+
+    const select = createElement('select');
+    applyModel(select, () => 'two');
+    for (const v of ['one', 'two']) {
+      const opt = createElement('option');
+      opt.attrs.value = v;
+      appendChild(select, opt);
+    }
+    expect(serializeVNode(select)).toBe(
+      '<select><option value="one"></option><option value="two" selected></option></select>',
+    );
+  });
+});
+
+describe('structural directives whose anchor has no parent yet', () => {
+  it('renders an else-if branch returned into an outer u-if', () => {
+    // the compiled shape of <b u-if="false"> / <i u-else-if="true">
+    const root = createElement('div');
+    const outer = createComment('u-if');
+    appendChild(root, outer);
+    createIf(
+      outer,
+      () => false,
+      () => createElement('b'),
+      () => {
+        const inner = createComment('u-if');
+        createIf(
+          inner,
+          () => true,
+          () => createElement('i'),
+        );
+        return inner;
+      },
+    );
+    expect(serializeVNode(root)).toBe('<div><!--[--><!--[--><i></i><!--u-if--><!--u-if--></div>');
+  });
+
+  it('renders a component whose root is a u-if or u-for', () => {
+    const IfRoot = {
+      render() {
+        const anchor = createComment('u-if');
+        createIf(
+          anchor,
+          () => true,
+          () => createElement('p'),
+        );
+        return anchor;
+      },
+    };
+    const ForRoot = {
+      render() {
+        const anchor = createComment('u-for');
+        createFor(
+          anchor,
+          () => [1, 2],
+          () => createElement('li'),
+        );
+        return anchor;
+      },
+    };
+    expect(serializeVNode(createComponent(IfRoot))).toBe('<!--[--><p></p><!--u-if-->');
+    expect(serializeVNode(createComponent(ForRoot))).toBe('<!--[--><li></li><li></li><!--u-for-->');
+  });
+});
+
+describe('provide / inject on the server', () => {
+  it('resolves a value provided by an ancestor', () => {
+    const KEY = Symbol('theme');
+    const Child = {
+      setup: () => ({ theme: inject(KEY, 'light') }),
+      render(ctx: Record<string, unknown>) {
+        const el = createElement('span');
+        appendChild(el, createTextNode(String(ctx.theme)));
+        return el;
+      },
+    };
+    const Parent = {
+      setup() {
+        provide(KEY, 'dark');
+        return {};
+      },
+      render() {
+        const el = createElement('div');
+        appendChild(el, createComponent(Child));
+        return el;
+      },
+    };
+    expect(serializeVNode(createComponent(Parent))).toBe('<div><span>dark</span></div>');
+    expect(serializeVNode(createComponent(Child))).toBe('<span>light</span>');
   });
 });

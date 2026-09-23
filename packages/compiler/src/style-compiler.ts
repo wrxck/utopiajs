@@ -29,9 +29,6 @@ export const WHITESPACE_RE = /\s/;
 /** matches @keyframes at-rule headers (including vendor-prefixed variants). */
 export const KEYFRAMES_RE = /^@(?:-\w+-)?keyframes\b/;
 
-/** matches trailing pseudo-elements and pseudo-classes on a CSS selector. */
-export const PSEUDO_SELECTOR_RE = /(?:::?[\w-]+(?:\([^)]*\))?)+$/;
-
 // ---- Types ------------------------------------------------------------------
 
 export interface StyleCompileOptions {
@@ -289,8 +286,7 @@ function consumeRuleSet(css: string, pos: number, scopeId: string): ConsumeResul
   const declarations = css.slice(braceIdx + 1, depth === 0 ? endIdx - 1 : endIdx);
 
   // Scope each selector in the comma-separated list.
-  const scopedSelectors = selectorText
-    .split(',')
+  const scopedSelectors = splitTopLevel(selectorText, ',')
     .map((sel) => scopeSingleSelector(sel.trim(), scopeId))
     .join(', ');
 
@@ -318,23 +314,73 @@ function scopeSingleSelector(selector: string, scopeId: string): string {
 
   const attr = `[${scopeId}]`;
 
-  // Find the position to insert the scope attribute.
-  // We want to insert *before* any pseudo-element (::) or pseudo-class (:)
-  // that follows the last simple selector.
-  //
-  // Strategy: work from the end of the selector backwards.
-  //  1. Strip trailing pseudo-elements and pseudo-classes.
-  //  2. Insert the scope attribute.
-  //  3. Re-append the pseudo-elements/classes.
+  // the attribute goes on the last compound selector, before its first
+  // pseudo-class or pseudo-element. both are found at the top level only:
+  // a regex could not see past `:is(.a, .b)` or `[data-k="a,b"]`, and put the
+  // attribute inside them.
+  const compoundStart = lastCompoundStart(selector);
+  const pseudo = firstTopLevelIndex(selector, ':', compoundStart);
+  const at = pseudo === -1 ? selector.length : pseudo;
+  return `${selector.slice(0, at)}${attr}${selector.slice(at)}`;
+}
 
-  // Match trailing pseudo-elements/classes: e.g. `:hover`, `::before`,
-  // `:nth-child(2n)`.
-  const pseudoMatch = selector.match(PSEUDO_SELECTOR_RE);
-
-  if (pseudoMatch) {
-    const beforePseudo = selector.slice(0, pseudoMatch.index!);
-    return `${beforePseudo}${attr}${pseudoMatch[0]}`;
+/**
+ * Walk `text`, calling `visit` for each character outside brackets,
+ * parentheses and quoted strings. `visit` returns true to stop.
+ */
+function walkTopLevel(text: string, from: number, visit: (ch: string, i: number) => boolean): void {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = from; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === '\\') i++;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth--;
+    else if (depth === 0 && visit(ch, i)) return;
   }
+}
 
-  return `${selector}${attr}`;
+/** Split on `sep` where it is not inside brackets, parentheses or quotes. */
+function splitTopLevel(text: string, sep: string): string[] {
+  const parts: string[] = [];
+  let last = 0;
+  walkTopLevel(text, 0, (ch, i) => {
+    if (ch === sep) {
+      parts.push(text.slice(last, i));
+      last = i + 1;
+    }
+    return false;
+  });
+  parts.push(text.slice(last));
+  return parts;
+}
+
+/** Index of the first top-level `ch` at or after `from`, or -1. */
+function firstTopLevelIndex(text: string, ch: string, from: number): number {
+  let found = -1;
+  walkTopLevel(text, from, (c, i) => {
+    if (c === ch) {
+      found = i;
+      return true;
+    }
+    return false;
+  });
+  return found;
+}
+
+/** Start of the last compound selector: just after the last top-level combinator. */
+function lastCompoundStart(selector: string): number {
+  let start = 0;
+  walkTopLevel(selector, 0, (ch, i) => {
+    if (ch === ' ' || ch === '>' || ch === '+' || ch === '~' || WHITESPACE_RE.test(ch)) {
+      start = i + 1;
+    }
+    return false;
+  });
+  return start;
 }

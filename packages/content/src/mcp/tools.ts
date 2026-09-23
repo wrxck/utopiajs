@@ -29,6 +29,27 @@ export interface ContentToolHandler {
   handler: (params: Record<string, unknown>) => Promise<ContentToolResult>;
 }
 
+/** Formats the create_entry tool may write — data, never component source. */
+const MCP_WRITABLE_FORMATS = new Set<ContentFormat>(['md', 'json', 'yaml']);
+
+/**
+ * Refuse to modify or delete a `.utopia` entry through MCP. It is component
+ * source, which runs on the server and the client; create_entry already
+ * refuses to write one, and update_entry could otherwise overwrite one.
+ */
+async function assertNotComponentSource(
+  adapter: ContentAdapter,
+  config: CollectionConfig,
+  slug: string,
+): Promise<void> {
+  const existing = await adapter.readEntry(config, slug);
+  if (existing && !MCP_WRITABLE_FORMATS.has(existing.format)) {
+    throw new Error(
+      `Entry "${slug}" is ${existing.format} source and cannot be changed through MCP`,
+    );
+  }
+}
+
 function validateString(val: unknown, name: string): string {
   if (typeof val !== 'string' || val.length === 0) {
     throw new Error(`Parameter "${name}" must be a non-empty string`);
@@ -165,7 +186,19 @@ export function createContentTools(
         validateSlug(slug);
         const { config, adapter } = getCollection(params.collection as string);
         const data = (params.data as Record<string, unknown>) ?? {};
-        const format = (params.format as ContentFormat) ?? 'md';
+        const format = (params.format ?? 'md') as ContentFormat;
+        // the schema's enum is advice to the client, not a check: enforce it.
+        // a .utopia entry is component source, which an agent must not write.
+        if (!MCP_WRITABLE_FORMATS.has(format)) {
+          return errorResult(
+            `Format "${String(params.format)}" cannot be written here; use one of: ${[...MCP_WRITABLE_FORMATS].join(', ')}`,
+          );
+        }
+        if (config.formats && !config.formats.includes(format)) {
+          return errorResult(
+            `Collection "${config.name}" does not accept "${format}"; it accepts: ${config.formats.join(', ')}`,
+          );
+        }
         await adapter.writeEntry(config, slug, data, validateString(params.body, 'body'), format);
         return textResult({ created: true, slug, collection: params.collection });
       },
@@ -190,6 +223,7 @@ export function createContentTools(
         const slug = validateString(params.slug, 'slug');
         validateSlug(slug);
         const { config, adapter } = getCollection(params.collection as string);
+        await assertNotComponentSource(adapter, config, slug);
         await adapter.updateEntry(
           config,
           slug,
@@ -217,6 +251,7 @@ export function createContentTools(
         const slug = validateString(params.slug, 'slug');
         validateSlug(slug);
         const { config, adapter } = getCollection(params.collection as string);
+        await assertNotComponentSource(adapter, config, slug);
         await adapter.deleteEntry(config, slug);
         return textResult({ deleted: true, slug, collection: params.collection });
       },
@@ -295,6 +330,7 @@ export function createContentTools(
         const slug = validateString(params.slug, 'slug');
         validateSlug(slug);
         const { config, adapter } = getCollection(params.collection as string);
+        await assertNotComponentSource(adapter, config, slug);
         await adapter.updateEntry(config, slug, { draft: false });
         return textResult({ published: true, slug, collection: params.collection });
       },

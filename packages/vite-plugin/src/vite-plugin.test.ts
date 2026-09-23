@@ -53,12 +53,17 @@ const SFC_NO_STYLE = `<template>
 </template>
 `;
 
-function transform(plugin: Plugin, code: string, id: string): { code: string } | undefined {
-  return (plugin.transform as unknown as AnyHook).call({}, code, id);
+function transform(
+  plugin: Plugin,
+  code: string,
+  id: string,
+  options?: { ssr?: boolean },
+): { code: string } | undefined {
+  return (plugin.transform as unknown as AnyHook).call({}, code, id, options);
 }
 
-function load(plugin: Plugin, id: string): string | undefined {
-  return (plugin.load as unknown as AnyHook).call({}, id);
+function load(plugin: Plugin, id: string, options?: { ssr?: boolean }): string | undefined {
+  return (plugin.load as unknown as AnyHook).call({}, id, options);
 }
 
 // =========================================================================
@@ -78,10 +83,21 @@ describe('virtual:utopia-routes', () => {
     const code = load(plugin, '\0virtual:utopia-routes')!;
     expect(code).toContain('import { buildRouteTable }');
     expect(code).toContain('import.meta.glob');
-    expect(code).toContain('+{page,layout,error,server}');
+    expect(code).toContain('+{page,layout,error}');
     expect(code).toContain('src/routes');
     expect(code).toContain('export default routes');
     expect(code).toContain('apiManifest');
+  });
+
+  it('never globs +server modules into a client build', () => {
+    // every globbed file becomes a chunk of the importing build, so a client
+    // glob of +server files shipped API route source as public assets.
+    const client = load(getPlugin(), '\0virtual:utopia-routes')!;
+    expect(client).not.toContain('+server');
+    expect(client).toContain('const apiManifest = {};');
+
+    const server = load(getPlugin(), '\0virtual:utopia-routes', { ssr: true })!;
+    expect(server).toContain(`import.meta.glob('/src/routes/**/+server.{ts,js}')`);
   });
 
   it('respects custom routesDir option', () => {
@@ -131,7 +147,15 @@ describe('plugin configuration', () => {
     expect(result.resolve.alias['@matthesketh/utopia-runtime']).toBe(
       '@matthesketh/utopia-server/ssr-runtime',
     );
-    expect(config({}, { isSsrBuild: false })).toBeUndefined();
+    // a client build or dev server gets no alias — only the noExternal rule,
+    // which affects server module resolution alone.
+    const client = config({}, { isSsrBuild: false });
+    expect(client.resolve).toBeUndefined();
+    expect(client.ssr.noExternal[0].test('@matthesketh/utopia-router')).toBe(true);
+    expect(client.ssr.noExternal[0].test('vite')).toBe(false);
+    // framework packages import the runtime themselves, so a server build
+    // must bundle them for the alias to reach those imports.
+    expect(result.ssr.noExternal[0].test('@matthesketh/utopia-router')).toBe(true);
   });
 });
 
@@ -443,6 +467,18 @@ describe('handleHotUpdate', () => {
 // =========================================================================
 
 describe('defineConfig', () => {
+  it('keeps the user ssr options while adding the framework packages', () => {
+    const config = defineConfig({
+      ssr: { target: 'webworker', external: ['pg'], noExternal: ['my-lib'] },
+    });
+    expect(config.ssr!.target).toBe('webworker');
+    expect(config.ssr!.external).toEqual(['pg']);
+    expect(config.ssr!.noExternal).toEqual(
+      expect.arrayContaining(['my-lib', '@matthesketh/utopia-router']),
+    );
+    expect(defineConfig({ ssr: { noExternal: true } }).ssr!.noExternal).toBe(true);
+  });
+
   it('injects the utopia plugin by default', () => {
     const config = defineConfig();
     const names = (config.plugins as Plugin[]).map((p) => p.name);
@@ -702,5 +738,18 @@ describe('fragments option', () => {
     const result = transform(plugin, MULTI_ROOT_SFC, '/src/Multi.utopia')!;
     expect(result.code).toContain("createElement('div')");
     expect(result.code).not.toContain('createFragment');
+  });
+});
+
+describe('server transforms carry component styles', () => {
+  const SFC = '<template><p class="a">x</p></template><style>.a { color: red }</style>';
+
+  it('puts the css on the definition for a server transform only', () => {
+    const plugin = getPlugin();
+    (plugin.configResolved as unknown as AnyHook).call({}, {});
+    const server = transform(plugin, SFC, '/src/A.utopia', { ssr: true })!;
+    expect(server.code).toContain('styles:');
+    const client = transform(plugin, SFC, '/src/A.utopia')!;
+    expect(client.code).not.toContain('styles:');
   });
 });

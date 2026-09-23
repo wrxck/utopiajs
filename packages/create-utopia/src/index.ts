@@ -147,6 +147,21 @@ export function renameFile(dir: string, from: string, to: string): void {
 // Scaffolding logic
 // ---------------------------------------------------------------------------
 
+/**
+ * The semver range scaffolded projects depend on the framework with: this
+ * CLI's own version. The packages are released in lockstep, so a project
+ * created by create-utopia x.y.z gets ^x.y.z. The ranges used to be a
+ * hard-coded ^0.7.0 — which on a 0.x line means <0.8.0 — so every new project
+ * installed a release months out of date.
+ */
+export function frameworkRange(): string {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const pkg = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, '..', 'package.json'), 'utf-8'),
+  ) as { version: string };
+  return `^${pkg.version}`;
+}
+
 export function scaffoldProject(root: string, options: ProjectOptions): void {
   const { projectName, language, useRouter, useSSR, useEmail, useAI, useContent, cssPreprocessor } =
     options;
@@ -163,6 +178,7 @@ export function scaffoldProject(root: string, options: ProjectOptions): void {
 
   if (language === 'javascript') {
     skip.add('tsconfig.json');
+    skip.add(path.join('src', 'env.d.ts'));
   }
 
   // Skip SSR template files if SSR is not selected.
@@ -179,7 +195,11 @@ export function scaffoldProject(root: string, options: ProjectOptions): void {
   const pkgJsonPath = path.join(root, 'package.json');
   const indexHtmlPath = path.join(root, 'index.html');
 
-  replaceInFile(pkgJsonPath, { '{{projectName}}': projectName });
+  const utopiaVersion = frameworkRange();
+  replaceInFile(pkgJsonPath, {
+    '{{projectName}}': projectName,
+    '{{utopiaVersion}}': utopiaVersion,
+  });
   replaceInFile(indexHtmlPath, { '{{projectName}}': projectName });
 
   // 3. Adjust package.json dependencies based on feature selection
@@ -204,17 +224,17 @@ export function scaffoldProject(root: string, options: ProjectOptions): void {
 
   // Add email dependency
   if (useEmail && deps) {
-    deps['@matthesketh/utopia-email'] = '^0.7.0';
+    deps['@matthesketh/utopia-email'] = utopiaVersion;
   }
 
   // Add AI dependency
   if (useAI && deps) {
-    deps['@matthesketh/utopia-ai'] = '^0.7.0';
+    deps['@matthesketh/utopia-ai'] = utopiaVersion;
   }
 
   // Add content dependency
   if (useContent && deps) {
-    deps['@matthesketh/utopia-content'] = '^0.7.0';
+    deps['@matthesketh/utopia-content'] = utopiaVersion;
   }
 
   fs.writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
@@ -238,7 +258,7 @@ export function scaffoldProject(root: string, options: ProjectOptions): void {
     const ssrPkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8')) as Record<string, unknown>;
     const ssrDeps = ssrPkg['dependencies'] as Record<string, string>;
     const ssrDevDeps = ssrPkg['devDependencies'] as Record<string, string>;
-    ssrDeps['@matthesketh/utopia-server'] = '^0.7.0';
+    ssrDeps['@matthesketh/utopia-server'] = utopiaVersion;
     ssrDeps['express'] = '^4.21.0';
     // Move vite to dependencies for the SSR server
     if (ssrDevDeps['vite']) {
@@ -280,6 +300,15 @@ export function scaffoldProject(root: string, options: ProjectOptions): void {
     const mainTsPath = path.join(root, 'src', 'main.ts');
     if (fs.existsSync(mainTsPath)) {
       fs.rmSync(mainTsPath);
+    }
+
+    // A routed app renders the route for the request on the server and
+    // hydrates it with the same route preloaded; the template's entries are
+    // the router-less pair.
+    if (useRouter) {
+      const ts = language === 'typescript';
+      fs.writeFileSync(path.join(root, 'src', 'entry-server.ts'), routedEntryServer(ts), 'utf-8');
+      fs.writeFileSync(path.join(root, 'src', 'entry-client.ts'), ROUTED_ENTRY_CLIENT, 'utf-8');
     }
 
     // Handle JS renaming for SSR files
@@ -336,33 +365,29 @@ mount(App, '#app')
   if (useAI) {
     const ext = language === 'typescript' ? 'ts' : 'js';
 
-    // Only create API route files if the router is also enabled
-    if (useRouter) {
+    // API routes are served by the SSR server's handler, so the example route
+    // only exists where something will serve it.
+    if (useRouter && useSSR) {
       // Create the API route directory structure
       const apiChatDir = path.join(root, 'src', 'routes', 'api', 'chat');
       fs.mkdirSync(apiChatDir, { recursive: true });
 
       // Write the example chat API endpoint
       const serverFile = path.join(apiChatDir, `+server.${ext}`);
-      const serverContent = `import { createAI } from '@matthesketh/utopia-ai';
+      // API routes are called with a fetch-style RequestEvent and return a
+      // Response. The example used to take Node (req, res), so it threw on
+      // its first request — `req.on` does not exist on the event.
+      const ts = language === 'typescript';
+      const serverContent = `import { createAI, sseResponse } from '@matthesketh/utopia-ai';
 import { openaiAdapter } from '@matthesketh/utopia-ai/openai';
-import { streamSSE } from '@matthesketh/utopia-ai';
-
+${ts ? "import type { RequestEvent } from '@matthesketh/utopia-server';\n" : ''}
 const ai = createAI(openaiAdapter({
-  apiKey: process.env.OPENAI_API_KEY!,
+  apiKey: process.env.OPENAI_API_KEY${ts ? '!' : ''},
 }));
 
-export async function POST(req${language === 'typescript' ? ': any' : ''}, res${language === 'typescript' ? ': any' : ''}) {
-  // Parse request body
-  const body = await new Promise${language === 'typescript' ? '<string>' : ''}((resolve) => {
-    let data = '';
-    req.on('data', (chunk${language === 'typescript' ? ': Buffer' : ''}) => { data += chunk.toString(); });
-    req.on('end', () => resolve(data));
-  });
-
-  const { messages } = JSON.parse(body);
-  const stream = ai.stream({ messages, model: 'gpt-4o' });
-  await streamSSE(res, stream);
+export async function POST({ request }${ts ? ': RequestEvent' : ''}) {
+  const { messages } = await request.json();
+  return sseResponse(ai.stream({ messages, model: 'gpt-4o' }));
 }
 `;
       fs.writeFileSync(serverFile, serverContent, 'utf-8');
@@ -440,6 +465,16 @@ export const blog = defineCollection({
       'utf-8',
     );
 
+    // TypeScript projects need the manifest module's types.
+    const envDts = path.join(root, 'src', 'env.d.ts');
+    if (fs.existsSync(envDts)) {
+      fs.appendFileSync(
+        envDts,
+        '/// <reference types="@matthesketh/utopia-content/client" />\n',
+        'utf-8',
+      );
+    }
+
     // Update vite.config to include the content plugin
     const viteConfigPath = path.join(root, `vite.config.${ext}`);
     if (fs.existsSync(viteConfigPath)) {
@@ -452,7 +487,7 @@ export const blog = defineCollection({
       // Add content plugin to the plugins array
       viteConfig = viteConfig.replace(
         /plugins:\s*\[\s*utopia\(\)/,
-        "plugins: [utopia(), content({ contentDir: 'content' })",
+        "plugins: [utopia(), content({ contentDir: 'content', embedHtml: true })",
       );
       fs.writeFileSync(viteConfigPath, viteConfig, 'utf-8');
     }
@@ -470,7 +505,7 @@ export const blog = defineCollection({
   <div class="blog">
     <h1>Blog</h1>
     <div class="posts">
-      <article u-for="post in posts()" class="post-card">
+      <article u-for="post in posts" :key="post.slug" class="post-card">
         <h2>
           <a :href="'/blog/' + post.slug">{{ post.data.title }}</a>
         </h2>
@@ -485,17 +520,14 @@ export const blog = defineCollection({
 </template>
 
 <script${language === 'typescript' ? ' lang="ts"' : ''}>
-import { signal } from '@matthesketh/utopia-core';
-import { getCollection } from '@matthesketh/utopia-content';
-import '../../../content.config';
+// the content manifest is built from content/ by the content vite plugin, so
+// it works in the browser and during server rendering alike. (getCollection
+// reads the filesystem and belongs in server code.)
+import { collections } from 'virtual:utopia-content';
 
-const posts = signal([]);
-
-getCollection('blog', {
-  filter: (e) => !e.data.draft,
-  sort: 'date',
-  order: 'desc',
-}).then((entries) => posts.set(entries));
+const posts = (collections.blog ?? [])
+  .filter((entry) => !entry.data.draft)
+  .sort((a, b) => String(b.data.date).localeCompare(String(a.data.date)));
 </script>
 
 <style>
@@ -541,23 +573,23 @@ getCollection('blog', {
         <span u-for="tag in post().data.tags" class="tag">{{ tag }}</span>
       </div>
     </header>
-    <div class="content" u-html="post().html"></div>
+    <!-- markdown rendered at build time from your own content; the renderer
+         drops raw html and script urls, so it is rendered as is. -->
+    <div class="content" u-html.raw="post().html"></div>
     <a href="/blog" class="back">Back to blog</a>
   </article>
 </template>
 
 <script${language === 'typescript' ? ' lang="ts"' : ''}>
-import { signal } from '@matthesketh/utopia-core';
-import { getEntry } from '@matthesketh/utopia-content';
-import '../../../../content.config';
+import { computed } from '@matthesketh/utopia-core';
+import { getRouteParam } from '@matthesketh/utopia-router';
+import { collections } from 'virtual:utopia-content';
 
-const post = signal(null);
-
-// Extract slug from URL
-const slug = window.location.pathname.split('/').pop();
-if (slug) {
-  getEntry('blog', slug).then((entry) => post.set(entry));
-}
+// read the slug from the route, reactively: this script runs once, when the
+// page module first loads, so a slug read from the address bar here would
+// show the first post visited for every post after it.
+const slug = getRouteParam('slug');
+const post = computed(() => (collections.blog ?? []).find((entry) => entry.slug === slug()) ?? null);
 </script>
 
 <style>
@@ -959,3 +991,38 @@ if (isDirectInvocation(process.argv[1])) {
   });
 }
 /* v8 ignore stop */
+
+// ---------------------------------------------------------------------------
+// Routed SSR entries
+// ---------------------------------------------------------------------------
+
+function routedEntryServer(ts: boolean): string {
+  return `import { withRoute } from '@matthesketh/utopia-router';
+import { renderToString } from '@matthesketh/utopia-server';
+// File-based routes are auto-generated by the vite plugin
+import routes from 'virtual:utopia-routes';
+
+import App from './App.utopia';
+
+// +server.ts API routes, served by the handler in server.js
+export { apiManifest } from 'virtual:utopia-routes';
+
+/** Render the page for \`url\` inside App's RouterView. */
+export function render(url${ts ? ': string' : ''}) {
+  return withRoute(routes, url, () => renderToString(App));
+}
+`;
+}
+
+const ROUTED_ENTRY_CLIENT = `import { createRouter, preloadRoute } from '@matthesketh/utopia-router';
+import { hydrate } from '@matthesketh/utopia-runtime';
+// File-based routes are auto-generated by the vite plugin
+import routes from 'virtual:utopia-routes';
+
+import App from './App.utopia';
+
+createRouter(routes);
+// load the current route's modules first, so hydration renders the same page
+// the server did and claims its markup.
+preloadRoute().then(() => hydrate(App, '#app'));
+`;

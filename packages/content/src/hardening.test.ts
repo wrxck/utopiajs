@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { createFilesystemAdapter, validateSlug } from '@/adapters/filesystem';
 import { parseFrontmatter } from '@/frontmatter';
+import { renderMarkdown } from '@/markdown';
 import { generateAmpPage } from '@/seo/amp';
 import { generateJsonLd } from '@/seo/meta';
 import type { SeoConfig, SeoEntry } from '@/seo/types';
@@ -97,5 +98,35 @@ describe('filesystem adapter traversal + symlink defences', () => {
     const adapter = createFilesystemAdapter();
     const cfg = { name: 'blog', directory: contentDir };
     await expect(adapter.readEntry(cfg, 'leak')).rejects.toThrow(/traversal/i);
+  });
+});
+
+describe('renderMarkdown drops script-carrying URLs', () => {
+  it('removes javascript:/vbscript:/data: link and image targets', async () => {
+    const html = await renderMarkdown(
+      '[a](javascript:alert(1)) [b](java\tscript:x) ![i](javascript:x) [c](data:text/html,<b>) [d](vbscript:x)',
+      { highlight: false },
+    );
+    expect(html).not.toMatch(/href|src="javascript/);
+    expect(html).toContain('<a>a</a>');
+  });
+
+  it('keeps ordinary links and inline images', async () => {
+    const html = await renderMarkdown(
+      '[docs](/docs) [site](https://example.com) ![px](data:image/png;base64,AAAA)',
+      { highlight: false },
+    );
+    expect(html).toContain('href="/docs"');
+    expect(html).toContain('href="https://example.com"');
+    expect(html).toContain('src="data:image/png;base64,AAAA"');
+  });
+
+  it('also applies when custom plugins build a one-off pipeline', async () => {
+    const noop = () => () => {};
+    const html = await renderMarkdown('[a](javascript:alert(1))', {
+      highlight: false,
+      rehypePlugins: [noop],
+    });
+    expect(html).not.toContain('javascript');
   });
 });

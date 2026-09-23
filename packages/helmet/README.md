@@ -121,7 +121,7 @@ setHead({ link: links });
 | `setHtmlLang(lang)` | Set the `lang` attribute on `<html>` |
 | `setHtmlDir(dir)` | Set the `dir` attribute on `<html>` |
 | `setHead(config)` | Apply a full head configuration (clears previous managed elements) |
-| `useHead(configFn)` | Reactive head — re-applies when signals in `configFn` change |
+| `useHead(configFn)` | Reactive head — re-applies when signals in `configFn` change. Several callers merge in first-run order: a later title wins and a later tag replaces one with the same identity. Removed on cleanup or when its owning component unmounts; a no-op on the server |
 | `resetHead()` | Remove all helmet-managed elements from `<head>` |
 
 ### Favicon generation

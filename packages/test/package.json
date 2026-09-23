@@ -54,6 +54,9 @@
     "vitest": "^4.0.0"
   },
   "devDependencies": {
+    "@matthesketh/utopia-core": "workspace:*",
+    "@matthesketh/utopia-router": "workspace:*",
+    "@matthesketh/utopia-server": "workspace:*",
     "vite": "8.0.14"
   }
 }

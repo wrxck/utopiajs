@@ -1483,10 +1483,15 @@ describe('Click interception', () => {
     expect(dispatchClick(anchor)).toBe(false);
   });
 
-  it('ignores relative hrefs that do not start with a slash', () => {
+  it('routes a relative href that resolves to a route', () => {
     createRouter(makeRoutes());
-    const anchor = makeAnchor('about');
-    expect(dispatchClick(anchor)).toBe(false);
+    // resolved against the current URL (/), as the browser would.
+    expect(dispatchClick(makeAnchor('about'))).toBe(true);
+  });
+
+  it('leaves a same-origin link that no route claims to the browser', () => {
+    createRouter(makeRoutes());
+    expect(dispatchClick(makeAnchor('/files/report.pdf'))).toBe(false);
   });
 
   it('ignores protocol-relative hrefs', () => {
@@ -1729,7 +1734,6 @@ describe('Anchors detached mid-dispatch', () => {
       'https://evil.com/phishing',
       `${origin}.evil.com/x`,
       'mailto:hi@example.com',
-      'about',
     ]) {
       expect(dispatchClick(makeUnmountingLink(href).label)).toBe(false);
     }

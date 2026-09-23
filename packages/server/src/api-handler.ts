@@ -7,7 +7,11 @@
 // RequestEvent and return a Response.
 // ============================================================================
 
-import { compilePattern, filePathToRoute } from '@matthesketh/utopia-router';
+import {
+  compareRouteSpecificity,
+  compilePattern,
+  filePathToRoute,
+} from '@matthesketh/utopia-router';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -68,6 +72,11 @@ export function buildApiRoutes(
     routes.push({ path, pattern: regex, params, module: importFn });
   }
 
+  // first match wins, so order by specificity exactly as page routes are.
+  // manifest (glob) order put `api/[id]` before `api/stats` — '[' sorts
+  // before letters — and every request for /api/stats went to the [id] route.
+  routes.sort(compareRouteSpecificity);
+
   return routes;
 }
 
@@ -111,10 +120,11 @@ export async function handleApiRequest(
     // only dispatch to an OWN, allow-listed http-method export. an
     // attacker-supplied method must never resolve to an inherited prototype
     // key (constructor/toString/…) on the module namespace object.
-    const handler =
-      HTTP_METHODS.has(method) && Object.hasOwn(mod, method)
-        ? (mod[method] as RequestHandler | undefined)
-        : undefined;
+    // HEAD falls back to GET when the module does not export its own; the
+    // server handler drops the body. (HTTP requires HEAD wherever GET works.)
+    const exported = (m: string): RequestHandler | undefined =>
+      HTTP_METHODS.has(m) && Object.hasOwn(mod, m) ? (mod[m] as RequestHandler) : undefined;
+    const handler = exported(method) ?? (method === 'HEAD' ? exported('GET') : undefined);
 
     if (!handler) {
       // Route matched but method not exported — return 405.

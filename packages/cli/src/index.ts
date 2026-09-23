@@ -8,14 +8,14 @@
 // ---------------------------------------------------------------------------
 
 import { execFileSync } from 'node:child_process';
-import { type Dirent, existsSync, readdirSync, realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
-import { check, isUtopiaFile } from '@matthesketh/utopia-compiler';
+import { check } from '@matthesketh/utopia-compiler';
 import { utopiaTestPlugin } from '@matthesketh/utopia-test/plugin';
 import utopia from '@matthesketh/utopia-vite-plugin';
 import {
@@ -63,7 +63,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     const arg = flagArgs[i];
     if (arg === '--port' && flagArgs[i + 1]) {
       const n = Number(flagArgs[++i]);
-      if (Number.isNaN(n) || n < 0 || n > 65535) {
+      if (!Number.isInteger(n) || n < 0 || n > 65535) {
         console.error(`Invalid port: ${flagArgs[i]}`);
         process.exit(1);
       }
@@ -258,11 +258,16 @@ export function createMcpRequestHandler(
       }
       return { jsonrpc: '2.0', id: request.id, result };
     } catch (err: unknown) {
-      const e = err as { code?: number; message?: string };
+      const e = err as { code?: unknown; message?: string };
       return {
         jsonrpc: '2.0',
         id: request.id,
-        error: { code: e.code ?? -32603, message: e.message ?? 'Internal error' },
+        // a JSON-RPC error code is an integer. a node error carries a string
+        // code (ENOENT, EACCES) that clients reject as a malformed response.
+        error: {
+          code: Number.isInteger(e.code) ? (e.code as number) : -32603,
+          message: e.message ?? 'Internal error',
+        },
       };
     }
   };
@@ -461,17 +466,6 @@ export function printHelp(): void {
  * names one, so it passes while seeing none of them. This sees all of them.
  */
 export function checkCommand(args: ParsedArgs): number {
-  const require = createRequire(import.meta.url);
-
-  let typescript: typeof import('typescript');
-  try {
-    typescript = require('typescript') as typeof import('typescript');
-  } catch {
-    console.error('utopia check requires the "typescript" package. install it with:');
-    console.error('  npm install -D typescript');
-    return 1;
-  }
-
   const project = args.rest.find((a) => !a.startsWith('-')) ?? 'tsconfig.json';
   const configPath = resolve(project);
 
@@ -480,10 +474,31 @@ export function checkCommand(args: ParsedArgs): number {
     return 1;
   }
 
-  const components = findComponents(resolve(dirname(configPath), 'src'));
-  const result = check(typescript, configPath, components);
+  // the project's own typescript, so the check matches its tsc — falling back
+  // to one installed beside the CLI (npx, a global install).
+  let typescript: typeof import('typescript');
+  try {
+    typescript = loadTypescript(configPath);
+  } catch {
+    console.error('utopia check requires the "typescript" package. install it with:');
+    console.error('  npm install -D typescript');
+    return 1;
+  }
+
+  // components come from the tsconfig include/exclude, as .ts files do.
+  const result = check(typescript, configPath);
 
   for (const text of result.diagnostics) process.stdout.write(text);
+
+  // a component the tsconfig does not reach (an include of *.ts only, a
+  // solution config with `files: []`, a route page nothing imports) is not
+  // checked at all — say so rather than report it as clean.
+  if (result.unreached.length > 0) {
+    console.warn(
+      `utopia check: ${result.unreached.length} component(s) are outside this tsconfig and were not checked, e.g. ${result.unreached[0]}. ` +
+        'Add them to "include" (for example "src/**/*").',
+    );
+  }
 
   if (result.errorCount > 0) {
     console.error(
@@ -496,22 +511,12 @@ export function checkCommand(args: ParsedArgs): number {
   return 0;
 }
 
-function findComponents(dir: string, found: string[] = []): string[] {
-  let entries: Dirent[];
+function loadTypescript(configPath: string): typeof import('typescript') {
   try {
-    entries = readdirSync(dir, { withFileTypes: true });
+    return createRequire(configPath)('typescript') as typeof import('typescript');
   } catch {
-    return found;
+    return createRequire(import.meta.url)('typescript') as typeof import('typescript');
   }
-
-  for (const entry of entries) {
-    if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
-    const full = resolve(dir, entry.name);
-    if (entry.isDirectory()) findComponents(full, found);
-    else if (isUtopiaFile(entry.name)) found.push(full);
-  }
-
-  return found;
 }
 
 // ---- Main -------------------------------------------------------------------

@@ -1,11 +1,10 @@
 // API route: POST /api/chat
-// Demonstrates @matthesketh/utopia-ai with OpenAI adapter + SSE streaming
+// Demonstrates @matthesketh/utopia-ai with OpenAI adapter + SSE streaming.
+// API routes receive a fetch-style RequestEvent and return a Response.
 
-import type { IncomingMessage, ServerResponse } from 'node:http';
-
-import { createAI } from '@matthesketh/utopia-ai';
-import { streamSSE } from '@matthesketh/utopia-ai';
+import { createAI, sseResponse } from '@matthesketh/utopia-ai';
 import { openaiAdapter } from '@matthesketh/utopia-ai/openai';
+import type { RequestEvent } from '@matthesketh/utopia-server';
 
 const ai = createAI(
   openaiAdapter({
@@ -29,16 +28,8 @@ const ai = createAI(
   },
 );
 
-export async function POST(req: IncomingMessage, res: ServerResponse) {
-  const body = await new Promise<string>((resolve) => {
-    let data = '';
-    req.on('data', (chunk: Buffer) => {
-      data += chunk.toString();
-    });
-    req.on('end', () => resolve(data));
-  });
-
-  const { messages } = JSON.parse(body);
+export async function POST({ request }: RequestEvent) {
+  const { messages } = await request.json();
 
   // Stream AI response as SSE
   const stream = ai.stream({
@@ -48,7 +39,7 @@ export async function POST(req: IncomingMessage, res: ServerResponse) {
     maxTokens: 1024,
   });
 
-  await streamSSE(res, stream, {
+  return sseResponse(stream, {
     onChunk(chunk) {
       if (chunk.finishReason) {
         console.log(`[ai] stream finished: ${chunk.finishReason}`);

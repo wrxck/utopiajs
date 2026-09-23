@@ -184,6 +184,12 @@ export function createFilesystemAdapter(baseDir?: string): ContentAdapter {
       format: ContentFormat = 'md',
     ): Promise<void> {
       validateSlug(slug);
+      if (!(format in FORMAT_CANDIDATE_EXTS)) {
+        throw new Error(`Unknown content format "${String(format)}"`);
+      }
+      if (config.formats && config.formats.length > 0 && !config.formats.includes(format)) {
+        throw new Error(`Collection "${config.name}" does not accept the "${format}" format`);
+      }
       const dir = resolveDir(config);
       if (!existsSync(dir)) {
         await mkdir(dir, { recursive: true });

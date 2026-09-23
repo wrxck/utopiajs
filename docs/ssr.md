@@ -68,8 +68,14 @@ Key behavioral differences from the client runtime:
 | `effect(fn)` / `createEffect(fn)` | Tracks dependencies, re-runs on change | Runs `fn` once synchronously via `untrack()` |
 | `createIf(anchor, cond, true, false?)` | Reactive — toggles branches on signal change | Evaluates once, inserts the matching branch |
 | `createFor(anchor, list, render, key?)` | Reactive — reconciles by key on list change, and rebinds a reused row's loop variables through the scope it passes to `render` | Evaluates once, renders all items, and passes an inert scope (nothing is ever reused, so the markup matches a first client render) |
-| `queueJob(fn)` / `nextTick()` | Microtask scheduler | No-op |
+| `queueJob(fn)` / `nextTick()` | Microtask scheduler | Runs the job at once (a server render is one synchronous pass) |
 | Signals (`signal`, `computed`, `batch`, `untrack`) | Fully reactive | Same — signals work normally on server |
+| `u-html` (sanitised) | Sanitised with `DOMParser` | Empty unless a sanitiser is installed with `setServerHtmlSanitizer()` from `@matthesketh/utopia-server/ssr-runtime`; the client fills it in on hydration |
+| `u-html.raw` | Written verbatim | Written verbatim |
+| `u-model` | Two-way binding | Renders the initial state: `value`, `checked`, textarea text, the selected `<option>` |
+| `provide` / `inject` | Owner chain | The same owner chain |
+| `defineLazy(loader, fallback)` | Loads, then swaps in | Renders the container and fallback; the client swaps the component in after hydration |
+| Component `<style>` | Bundled by Vite | Collected into `css` — the Vite plugin compiles server transforms with `emitStyles` |
 
 ## Usage
 
@@ -95,6 +101,51 @@ my-app/
   vite.config.ts
   package.json
 ```
+
+### Routed apps
+
+With `@matthesketh/utopia-router`, render the route for the request on the
+server and preload the same route before hydrating on the client. `withRoute`
+loads the route's modules first and then renders synchronously with that route
+current, so concurrent requests cannot see each other's route.
+
+```ts
+// src/entry-server.ts
+import { withRoute } from '@matthesketh/utopia-router'
+import { renderToString } from '@matthesketh/utopia-server'
+import routes from 'virtual:utopia-routes'
+import App from './App.utopia'
+
+// +server.ts API routes, for createHandler
+export { apiManifest } from 'virtual:utopia-routes'
+
+export function render(url: string) {
+  return withRoute(routes, url, () => renderToString(App))
+}
+```
+
+```ts
+// src/entry-client.ts
+import { createRouter, preloadRoute } from '@matthesketh/utopia-router'
+import { hydrate } from '@matthesketh/utopia-runtime'
+import routes from 'virtual:utopia-routes'
+import App from './App.utopia'
+
+createRouter(routes)
+preloadRoute().then(() => hydrate(App, '#app'))
+```
+
+`App.utopia` uses `createRouterView` itself as the component:
+
+```html
+<template><main><RouterView /></main></template>
+<script>
+import { createRouterView as RouterView } from '@matthesketh/utopia-router'
+</script>
+```
+
+The Vite plugin bundles the framework packages into the server build
+(`ssr.noExternal`), so the router's own runtime imports reach the SSR runtime.
 
 ### Manual Setup
 
@@ -146,10 +197,15 @@ hydrate(App, '#app')
 
 **5. Create `server.js`:**
 
+`createHandler` renders the page into the `<!--ssr-outlet-->` and
+`<!--ssr-head-->` markers, serves `+server.ts` API routes, and sets baseline
+security headers.
+
 ```js
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createHandler } from '@matthesketh/utopia-server'
 import express from 'express'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -171,38 +227,31 @@ async function createServer() {
   }
 
   app.use('*', async (req, res) => {
-    const url = req.originalUrl
+    // express rewrites req.url under a mount; the handler needs the real one
+    req.url = req.originalUrl
     try {
-      let template, render
-
+      let template, entry
       if (!isProduction) {
         template = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8')
-        template = await vite.transformIndexHtml(url, template)
-        const mod = await vite.ssrLoadModule('/src/entry-server.ts')
-        render = mod.render
+        template = await vite.transformIndexHtml(req.url, template)
+        entry = await vite.ssrLoadModule('/src/entry-server.ts')
       } else {
-        template = fs.readFileSync(
-          path.resolve(__dirname, 'dist/client/index.html'), 'utf-8')
-        const mod = await import('./dist/server/entry-server.js')
-        render = mod.render
+        template = fs.readFileSync(path.resolve(__dirname, 'dist/client/index.html'), 'utf-8')
+        entry = await import('./dist/server/entry-server.js')
       }
-
-      const { html: appHtml, css } = render(url)
-      let page = template
-      page = page.replace('<!--ssr-head-->', css ? `<style>${css}</style>` : '')
-      page = page.replace('<!--ssr-outlet-->', appHtml)
-
-      res.status(200).set({ 'Content-Type': 'text/html' }).end(page)
+      await createHandler({
+        template,
+        apiRoutes: entry.apiManifest,
+        render: (url) => entry.render(url),
+      })(req, res)
     } catch (e) {
       if (!isProduction) vite.ssrFixStacktrace(e)
       console.error(e)
-      res.status(500).end(e.message)
+      res.status(500).end('Internal Server Error')
     }
   })
 
-  app.listen(process.env.PORT || 3000, () => {
-    console.log(`Server running at http://localhost:${process.env.PORT || 3000}`)
-  })
+  app.listen(process.env.PORT || 3000)
 }
 
 createServer()
@@ -257,17 +306,36 @@ hydrate(App, '#app')
 
 When compiled template code runs during hydration:
 
-- `createElement('div')` — claims the current DOM element and enters its children scope
-- `createTextNode('hello')` — claims the current text node
-- `createComment('u-if')` — claims the current comment node
-- `appendChild(parent, child)` — no-op for non-elements (already in DOM); exits child scope for elements
+- `createElement('div')` — claims the current DOM element (the tag must match) and enters its children scope
+- `createTextNode(...)` — claims the current text node
+- `createComment('u-if')` — claims the directive's anchor (see ranges below)
+- `appendChild(parent, child)` — no-op (the node is already in the DOM); exits the child scope for elements
 - `addEventListener(el, 'click', fn)` — always runs normally (attaches to the claimed element)
 - `effect(fn)` — always runs normally (establishes signal subscriptions)
 
-In dev mode, hydration mismatches produce console warnings:
+### The server/client markup contract
+
+HTML cannot say everything the client needs to claim nodes one for one, so the
+server writes two kinds of marker comment:
+
+- `<!--|-->` between two adjacent non-empty text nodes. The parser would
+  otherwise merge `Hello {{ name }}!` into one text node. An interpolation that
+  rendered empty has no markup at all; the client creates it in place.
+- `<!--[-->` before every `u-if` / `u-for` range: `<!--[-->` branch or rows
+  `<!--u-if-->`. The compiled code claims the anchor before it renders the
+  branch, so the client skips the range when it claims the anchor, and
+  `createIf` / `createFor` claim the range when they first render.
+
+A node the server did not write is created and inserted at the cursor, a server
+node the client did not claim is removed, and an element whose tag does not
+match is replaced — so a mismatch stays a local repair instead of misaligning
+the rest of the page. Mismatches are reported:
+
 ```
 [utopia] Hydration mismatch: expected <div>, got [object Text]
 ```
+
+The compiler's `fragments` option is not yet supported with hydration.
 
 ## API Reference
 
@@ -288,9 +356,12 @@ const { html, css } = renderToString(App, { title: 'Hello' })
 - `component` — A compiled `ComponentDefinition` (the default export of a `.utopia` file)
 - `props` — Optional props to pass to the component's `setup()` function
 
-**Returns:** `{ html: string, css: string }`
+**Returns:** `{ html: string, css: string, head: HeadConfig[] }`
 - `html` — The rendered HTML markup
-- `css` — All scoped CSS collected during rendering, joined with newlines
+- `css` — All component CSS collected during rendering, joined with newlines. A
+  component carries its CSS as `styles` when it was compiled with `emitStyles`,
+  which the Vite plugin does for every server transform.
+- `head` — The entries collected by `useHead()` during rendering
 
 ### `renderToStream(component, props?)`
 
@@ -351,13 +422,21 @@ http.createServer(handler).listen(3000)
 
 **Parameters:**
 - `options.template` — HTML template string containing `<!--ssr-head-->` and `<!--ssr-outlet-->` markers
-- `options.render` — Async function `(url: string) => Promise<{ html: string, css: string }>`
+- `options.render` — Async function `(url: string) => Promise<{ html: string, css: string, head?: HeadConfig[] }>`
+- `options.apiRoutes` — Optional glob manifest of `+server.ts` modules (`apiManifest` from `virtual:utopia-routes`)
+- `options.nonce`, `options.csp`, `options.securityHeaders` — see the type definitions
 
 **Returns:** `(req: IncomingMessage, res: ServerResponse) => void`
 
 The handler replaces:
 - `<!--ssr-head-->` with `<style>` tags containing the collected CSS
 - `<!--ssr-outlet-->` with the rendered HTML
+
+An API route is called with a fetch-style `RequestEvent` (`{ request, url,
+params }`) and returns a `Response`. The handler streams the response body as
+bytes (so server-sent events stream and binary bodies arrive intact), keeps
+every `Set-Cookie`, answers `HEAD` from `GET` when a route has no `HEAD`
+export, and matches routes by specificity (`api/stats` before `api/[id]`).
 
 ### `hydrate(component, target)`
 
@@ -384,7 +463,7 @@ The `@matthesketh/utopia-vite-plugin` automatically handles the runtime swap:
 - **SSR builds** (`vite build --ssr`): The `config` hook adds a resolve alias mapping `@matthesketh/utopia-runtime` to `@matthesketh/utopia-server/ssr-runtime`
 - **Dev SSR** (`vite.ssrLoadModule()`): The `resolveId` hook intercepts `@matthesketh/utopia-runtime` imports in SSR context and redirects them
 
-The `defineConfig()` helper also sets `ssr.noExternal` for all UtopiaJS packages to ensure they are bundled (not treated as external Node modules) during SSR builds.
+The plugin also sets `ssr.noExternal` for every `@matthesketh/utopia-*` package, so framework packages that import the runtime themselves (the router's `RouterView`) are bundled into the server build and reach the swap. A server transform compiles each component with `emitStyles`, which puts its CSS on the definition for `renderToString` to collect. `+server.ts` modules are globbed into server builds only.
 
 No configuration is needed beyond using the standard Utopia Vite plugin:
 
@@ -437,7 +516,7 @@ This is correct for SSR because the server produces a single snapshot of the UI.
 
 ## Scoped CSS Collection
 
-During SSR, scoped CSS from components is collected rather than injected into the DOM (there is no DOM on the server). The `renderToString()` function returns the collected CSS as a string, which should be injected into the HTML template's `<head>`:
+During SSR, component CSS is collected rather than injected into the DOM (there is no DOM on the server). A component carries its CSS as `styles` when compiled with `emitStyles` — the Vite plugin does this for every server transform. The `renderToString()` function returns the collected CSS as a string, which should be injected into the HTML template's `<head>` (`createHandler` does this for you):
 
 ```ts
 const { html, css } = renderToString(App)

@@ -6,7 +6,7 @@ import type { ServerResponse } from 'node:http';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { parseSSEStream, streamSSE } from './streaming';
+import { parseSSEStream, sseResponse, streamSSE } from './streaming';
 import type { ChatChunk } from './types';
 
 describe('parseSSEStream edge cases', () => {
@@ -103,5 +103,44 @@ describe('streamSSE error handling', () => {
 
     await expect(streamSSE(res, failing())).rejects.toThrow('upstream exploded');
     expect(res.end).toHaveBeenCalled();
+  });
+});
+
+describe('sseResponse', () => {
+  async function* chunks(): AsyncGenerator<ChatChunk> {
+    yield { delta: 'Hel' } as ChatChunk;
+    yield { delta: 'lo' } as ChatChunk;
+  }
+
+  it('returns an event-stream Response that parseSSEStream reads back', async () => {
+    const response = sseResponse(chunks());
+    expect(response.headers.get('content-type')).toBe('text/event-stream');
+    const text: string[] = [];
+    for await (const chunk of parseSSEStream(response)) text.push(chunk.delta);
+    expect(text.join('')).toBe('Hello');
+  });
+
+  it('errors the body when the source stream throws, rather than ending cleanly', async () => {
+    async function* failing(): AsyncGenerator<ChatChunk> {
+      yield { delta: 'partial' } as ChatChunk;
+      throw new Error('upstream failed');
+    }
+    const response = sseResponse(failing());
+    await expect(response.text()).rejects.toThrow();
+  });
+
+  it('stops the source stream when the client cancels', async () => {
+    let finished = false;
+    async function* endless(): AsyncGenerator<ChatChunk> {
+      try {
+        for (;;) yield { delta: 'x' } as ChatChunk;
+      } finally {
+        finished = true;
+      }
+    }
+    const reader = sseResponse(endless()).body!.getReader();
+    await reader.read();
+    await reader.cancel();
+    expect(finished).toBe(true);
   });
 });

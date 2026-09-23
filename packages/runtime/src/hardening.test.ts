@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ComponentDefinition } from '@/component';
 import { createComponentInstance, onDestroy } from '@/component';
 import { createComponent, createFor, createIf } from '@/directives';
-import { createTextNode, setAttr, setSafeHtml, setText } from '@/dom';
+import { createTextNode, sanitizeHtml, setAttr, setSafeHtml, setText } from '@/dom';
 import { hydrate } from '@/hydration';
 import { createEffect } from '@/index';
 import { defineLazy } from '@/lazy';
@@ -373,5 +373,57 @@ describe('createIf disposes branch bindings on toggle', () => {
     await tick();
     expect(trueRuns).toBe(before); // disposed — no leaked subscription
     parent.remove();
+  });
+});
+
+describe('url scheme guards read the url as the browser parses it', () => {
+  // the url parser strips leading C0 controls/spaces and deletes every ascii
+  // tab or newline before it reads the scheme, so each of these navigates to
+  // javascript: in a browser.
+  const disguised = [
+    'java\tscript:alert(1)',
+    'java\nscript:alert(1)',
+    'java\rscript:alert(1)',
+    '\u0001javascript:alert(1)',
+    ' \u0000javascript:alert(1)',
+    'vb\tscript:msgbox(1)',
+    'da\tta:text/html,<script>alert(1)</script>',
+  ];
+
+  it.each(disguised)('setAttr drops %j on href', (value) => {
+    const a = document.createElement('a');
+    setAttr(a, 'href', value);
+    expect(a.getAttribute('href')).toBeNull();
+  });
+
+  it('sanitizeHtml drops an entity-encoded tab inside the scheme', () => {
+    const out = sanitizeHtml(
+      '<a href="java&#9;script:alert(1)">x</a><a href="&#1;javascript:alert(1)">y</a><img src="java&#10;script:alert(1)">',
+    );
+    expect(out).not.toMatch(/href|src/);
+  });
+
+  it('keeps ordinary urls', () => {
+    const a = document.createElement('a');
+    setAttr(a, 'href', 'https://example.com/java\tscript');
+    expect(a.getAttribute('href')).toBe('https://example.com/java\tscript');
+    expect(sanitizeHtml('<a href="/docs">d</a>')).toBe('<a href="/docs">d</a>');
+  });
+});
+
+describe('aria attributes keep an explicit false', () => {
+  it('writes aria-expanded as "true"/"false" instead of a bare or removed attribute', () => {
+    const button = document.createElement('button');
+    setAttr(button, 'aria-expanded', true);
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    setAttr(button, 'aria-expanded', false);
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('still removes aria-* for null', () => {
+    const button = document.createElement('button');
+    setAttr(button, 'aria-label', 'Close');
+    setAttr(button, 'aria-label', null);
+    expect(button.hasAttribute('aria-label')).toBe(false);
   });
 });

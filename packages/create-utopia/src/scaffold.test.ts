@@ -218,13 +218,18 @@ describe('scaffoldProject — optional features', () => {
     expect(pkg.dependencies['@matthesketh/utopia-email']).toBeDefined();
   });
 
-  it('scaffolds an AI chat route and .env.example when AI + router are selected', () => {
-    const root = scaffold({ useAI: true });
+  it('scaffolds a fetch-style AI chat route when AI + router + SSR are selected', () => {
+    const root = scaffold({ useAI: true, useSSR: true });
     const serverFile = path.join(root, 'src', 'routes', 'api', 'chat', '+server.ts');
     expect(fs.existsSync(serverFile)).toBe(true);
     const content = fs.readFileSync(serverFile, 'utf-8');
     expect(content).toContain('createAI');
-    expect(content).toContain(': any');
+    // API routes receive a RequestEvent and return a Response; the example
+    // used Node (req, res) and threw on its first request.
+    expect(content).toContain('export async function POST({ request }: RequestEvent)');
+    expect(content).toContain('await request.json()');
+    expect(content).toContain('return sseResponse(');
+    expect(content).not.toContain('req.on(');
     expect(fs.readFileSync(path.join(root, '.env.example'), 'utf-8')).toContain('OPENAI_API_KEY');
 
     const pkg = readJson(path.join(root, 'package.json'));
@@ -237,11 +242,19 @@ describe('scaffoldProject — optional features', () => {
     expect(fs.existsSync(path.join(root, '.env.example'))).toBe(true);
   });
 
+  it('AI without SSR writes no API route, since nothing would serve it', () => {
+    const root = scaffold({ useAI: true, useSSR: false });
+    expect(fs.existsSync(path.join(root, 'src', 'routes', 'api'))).toBe(false);
+    expect(fs.existsSync(path.join(root, '.env.example'))).toBe(true);
+  });
+
   it('AI + JavaScript writes an untyped .js route', () => {
-    const root = scaffold({ useAI: true, language: 'javascript' });
+    const root = scaffold({ useAI: true, useSSR: true, language: 'javascript' });
     const serverFile = path.join(root, 'src', 'routes', 'api', 'chat', '+server.js');
     expect(fs.existsSync(serverFile)).toBe(true);
-    expect(fs.readFileSync(serverFile, 'utf-8')).not.toContain(': any');
+    const content = fs.readFileSync(serverFile, 'utf-8');
+    expect(content).not.toContain('RequestEvent');
+    expect(content).not.toContain('!,');
   });
 
   it('scaffolds content collection, config, vite plugin wiring and blog routes', () => {
@@ -253,7 +266,9 @@ describe('scaffoldProject — optional features', () => {
 
     const viteConfig = fs.readFileSync(path.join(root, 'vite.config.ts'), 'utf-8');
     expect(viteConfig).toContain("import content from '@matthesketh/utopia-content/vite'");
-    expect(viteConfig).toContain("plugins: [utopia(), content({ contentDir: 'content' })]");
+    expect(viteConfig).toContain(
+      "plugins: [utopia(), content({ contentDir: 'content', embedHtml: true })]",
+    );
 
     expect(fs.existsSync(path.join(root, 'src', 'routes', 'blog', '+page.utopia'))).toBe(true);
     expect(fs.existsSync(path.join(root, 'src', 'routes', 'blog', '[slug]', '+page.utopia'))).toBe(
@@ -467,5 +482,88 @@ describe('isDirectInvocation', () => {
   it('is true when argv[1] resolves to this module', () => {
     const self = new URL(import.meta.url).pathname;
     expect(isDirectInvocation(self, import.meta.url)).toBe(true);
+  });
+});
+
+describe('scaffolded dependency versions', () => {
+  const own = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, '..', 'package.json'), 'utf-8'),
+  ) as { version: string };
+
+  it('depends on the framework at this CLI version, never a stale pin', () => {
+    const root = scaffold({ useSSR: true, useEmail: true, useAI: true, useContent: true });
+    const pkg = readJson(path.join(root, 'package.json'));
+    const all = { ...pkg.dependencies, ...pkg.devDependencies } as Record<string, string>;
+    const framework = Object.entries(all).filter(([name]) => name.startsWith('@matthesketh/'));
+    expect(framework.length).toBeGreaterThanOrEqual(9);
+    for (const [name, range] of framework) {
+      expect([name, range]).toEqual([name, `^${own.version}`]);
+    }
+    expect(JSON.stringify(pkg)).not.toContain('{{utopiaVersion}}');
+  });
+
+  it('uses a vitest major the utopia test packages accept as a peer', () => {
+    const pkg = readJson(path.join(scaffold(), 'package.json'));
+    expect(pkg.devDependencies.vitest).toBe('^4.0.0');
+  });
+});
+
+describe('routed SSR scaffold', () => {
+  it('renders the request route on the server and preloads it before hydrating', () => {
+    const root = scaffold({ useSSR: true });
+    const server = fs.readFileSync(path.join(root, 'src', 'entry-server.ts'), 'utf-8');
+    expect(server).toContain('withRoute(routes, url, () => renderToString(App))');
+    expect(server).toContain("export { apiManifest } from 'virtual:utopia-routes'");
+    const client = fs.readFileSync(path.join(root, 'src', 'entry-client.ts'), 'utf-8');
+    expect(client).toContain('createRouter(routes)');
+    expect(client).toContain("preloadRoute().then(() => hydrate(App, '#app'))");
+  });
+
+  it('writes untyped routed entries for JavaScript', () => {
+    const root = scaffold({ useSSR: true, language: 'javascript' });
+    const server = fs.readFileSync(path.join(root, 'src', 'entry-server.js'), 'utf-8');
+    expect(server).toContain('export function render(url) {');
+    expect(fs.existsSync(path.join(root, 'src', 'env.d.ts'))).toBe(false);
+  });
+
+  it('serves pages and API routes through createHandler', () => {
+    const root = scaffold({ useSSR: true });
+    const server = fs.readFileSync(path.join(root, 'server.js'), 'utf-8');
+    expect(server).toContain("import { createHandler } from '@matthesketh/utopia-server'");
+    expect(server).toContain('apiRoutes: entry.apiManifest');
+    expect(server).toContain('await entry.render(url)');
+  });
+
+  it('keeps the router-less SSR entries when the router is off', () => {
+    const root = scaffold({ useSSR: true, useRouter: false });
+    const server = fs.readFileSync(path.join(root, 'src', 'entry-server.ts'), 'utf-8');
+    expect(server).not.toContain('withRoute');
+  });
+
+  it('references the plugin client types for TypeScript projects', () => {
+    const env = fs.readFileSync(path.join(scaffold(), 'src', 'env.d.ts'), 'utf-8');
+    expect(env).toContain('@matthesketh/utopia-vite-plugin/client');
+  });
+});
+
+describe('blog scaffold', () => {
+  it('reads posts from the build-time manifest, not the filesystem API', () => {
+    const root = scaffold({ useContent: true });
+    const list = fs.readFileSync(path.join(root, 'src', 'routes', 'blog', '+page.utopia'), 'utf-8');
+    const post = fs.readFileSync(
+      path.join(root, 'src', 'routes', 'blog', '[slug]', '+page.utopia'),
+      'utf-8',
+    );
+    for (const page of [list, post]) {
+      // getCollection/getEntry read node:fs and cannot run in a browser.
+      expect(page).toContain("from 'virtual:utopia-content'");
+      expect(page).not.toContain("from '@matthesketh/utopia-content'");
+    }
+    // the post page is a module-scope component: its slug must follow the route.
+    expect(post).toContain("getRouteParam('slug')");
+    expect(post).not.toContain('window.location');
+    expect(fs.readFileSync(path.join(root, 'src', 'env.d.ts'), 'utf-8')).toContain(
+      '@matthesketh/utopia-content/client',
+    );
   });
 });

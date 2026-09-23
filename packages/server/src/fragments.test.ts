@@ -84,7 +84,7 @@ describe('createFragment (SSR)', () => {
     const parent = createElement('main');
     appendChild(parent, frag);
     expect(serializeVNode(parent)).toBe(
-      '<main><p>sometimes</p><!--u-if--><span>always</span></main>',
+      '<main><!--[--><p>sometimes</p><!--u-if--><span>always</span></main>',
     );
   });
 
@@ -99,7 +99,7 @@ describe('createFragment (SSR)', () => {
 
     const parent = createElement('ul');
     appendChild(parent, frag);
-    expect(serializeVNode(parent)).toBe('<ul><li>a</li><li>b</li><!--u-for--></ul>');
+    expect(serializeVNode(parent)).toBe('<ul><!--[--><li>a</li><li>b</li><!--u-for--></ul>');
   });
 
   it('renders a multi-root component through renderToStream', async () => {

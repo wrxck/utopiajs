@@ -12,7 +12,19 @@ import { effect } from '@matthesketh/utopia-core';
 
 import { pushDisposer } from '@/component';
 import { reclaimFragment, snapshotFragmentRoots } from '@/fragment';
-import { claimNode, enterNode, exitNode, isHydrating, unclaimNode } from '@/hydration';
+import {
+  claimNode,
+  claimRangeAnchor,
+  enterNode,
+  exitNode,
+  insertAtCursor,
+  isHydrating,
+  isTextSeparator,
+  peekNode,
+  replaceAtCursor,
+  skipTextSeparator,
+} from '@/hydration';
+import { runAttached } from '@/pending';
 import { domScheduler } from '@/scheduler';
 
 // ---------------------------------------------------------------------------
@@ -67,28 +79,29 @@ export const KEBAB_CHAR_RE = /-([a-z])/g;
 // ---------------------------------------------------------------------------
 
 /**
- * Hydration helper shared by createElement/createTextNode/createComment:
- * claim the cursor node if it has the expected nodeType; otherwise warn,
- * create a fresh node via `create`, and swap it in place of the mismatched
- * node (rewinding the cursor first so it is not permanently misaligned).
+ * Hydration helper shared by createElement/createComment: claim the cursor
+ * node if `matches` accepts it; otherwise warn, create a fresh node via
+ * `create`, and put it where the server's node should have been — swapped in
+ * for a mismatched node, or inserted at the cursor when the server ran out of
+ * nodes. Either way it lands in the DOM: compiled code appends it next, and
+ * `appendChild` is a no-op while hydrating.
  */
 function claimOrReplace<T extends Node>(
-  expectedNodeType: number,
+  matches: (node: Node) => boolean,
   expected: string,
   create: () => T,
 ): T {
-  const node = claimNode();
-  if (node && node.nodeType === expectedNodeType) {
+  const node = peekNode();
+  if (node && matches(node)) {
+    claimNode();
     return node as T;
-  }
-  if (node) {
-    unclaimNode(node);
   }
   console.warn(`[utopia] Hydration mismatch: expected ${expected}, got`, node);
   const created = create();
-  if (node && node.parentNode) {
-    node.parentNode.insertBefore(created, node);
-    node.parentNode.removeChild(node);
+  if (node) {
+    replaceAtCursor(node, created);
+  } else {
+    insertAtCursor(created);
   }
   return created;
 }
@@ -98,10 +111,39 @@ function createRawElement(tag: string): Element {
   return SVG_TAGS.has(tag) ? document.createElementNS(SVG_NS, tag) : document.createElement(tag);
 }
 
+/**
+ * Elements whose content the HTML parser reads as one raw text run, so the
+ * server cannot separate their text nodes. Hydration rebuilds their content
+ * instead of claiming it.
+ */
+const RAW_TEXT_TAGS = new Set([
+  'textarea',
+  'title',
+  'script',
+  'style',
+  'xmp',
+  'iframe',
+  'noembed',
+  'noframes',
+  'plaintext',
+]); // must match the server's RAW_TEXT_ELEMENTS (html-utils.ts)
+
 /** Create a real DOM element for the given tag name. */
 export function createElement(tag: string): Element {
   if (isHydrating) {
-    const el = claimOrReplace<Element>(1, `<${tag}>`, () => createRawElement(tag));
+    // the tag has to match too: claiming a server <i> as the client's <b>
+    // bound the component to the wrong element.
+    const el = claimOrReplace<Element>(
+      (n) => n.nodeType === 1 && (n as Element).localName.toLowerCase() === tag.toLowerCase(),
+      `<${tag}>`,
+      () => createRawElement(tag),
+    );
+    // `Hi {{ name }}` inside a <textarea> arrives as ONE text node; claiming
+    // it for the static part left the interpolation to add a second copy.
+    // start such an element empty, so its text is created fresh.
+    if (RAW_TEXT_TAGS.has(tag.toLowerCase())) {
+      while (el.firstChild) el.removeChild(el.firstChild);
+    }
     // Enter this element so child createElement/createTextNode calls walk
     // its children.
     enterNode(el);
@@ -113,7 +155,30 @@ export function createElement(tag: string): Element {
 /** Create a DOM text node. */
 export function createTextNode(text: string): Text {
   if (isHydrating) {
-    return claimOrReplace<Text>(3, 'text node', () => document.createTextNode(String(text)));
+    const node = peekNode();
+    if (node && node.nodeType === 3) {
+      claimNode();
+      skipTextSeparator();
+      return node as Text;
+    }
+    const created = document.createTextNode(String(text));
+    if (node && isTextSeparator(node)) {
+      // a separator where a text node is due: this text was empty on the
+      // server. it stands in for the node, so take its place.
+      replaceAtCursor(node, created);
+      return created;
+    }
+    if (node && text !== '') {
+      // static text is never empty, so the server always wrote it: anything
+      // else at the cursor is a mismatch.
+      console.warn('[utopia] Hydration mismatch: expected text node, got', node);
+      replaceAtCursor(node, created);
+    } else {
+      // an interpolation starts as '' and has no server markup when it
+      // rendered empty, so this is the expected shape, not a mismatch.
+      insertAtCursor(created);
+    }
+    return created;
   }
   return document.createTextNode(String(text));
 }
@@ -327,8 +392,8 @@ const SAFE_ATTRS = new Set([
 /** uri-bearing attributes that must not contain javascript:/data:/vbscript: values. */
 const URI_ATTRS = new Set(['href', 'src', 'action', 'cite', 'poster', 'data']);
 
-/** schemes that are forbidden in uri attributes. */
-const DANGEROUS_SCHEME_RE = /^\s*(?:javascript|data|vbscript)\s*:/i;
+/** schemes that are forbidden in uri attributes (tested on urlSchemeView). */
+const DANGEROUS_SCHEME_RE = /^(?:javascript|data|vbscript):/i;
 
 /**
  * tags whose entire subtree (including text content) must be discarded during
@@ -356,11 +421,28 @@ const DROP_ENTIRELY = new Set([
 // ---------------------------------------------------------------------------
 
 /** always-forbidden executable url schemes (any url-bearing attribute). */
-const JS_SCHEME_RE = /^\s*(?:javascript|vbscript)\s*:/i;
+const JS_SCHEME_RE = /^(?:javascript|vbscript):/i;
 /** any data: url. */
-const DATA_SCHEME_RE = /^\s*data:/i;
+const DATA_SCHEME_RE = /^data:/i;
 /** data: urls that are safe to keep on media attributes (images/av/fonts). */
-const SAFE_DATA_RE = /^\s*data:(?:image|audio|video|font)\//i;
+const SAFE_DATA_RE = /^data:(?:image|audio|video|font)\//i;
+
+/** ascii tab and newlines — the url parser deletes these anywhere in a url. */
+const URL_TAB_NEWLINE_RE = /[\t\n\r]/g;
+/** leading c0 controls and spaces — the url parser strips these first. */
+// eslint-disable-next-line no-control-regex -- matching C0 controls is the point
+const URL_LEADING_C0_RE = /^[\u0000-\u0020]+/;
+
+/**
+ * The url as the browser's parser sees it when it reads the scheme. The WHATWG
+ * url parser strips leading C0 controls and spaces and deletes every ascii
+ * tab or newline, so `java\tscript:` and `\u0001javascript:` both navigate to
+ * a javascript: url. A scheme test against the raw string missed both — and
+ * an html parser turns `java&#9;script:` into exactly that raw string.
+ */
+function urlSchemeView(value: string): string {
+  return value.replace(URL_TAB_NEWLINE_RE, '').replace(URL_LEADING_C0_RE, '');
+}
 /** event-handler attribute names (onclick, onerror, …) — never settable via :bind. */
 const EVENT_ATTR_RE = /^on[a-z]/i;
 
@@ -385,7 +467,8 @@ const MEDIA_URI_ATTRS = new Set(['src', 'poster']);
  * attributes, while still allowing `data:image/…` (and av/font) on media
  * attributes so legitimate inline images keep working.
  */
-function isDangerousUrlValue(attr: string, value: string): boolean {
+function isDangerousUrlValue(attr: string, raw: string): boolean {
+  const value = urlSchemeView(raw);
   if (JS_SCHEME_RE.test(value)) return true;
   if (DATA_SCHEME_RE.test(value)) {
     return !(MEDIA_URI_ATTRS.has(attr) && SAFE_DATA_RE.test(value));
@@ -471,7 +554,7 @@ export function sanitizeHtml(html: string): string {
 
       // Block dangerous URI schemes in URI-bearing attributes.
       if (URI_ATTRS.has(name)) {
-        if (DANGEROUS_SCHEME_RE.test(attr.value)) {
+        if (DANGEROUS_SCHEME_RE.test(urlSchemeView(attr.value))) {
           attrsToRemove.push(attr.name);
         }
         // Allow safe URIs (http, https, mailto, relative, etc.).
@@ -719,6 +802,15 @@ export function setAttr(el: Element, name: string, value: unknown): void {
     return;
   }
 
+  // aria-* states are the strings "true"/"false", and "false" is a real
+  // value: removing aria-expanded on false told assistive tech the control is
+  // not expandable at all, and writing true as a bare attribute gave the
+  // invalid aria-expanded="". (mirrored in the SSR runtime.)
+  if (typeof value === 'boolean' && lower.startsWith('aria-')) {
+    el.setAttribute(name, String(value));
+    return;
+  }
+
   if (value == null || value === false) {
     el.removeAttribute(name);
     return;
@@ -764,6 +856,7 @@ export function addEventListener(
 export function insertBefore(parent: Node, node: Node, anchor: Node | null): void {
   snapshotFragmentRoots(node);
   parent.insertBefore(node, anchor);
+  runAttached(node);
 }
 
 /**
@@ -791,6 +884,7 @@ export function appendChild(parent: Node, child: Node): void {
   }
   snapshotFragmentRoots(child);
   parent.appendChild(child);
+  runAttached(child);
 }
 
 /**
@@ -832,7 +926,14 @@ let warnedHydratingFragment = false;
 /** Create a DOM comment node. */
 export function createComment(text: string): Comment {
   if (isHydrating) {
-    return claimOrReplace<Comment>(8, 'comment node', () => document.createComment(text));
+    return (
+      claimRangeAnchor(text) ??
+      claimOrReplace<Comment>(
+        (n) => n.nodeType === 8,
+        'comment node',
+        () => document.createComment(text),
+      )
+    );
   }
   return document.createComment(text);
 }

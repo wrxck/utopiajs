@@ -66,6 +66,9 @@ const VIRTUAL_ROUTES_ID = 'virtual:utopia-routes';
 /** Resolved virtual module ID (with \0 prefix). */
 const RESOLVED_VIRTUAL_ROUTES_ID = VIRTUAL_PREFIX + VIRTUAL_ROUTES_ID;
 
+/** Every framework package, bundled into server builds (see `config`). */
+const UTOPIA_PACKAGE_RE = /^@matthesketh\/utopia-/;
+
 /** Pattern matching route special files for HMR invalidation. */
 const ROUTE_FILE_RE = /\+(?:page|layout|error|server)\.\w+$/;
 
@@ -276,6 +279,7 @@ function compileUtopiaSource(
   code: string,
   id: string,
   fragments?: boolean,
+  emitStyles?: boolean,
 ): { result: ReturnType<typeof compile>; deps: string[] } {
   const deps: string[] = [];
   let source = code;
@@ -292,7 +296,7 @@ function compileUtopiaSource(
     deps.push(style.dep);
   }
 
-  return { result: compile(source, { filename: id, fragments }), deps };
+  return { result: compile(source, { filename: id, fragments, emitStyles }), deps };
 }
 
 /**
@@ -366,8 +370,15 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
     // -------------------------------------------------------------------
 
     config(userConfig, env) {
+      // framework packages that import the runtime themselves (the router's
+      // RouterView, for one) must be bundled into the server build: an
+      // externalised package is loaded by node directly, its runtime import
+      // never reaches the swap below, and it ran the DOM runtime on the
+      // server — `document is not defined`.
+      const ssr = { noExternal: [UTOPIA_PACKAGE_RE] };
       if (env.isSsrBuild) {
         return {
+          ssr,
           resolve: {
             alias: {
               '@matthesketh/utopia-runtime': '@matthesketh/utopia-server/ssr-runtime',
@@ -375,6 +386,7 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
           },
         };
       }
+      return { ssr };
     },
 
     configResolved() {
@@ -423,16 +435,23 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
     // Load virtual CSS modules
     // -------------------------------------------------------------------
 
-    load(id) {
+    load(id, loadOptions) {
       if (!id.startsWith(VIRTUAL_PREFIX)) return undefined;
 
       // Virtual routes module.
       if (id === RESOLVED_VIRTUAL_ROUTES_ID) {
-        const globPattern = `/${routesDir}/**/+{page,layout,error,server}.{utopia,ts,js}`;
+        // +server modules are server code. every file a glob matches becomes a
+        // chunk of the build that imports it, so globbing them into the client
+        // module published each API route's source as a fetchable asset —
+        // whatever it held. only a server build sees them.
+        const globPattern = `/${routesDir}/**/+{page,layout,error}.{utopia,ts,js}`;
+        const apiManifest = loadOptions?.ssr
+          ? `const apiManifest = import.meta.glob('/${routesDir}/**/+server.{ts,js}');`
+          : `const apiManifest = {};`;
         return [
           `import { buildRouteTable } from '@matthesketh/utopia-router';`,
           `const manifest = import.meta.glob(${JSON.stringify(globPattern)});`,
-          `const apiManifest = import.meta.glob('/${routesDir}/**/+server.{ts,js}');`,
+          apiManifest,
           `const routes = buildRouteTable(manifest);`,
           `export default routes;`,
           `export { routes, apiManifest };`,
@@ -454,14 +473,21 @@ export default function utopiaPlugin(options: UtopiaPluginOptions = {}): Plugin 
     // Transform .utopia files
     // -------------------------------------------------------------------
 
-    transform(code, id) {
+    transform(code, id, transformOptions) {
       if (!id.endsWith(UTOPIA_EXT)) return undefined;
       if (!filter(id)) return undefined;
 
       // Inline any `<include src>` template fragments and `<style src>`
       // stylesheet before compiling, and register each external file so Vite
-      // watches it and HMR can find the owning component.
-      const { result, deps } = compileUtopiaSource(code, id, options.fragments);
+      // watches it and HMR can find the owning component. A server transform
+      // also carries the CSS on the definition, where server renders (pages
+      // and emails) collect it.
+      const { result, deps } = compileUtopiaSource(
+        code,
+        id,
+        options.fragments,
+        transformOptions?.ssr === true,
+      );
       for (const dep of deps) {
         registerExternalDep(dep, id);
         this.addWatchFile(dep);
@@ -764,14 +790,26 @@ export function defineConfig(userConfig: UserConfig = {}): UserConfig {
     },
 
     ssr: {
+      // keep the rest of the user's ssr options: this object used to replace
+      // them wholesale, silently dropping ssr.external, ssr.target and the like.
+      ...rest.ssr,
       // Ensure UtopiaJS packages are bundled during SSR builds so the
-      // runtime swap alias is applied correctly.
-      noExternal: [
-        '@matthesketh/utopia-core',
-        '@matthesketh/utopia-runtime',
-        '@matthesketh/utopia-router',
-        '@matthesketh/utopia-server',
-      ],
+      // runtime swap alias is applied correctly. `true` (bundle everything)
+      // already covers them.
+      noExternal:
+        rest.ssr?.noExternal === true
+          ? true
+          : [
+              ...(rest.ssr?.noExternal === undefined
+                ? []
+                : Array.isArray(rest.ssr.noExternal)
+                  ? rest.ssr.noExternal
+                  : [rest.ssr.noExternal]),
+              '@matthesketh/utopia-core',
+              '@matthesketh/utopia-runtime',
+              '@matthesketh/utopia-router',
+              '@matthesketh/utopia-server',
+            ],
     },
   };
 }

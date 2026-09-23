@@ -7,7 +7,7 @@
 // server — only the runtime import is swapped via a Vite alias.
 // ============================================================================
 
-import { batch, computed, signal, untrack } from '@matthesketh/utopia-core';
+import { batch, computed, createRoot, signal, untrack } from '@matthesketh/utopia-core';
 
 import type { VComment, VElement, VFragment, VNode, VParent, VText } from '@/vnode';
 
@@ -35,9 +35,19 @@ const BOOLEAN_ATTRS = new Set([
   'novalidate',
 ]);
 
-const JS_SCHEME_RE = /^\s*(?:javascript|vbscript)\s*:/i;
-const DATA_SCHEME_RE = /^\s*data:/i;
-const SAFE_DATA_RE = /^\s*data:(?:image|audio|video|font)\//i;
+const JS_SCHEME_RE = /^(?:javascript|vbscript):/i;
+const DATA_SCHEME_RE = /^data:/i;
+const SAFE_DATA_RE = /^data:(?:image|audio|video|font)\//i;
+const URL_TAB_NEWLINE_RE = /[\t\n\r]/g;
+// eslint-disable-next-line no-control-regex -- matching C0 controls is the point
+const URL_LEADING_C0_RE = /^[\u0000-\u0020]+/;
+
+// the url as the browser's parser reads its scheme: leading c0 controls and
+// spaces stripped, every ascii tab/newline deleted (see the runtime's
+// urlSchemeView). a raw-string test let `java\tscript:` through.
+function urlSchemeView(value: string): string {
+  return value.replace(URL_TAB_NEWLINE_RE, '').replace(URL_LEADING_C0_RE, '');
+}
 const EVENT_ATTR_RE = /^on[a-z]/i;
 const NAV_URI_ATTRS = new Set([
   'href',
@@ -52,7 +62,8 @@ const NAV_URI_ATTRS = new Set([
 ]);
 const MEDIA_URI_ATTRS = new Set(['src', 'poster']);
 
-function isDangerousUrlValue(attr: string, value: string): boolean {
+function isDangerousUrlValue(attr: string, raw: string): boolean {
+  const value = urlSchemeView(raw);
   if (JS_SCHEME_RE.test(value)) return true;
   if (DATA_SCHEME_RE.test(value)) {
     return !(MEDIA_URI_ATTRS.has(attr) && SAFE_DATA_RE.test(value));
@@ -61,7 +72,15 @@ function isDangerousUrlValue(attr: string, value: string): boolean {
 }
 
 // re-export reactivity primitives (these work identically on the server).
-export { batch, computed, signal, untrack };
+export { batch, computed, createRoot, signal, untrack };
+
+/**
+ * Comment data opening a `u-if`/`u-for` range. The client's hydration walker
+ * uses it to find which nodes belong to a directive: the compiled code claims
+ * the anchor before it renders the branch, so the branch nodes sit between
+ * this marker and the anchor. Must match the runtime's RANGE_OPEN.
+ */
+export const RANGE_OPEN = '[';
 
 // ---------------------------------------------------------------------------
 // Collected styles — SSR components push their scoped CSS here.
@@ -146,37 +165,85 @@ export function setText(node: VText, value: unknown): void {
 // Attributes
 // ---------------------------------------------------------------------------
 
+/**
+ * Mirror of the runtime's normalizeClass: a string, an object of flags, or an
+ * array (nested) of either. The SSR copy used to handle only strings and flat
+ * objects, so an array rendered its indices — `class="0 1"`.
+ */
+export function normalizeClass(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    let res = '';
+    for (const item of value) {
+      const part = normalizeClass(item);
+      if (part) res += (res ? ' ' : '') + part;
+    }
+    return res;
+  }
+  if (value && typeof value === 'object') {
+    let res = '';
+    const obj = value as Record<string, unknown>;
+    for (const key of Object.keys(obj)) {
+      if (obj[key]) res += (res ? ' ' : '') + key;
+    }
+    return res;
+  }
+  return '';
+}
+
+/** Mirror of the runtime's normalizeStyle (arrays merge, later entries win). */
+export function normalizeStyle(value: unknown): string | Record<string, unknown> | undefined {
+  if (Array.isArray(value)) {
+    const merged: Record<string, unknown> = {};
+    for (const item of value) {
+      const norm = normalizeStyle(item);
+      if (!norm) continue;
+      if (typeof norm === 'string') {
+        for (const decl of norm.split(';')) {
+          const idx = decl.indexOf(':');
+          if (idx > 0) merged[decl.slice(0, idx).trim()] = decl.slice(idx + 1).trim();
+        }
+      } else {
+        Object.assign(merged, norm);
+      }
+    }
+    return merged;
+  }
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') return value as Record<string, unknown>;
+  return undefined;
+}
+
+/** Mirror of the runtime's mergeClass — compiled output imports it. */
+export function mergeClass(staticClass: string, value: unknown): string {
+  const dynamic = normalizeClass(value);
+  if (!dynamic) return staticClass;
+  return staticClass ? `${staticClass} ${dynamic}` : dynamic;
+}
+
 export function setAttr(el: VElement, name: string, value: unknown): void {
   if (name === 'class') {
-    if (value == null || value === false) {
+    const cls = value == null || value === false ? '' : normalizeClass(value);
+    if (cls === '') {
       delete el.attrs['class'];
-    } else if (typeof value === 'string') {
-      el.attrs['class'] = value;
-    } else if (typeof value === 'object') {
-      // null is already handled by the first branch.
-      const classes: string[] = [];
-      const obj = value as Record<string, unknown>;
-      for (const key of Object.keys(obj)) {
-        if (obj[key]) classes.push(key);
-      }
-      el.attrs['class'] = classes.join(' ');
+    } else {
+      el.attrs['class'] = cls;
     }
     return;
   }
 
   if (name === 'style') {
-    if (value == null || value === false) {
+    const normalized = normalizeStyle(value);
+    if (normalized == null) {
       delete el.attrs['style'];
-    } else if (typeof value === 'string') {
-      el.attrs['style'] = value;
-    } else if (typeof value === 'object') {
-      // null is already handled by the first branch.
+    } else if (typeof normalized === 'string') {
+      el.attrs['style'] = normalized;
+    } else {
       const parts: string[] = [];
-      const styleObj = value as Record<string, unknown>;
-      for (const prop of Object.keys(styleObj)) {
-        if (styleObj[prop] != null) {
+      for (const prop of Object.keys(normalized)) {
+        if (normalized[prop] != null) {
           const cssName = prop.replace(UPPER_CASE_RE, '-$1').toLowerCase();
-          parts.push(`${cssName}: ${styleObj[prop]}`);
+          parts.push(`${cssName}: ${normalized[prop]}`);
         }
       }
       el.attrs['style'] = parts.join('; ');
@@ -200,6 +267,12 @@ export function setAttr(el: VElement, name: string, value: unknown): void {
   // never serialise an inline event handler from a :bind.
   if (EVENT_ATTR_RE.test(lower)) {
     delete el.attrs[name];
+    return;
+  }
+
+  // aria-* states are the strings "true"/"false" (see the runtime's setAttr).
+  if (typeof value === 'boolean' && lower.startsWith('aria-')) {
+    el.attrs[name] = String(value);
     return;
   }
 
@@ -235,6 +308,94 @@ export function setShow(el: VElement, getter: () => unknown): void {
 }
 
 // ---------------------------------------------------------------------------
+// Raw and sanitised HTML (u-html)
+// ---------------------------------------------------------------------------
+
+/** Trusted inner HTML (`u-html.raw`) — written verbatim, as on the client. */
+export function setHtml(el: VElement, getter: () => unknown): void {
+  const value = untrack(getter);
+  el.html = value == null ? '' : String(value);
+}
+
+let serverSanitizer: ((html: string) => string) | null = null;
+
+/**
+ * Install the sanitiser `u-html` (the default, sanitised form) uses during
+ * SSR. The browser runtime sanitises with DOMParser, which a server does not
+ * have; without a sanitiser the element renders empty on the server and the
+ * client fills it in after hydration. Pass `null` to remove it.
+ */
+export function setServerHtmlSanitizer(fn: ((html: string) => string) | null): void {
+  serverSanitizer = fn;
+}
+
+/**
+ * Sanitised inner HTML (`u-html`). Unsanitised markup must never reach the
+ * response, so with no sanitiser installed the element is left empty — the
+ * client sanitises and fills it once it hydrates.
+ */
+export function setSafeHtml(el: VElement, getter: () => unknown): void {
+  if (!serverSanitizer) return;
+  const value = untrack(getter);
+  el.html = serverSanitizer(value == null ? '' : String(value));
+}
+
+/**
+ * The SSR form of `sanitizeHtml`: runs the installed server sanitiser. Throws
+ * when none is installed rather than returning unsanitised markup.
+ */
+export function sanitizeHtml(html: string): string {
+  if (!serverSanitizer) {
+    throw new Error(
+      '[utopia] sanitizeHtml() has no server implementation; install one with setServerHtmlSanitizer()',
+    );
+  }
+  return serverSanitizer(html);
+}
+
+// ---------------------------------------------------------------------------
+// Two-way binding (u-model) — the initial state only
+// ---------------------------------------------------------------------------
+
+interface ModelSignal {
+  (): unknown;
+}
+
+/**
+ * Render a `u-model` control's initial state: `value` for text-like inputs,
+ * `checked` for checkboxes and radios, the text of a `<textarea>`, and the
+ * selected option of a `<select>`. There is nothing to listen to on the
+ * server; the client wires the events when it hydrates.
+ */
+export function applyModel(el: VElement, signal: ModelSignal, _opts?: unknown): void {
+  const v = untrack(signal);
+  const type = (el.attrs['type'] ?? '').toLowerCase();
+  const tag = el.tag.toLowerCase();
+
+  if (tag === 'input' && type === 'checkbox') {
+    if (v) el.attrs['checked'] = '';
+    else delete el.attrs['checked'];
+    return;
+  }
+  if (tag === 'input' && type === 'radio') {
+    if (v === (el.attrs['value'] ?? 'on')) el.attrs['checked'] = '';
+    else delete el.attrs['checked'];
+    return;
+  }
+
+  const next = v == null ? '' : String(v);
+  if (tag === 'textarea') {
+    el.children = next ? [{ type: 2, text: next, _parent: el }] : [];
+    return;
+  }
+  if (tag === 'select') {
+    el._modelValue = next;
+    return;
+  }
+  el.attrs['value'] = next;
+}
+
+// ---------------------------------------------------------------------------
 // Events — no-op on server
 // ---------------------------------------------------------------------------
 
@@ -266,6 +427,16 @@ export function appendChild(parent: VParent, child: VNode): void {
   }
   child._parent = parent;
   parent.children.push(child);
+  runPending(child);
+}
+
+/** Run a directive anchor's deferred first render now that it has a parent. */
+function runPending(node: VNode): void {
+  if (node.type === 3 && node._pending) {
+    const pending = node._pending;
+    node._pending = undefined;
+    for (const fn of pending) fn();
+  }
 }
 
 export function insertBefore(parent: VParent, node: VNode, anchor: VNode | null): void {
@@ -280,14 +451,15 @@ export function insertBefore(parent: VParent, node: VNode, anchor: VNode | null)
   node._parent = parent;
   if (anchor === null) {
     parent.children.push(node);
-    return;
-  }
-  const idx = parent.children.indexOf(anchor);
-  if (idx === -1) {
-    parent.children.push(node);
   } else {
-    parent.children.splice(idx, 0, node);
+    const idx = parent.children.indexOf(anchor);
+    if (idx === -1) {
+      parent.children.push(node);
+    } else {
+      parent.children.splice(idx, 0, node);
+    }
   }
+  runPending(node);
 }
 
 export function removeNode(node: VNode): void {
@@ -327,24 +499,44 @@ export function createEffect(fn: () => void | (() => void)): () => void {
 // Directives
 // ---------------------------------------------------------------------------
 
+/**
+ * Run a directive's first render once its anchor has a parent. An anchor
+ * returned as an else-if branch or as a component root has none yet when the
+ * directive is created; the client retries on a microtask, and the server —
+ * which has no microtask before it serialises — runs it on insertion. Doing
+ * nothing here used to drop every `u-else-if`/`u-else` branch and every
+ * root-level `u-if`/`u-for` from the server markup.
+ */
+function whenAnchored(anchor: VComment, render: (parent: VParent) => void): void {
+  const run = (): void => {
+    const parent = anchor._parent!;
+    // open the range the client's hydration walker looks for.
+    insertBefore(parent, createComment(RANGE_OPEN), anchor);
+    render(parent);
+  };
+  if (anchor._parent) {
+    run();
+  } else {
+    (anchor._pending ??= []).push(run);
+  }
+}
+
 export function createIf(
   anchor: VComment,
   condition: () => unknown,
   renderTrue: () => VNode,
   renderFalse?: () => VNode,
 ): () => void {
-  const parent = anchor._parent;
-  if (!parent) return () => {};
-
-  const truthy = !!untrack(condition);
-
-  if (truthy) {
-    const node = untrack(renderTrue);
-    insertBefore(parent, node, anchor);
-  } else if (renderFalse) {
-    const node = untrack(renderFalse);
-    insertBefore(parent, node, anchor);
-  }
+  whenAnchored(anchor, (parent) => {
+    const truthy = !!untrack(condition);
+    if (truthy) {
+      const node = untrack(renderTrue);
+      insertBefore(parent, node, anchor);
+    } else if (renderFalse) {
+      const node = untrack(renderFalse);
+      insertBefore(parent, node, anchor);
+    }
+  });
 
   return () => {};
 }
@@ -361,24 +553,23 @@ export function createFor<T>(
   renderItem: (item: T, index: number, scope: ForItemScope<T>) => VNode,
   _key?: (item: T, index: number) => string | number,
 ): () => void {
-  const parent = anchor._parent;
-  if (!parent) return () => {};
+  whenAnchored(anchor, (parent) => {
+    const items = untrack(list);
 
-  const items = untrack(list);
+    // server render is a single pass: no row is ever reused, so nothing
+    // rebinds a row's loop variables and nothing needs to observe them. the
+    // inert scope is what keeps the markup identical to a first client render
+    // — the rows evaluate the same expressions against the same items.
+    const scope: ForItemScope<T> = {
+      track() {},
+      onUpdate() {},
+    };
 
-  // server render is a single pass: no row is ever reused, so nothing rebinds
-  // a row's loop variables and nothing needs to observe them. the inert scope
-  // is what keeps the markup identical to a first client render — the rows
-  // evaluate the same expressions against the same items.
-  const scope: ForItemScope<T> = {
-    track() {},
-    onUpdate() {},
-  };
-
-  for (let i = 0; i < items.length; i++) {
-    const node = untrack(() => renderItem(items[i], i, scope));
-    insertBefore(parent, node, anchor);
-  }
+    for (let i = 0; i < items.length; i++) {
+      const node = untrack(() => renderItem(items[i], i, scope));
+      insertBefore(parent, node, anchor);
+    }
+  });
 
   return () => {};
 }
@@ -393,23 +584,102 @@ export interface ComponentDefinition {
   styles?: string;
 }
 
-export function createComponent(
+// ---------------------------------------------------------------------------
+// Context (provide / inject) — the same owner chain the client builds
+// ---------------------------------------------------------------------------
+
+interface ComponentOwner {
+  context: Map<unknown, unknown>;
+  parent: ComponentOwner | null;
+}
+
+let currentOwner: ComponentOwner | null = null;
+
+export function pushOwner(): ComponentOwner {
+  const owner: ComponentOwner = { context: new Map(), parent: currentOwner };
+  currentOwner = owner;
+  return owner;
+}
+
+export function popOwner(owner: ComponentOwner): void {
+  currentOwner = owner.parent;
+}
+
+/**
+ * Server mirror of the runtime's provide(). Without it a component calling
+ * provide()/inject() failed to import under SSR, and a server render that got
+ * past that resolved every inject() to its fallback.
+ */
+export function provide(key: unknown, value: unknown): void {
+  if (currentOwner) currentOwner.context.set(key, value);
+}
+
+export function inject<T = unknown>(key: unknown, fallback?: T): T | undefined {
+  let owner = currentOwner;
+  while (owner) {
+    if (owner.context.has(key)) return owner.context.get(key) as T;
+    owner = owner.parent;
+  }
+  return fallback;
+}
+
+/** Run setup + render under a fresh owner, as the client's runSetupAndRender does. */
+function setupAndRender(
   Component: ComponentDefinition,
+  props: Record<string, unknown>,
+  slots: Record<string, () => VNode>,
+): VNode {
+  const owner = pushOwner();
+  try {
+    const ctx = Component.setup ? untrack(() => Component.setup!(props)) : {};
+    return untrack(() => Component.render({ ...ctx, $slots: slots }));
+  } finally {
+    popOwner(owner);
+  }
+}
+
+/**
+ * A component whose root is a `u-if`/`u-for` anchor returns it before it has a
+ * parent. Give it one — a fragment, which flattens into the real parent on
+ * insertion — so the directive renders and the markup keeps its content.
+ */
+function anchorRoot(el: VNode): VNode {
+  if (el.type === 3 && el._pending) {
+    const frag: VFragment = { type: 4, children: [] };
+    appendChild(frag, el);
+    return frag;
+  }
+  return el;
+}
+
+/** A VNode, as opposed to a component definition object. */
+function isVNode(value: unknown): value is VNode {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    typeof (value as { type?: unknown }).type === 'number'
+  );
+}
+
+export function createComponent(
+  Component: ComponentDefinition | (() => ComponentDefinition | VNode),
   props?: Record<string, unknown>,
   children?: Record<string, () => VNode>,
 ): VNode {
-  const ctx = Component.setup ? untrack(() => Component.setup!(props ?? {})) : {};
+  // mirror the client: a function without `render` is a component factory
+  // (e.g. `createRouterView`), called for its definition — or for a node,
+  // which is used as is. The server used to treat it as a definition and
+  // fail with "Component.render is not a function".
+  const resolved =
+    typeof Component === 'function' && !('render' in Component) ? Component() : Component;
+  if (isVNode(resolved)) return resolved;
+  const def = resolved as ComponentDefinition;
 
-  const renderCtx: Record<string, unknown> = {
-    ...ctx,
-    $slots: children ?? {},
-  };
-
-  const el = untrack(() => Component.render(renderCtx));
+  const el = anchorRoot(setupAndRender(def, props ?? {}, children ?? {}));
 
   // Collect scoped styles
-  if (Component.styles) {
-    collectedStyles.add(Component.styles);
+  if (def.styles) {
+    collectedStyles.add(def.styles);
   }
 
   return el;
@@ -424,12 +694,7 @@ export function createComponentInstance(
     props: props ?? {},
     slots: {} as Record<string, () => VNode>,
     mount(_target: unknown): void {
-      const ctx = definition.setup ? untrack(() => definition.setup!(this.props)) : {};
-      const renderCtx: Record<string, unknown> = {
-        ...ctx,
-        $slots: this.slots,
-      };
-      this.el = untrack(() => definition.render(renderCtx));
+      this.el = anchorRoot(setupAndRender(definition, this.props, this.slots));
       if (definition.styles) {
         collectedStyles.add(definition.styles);
       }
@@ -481,6 +746,15 @@ export function startCapturingDisposers(): null {
 export function stopCapturingDisposers(_prev: unknown): (() => void)[] {
   return [];
 }
+export function startCapturingLifecycle(): void {}
+export function stopCapturingLifecycle(): { mount: (() => void)[]; destroy: (() => void)[] } {
+  return { mount: [], destroy: [] };
+}
+
+/** Hydration is a browser operation; calling it during SSR is a bug. */
+export function hydrate(_component: unknown, _target: unknown): never {
+  throw new Error('[utopia] hydrate() cannot run during server rendering');
+}
 
 // ---------------------------------------------------------------------------
 // Error boundaries — SSR runs try, falls back on catch
@@ -503,11 +777,15 @@ export function defineLazy(
   _loader: () => Promise<{ default: ComponentDefinition }>,
   fallback?: () => VNode,
 ): ComponentDefinition {
-  // On SSR we can't do async, so return the fallback or an empty node.
+  // On SSR we can't do async, so render the fallback — inside the same
+  // container the client builds, so the client's hydration walker can claim
+  // it and swap the component in once the module loads.
   return {
     render() {
-      if (fallback) return untrack(fallback);
-      return createComment('lazy');
+      const container = createElement('div');
+      container.attrs['data-utopia-lazy'] = '';
+      if (fallback) appendChild(container, untrack(fallback));
+      return container;
     },
   };
 }
@@ -517,6 +795,11 @@ export function defineLazy(
 // ---------------------------------------------------------------------------
 
 export function createTransition(_el: VNode, _opts: unknown): void {}
+export function performEnter(_el: unknown, _hooks: unknown): void {}
+/** No animation on the server — a leave completes at once. */
+export function performLeave(_el: unknown, _hooks: unknown, done: () => void): void {
+  done();
+}
 
 // ---------------------------------------------------------------------------
 // Scheduler — immediate on server

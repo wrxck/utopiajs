@@ -45,10 +45,14 @@
       "types": "./dist/vite.d.ts",
       "import": "./dist/vite.js",
       "require": "./dist/vite.cjs"
+    },
+    "./client": {
+      "types": "./client.d.ts"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "client.d.ts"
   ],
   "scripts": {
     "build": "tsup src/index.ts src/mcp/index.ts src/vite.ts --format esm,cjs --dts",

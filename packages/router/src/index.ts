@@ -12,7 +12,13 @@ export type { BeforeNavigateHook, Route, RouteConfig, RouteMatch, RouterState } 
 // Route matching (build-time + runtime)
 // ---------------------------------------------------------------------------
 
-export { buildRouteTable, compilePattern, filePathToRoute, matchRoute } from '@/matcher';
+export {
+  buildRouteTable,
+  compareRouteSpecificity,
+  compilePattern,
+  filePathToRoute,
+  matchRoute,
+} from '@/matcher';
 
 // ---------------------------------------------------------------------------
 // Client-side router
@@ -33,7 +39,7 @@ export {
 // Router components (render functions)
 // ---------------------------------------------------------------------------
 
-export { createLink, createRouterView, preloadRoute } from '@/components';
+export { createLink, createRouterView, preloadRoute, withRoute } from '@/components';
 
 // ---------------------------------------------------------------------------
 // Query & route parameter utilities

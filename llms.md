@@ -396,22 +396,45 @@ The same compiled component code runs on both client and server. On the server, 
 ```ts
 import { renderToString, renderToStream } from '@matthesketh/utopia-server'
 
-// Full render
-const html = await renderToString(App)
+// Full render (synchronous)
+const { html, css, head } = renderToString(App)
 
 // Streaming (progressive SSR)
 const stream = renderToStream(App)
 stream.pipe(response)
 ```
 
-### Server router
+### Routed SSR
+
+Render the route for the request on the server, and preload the same route
+before hydrating. `App.utopia` uses the router view factory itself as the
+component: `import { createRouterView as RouterView } from '@matthesketh/utopia-router'`.
 
 ```ts
-import { createServerRouter, createHandler } from '@matthesketh/utopia-server'
+// entry-server.ts
+import { withRoute } from '@matthesketh/utopia-router'
+import { renderToString } from '@matthesketh/utopia-server'
+import routes from 'virtual:utopia-routes'
+export { apiManifest } from 'virtual:utopia-routes'
 
-const router = createServerRouter(routeTable)
-const handler = createHandler(router)  // returns a request handler
+export function render(url: string) {
+  return withRoute(routes, url, () => renderToString(App))
+}
+
+// entry-client.ts
+createRouter(routes)
+preloadRoute().then(() => hydrate(App, '#app'))
+
+// server.js — pages and +server.ts API routes
+await createHandler({ template, apiRoutes: entry.apiManifest, render: entry.render })(req, res)
 ```
+
+API routes are fetch-style: `export async function POST({ request, params })`
+returns a `Response`. Stream AI output from one with `sseResponse(stream)` from
+`@matthesketh/utopia-ai`.
+
+`createServerRouter(routes, url)` matches a URL on the server and returns the
+`RouteMatch` (or `null`).
 
 ## AI Integration
 

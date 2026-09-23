@@ -7,6 +7,17 @@ export interface VElement {
   tag: string;
   attrs: Record<string, string>;
   children: VNode[];
+  /**
+   * Raw inner HTML from `u-html`. When set, the serializers write it in place
+   * of `children` — the SSR mirror of assigning `innerHTML`.
+   */
+  html?: string;
+  /**
+   * The value a `u-model` binds to this `<select>`. Its options are appended
+   * after the binding runs, so the serializers mark the matching option
+   * `selected` when they reach it.
+   */
+  _modelValue?: string;
   _parent?: VParent;
 }
 
@@ -19,6 +30,12 @@ export interface VText {
 export interface VComment {
   type: 3;
   text: string;
+  /**
+   * Work waiting for this anchor to be inserted. A `u-if`/`u-for` anchor that
+   * is returned as a branch (an else-if chain) or as a component root is
+   * created before it has a parent; its first render runs on insertion.
+   */
+  _pending?: (() => void)[];
   _parent?: VParent;
 }
 

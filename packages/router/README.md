@@ -46,6 +46,7 @@ navigate('/about');
 | `compilePattern(pattern)` | Compile a route pattern to a regex matcher |
 | `matchRoute(routes, url)` | Match a URL against a route table |
 | `buildRouteTable(manifest)` | Build a route table from a file manifest |
+| `compareRouteSpecificity(a, b)` | Sort comparator that puts the more specific route first |
 
 **Client-side router:**
 
@@ -64,8 +65,15 @@ navigate('/about');
 
 | Export | Description |
 |--------|-------------|
-| `createRouterView()` | Render the matched route component |
+| `createRouterView()` | Render the matched route component — use the factory itself as the component: `import { createRouterView as RouterView }` |
 | `createLink(props)` | Create a client-side navigation link |
+| `preloadRoute()` | Load the current route's modules before `mount()` / `hydrate()` |
+| `withRoute(routes, url, render)` | Server: load the route for `url`, then run `render` with it current |
+
+**Link interception:** the router resolves an `<a href>` as the browser would
+(so `?page=2` and `./next` route on the client) and handles it only when the
+result is same-origin and matches a route. Any other link — external, a file
+download, a server-only page — is left to the browser.
 
 See [docs/architecture.md](../../docs/architecture.md) for full routing details.
 

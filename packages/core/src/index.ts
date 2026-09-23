@@ -98,8 +98,13 @@ export interface Signal<T> extends ReadonlySignal<T> {
 
 /** Internal interface for anything that can subscribe to signals. */
 interface Subscriber {
-  /** Called when a dependency has potentially changed. */
-  notify(): void;
+  /**
+   * Called when a dependency has potentially changed. `stale` is true when a
+   * direct source (a plain signal) definitely changed, and false when the
+   * notification came through a computed that has only possibly changed —
+   * the subscriber then re-checks its computed sources before doing work.
+   */
+  notify(stale: boolean): void;
   /**
    * The set of SignalNodes this subscriber is currently subscribed to.
    * Used to clean up stale subscriptions before re-execution.
@@ -117,19 +122,32 @@ let subscriberStack: (Subscriber | null)[] = [];
 /** The currently active subscriber (top of stack), or null. */
 let currentSubscriber: Subscriber | null = null;
 
+/** A reactive root: the disposers of every effect/computed it owns. */
+interface Root {
+  disposers: Set<() => void>;
+}
+
 /**
  * The currently active reactive root (set by `createRoot`), or null. effects
  * and computeds created while a root is active register their disposer here so
  * the whole group can be torn down at once.
+ *
+ * An effect or computed remembers the root it was created under and makes it
+ * current again while it re-runs. Without that, a re-run inherited whatever
+ * root happened to be active at the time — a re-run triggered synchronously
+ * from inside an unrelated createRoot registered its nested effects with THAT
+ * root, and disposing it tore down effects it never owned.
  */
-let currentRoot: { disposers: (() => void)[] } | null = null;
+let currentRoot: Root | null = null;
 
-/** Register a disposer with the active reactive root, if any. */
-function registerWithRoot(dispose: () => void): void {
-  if (currentRoot !== null) {
-    currentRoot.disposers.push(dispose);
-  }
-}
+/**
+ * Monotonic change counter. Every time a signal's value (or a computed's
+ * cached value) actually changes, the node records a fresh epoch. A subscriber
+ * that was only told "a computed upstream may have changed" compares its
+ * sources' epochs against the epoch of its own last run to decide whether any
+ * work is needed.
+ */
+let changeEpoch = 0;
 
 /** Batch depth counter. When > 0, effect execution is deferred. */
 let batchDepth = 0;
@@ -224,6 +242,10 @@ class SignalNode<T> {
   _value: T;
   /** Set of subscribers currently tracking this signal. */
   _subscribers: Set<Subscriber> = new Set();
+  /** Epoch of the last actual value change. */
+  _changedAt: number = 0;
+  /** The computed that owns this node, when it is a computed's output. */
+  _computed: ComputedNode<T> | null = null;
 
   constructor(value: T) {
     this._value = value;
@@ -249,6 +271,7 @@ class SignalNode<T> {
       return;
     }
     this._value = newValue;
+    this._changedAt = ++changeEpoch;
     // Automatically batch notifications from a single write. This ensures
     // that diamond dependencies (multiple computeds feeding one effect)
     // only trigger the effect once.
@@ -261,11 +284,11 @@ class SignalNode<T> {
       const size = this._subscribers.size;
       if (size === 1) {
         const only = this._subscribers.values().next().value as Subscriber;
-        only.notify();
+        only.notify(true);
       } else if (size > 1) {
         const subs = Array.from(this._subscribers);
         for (let i = 0; i < subs.length; i++) {
-          subs[i].notify();
+          subs[i].notify(true);
         }
       }
     } finally {
@@ -317,10 +340,17 @@ export function signal<T>(initialValue: T): Signal<T> {
 class ComputedNode<T> implements Subscriber {
   _fn: () => T;
   _value: T | undefined;
+  /** Needs a check before the cached value can be trusted. */
   _dirty: boolean = true;
+  /** A direct source definitely changed — recompute without checking. */
+  _stale: boolean = true;
   _initialized: boolean = false;
   _signalNode: SignalNode<T>;
   dependencies: Set<SignalNode<any>> = new Set();
+  /** Epoch at the end of the last recompute. */
+  _computedAt: number = -1;
+  /** The root this computed was created under (see currentRoot). */
+  _root: Root | null;
 
   /**
    * Whether we are currently recomputing. Used to prevent infinite loops
@@ -332,35 +362,60 @@ class ComputedNode<T> implements Subscriber {
   /** Whether this computed has been disposed (frozen, unsubscribed). */
   _disposed: boolean = false;
 
-  constructor(fn: () => T) {
+  constructor(fn: () => T, root: Root | null) {
     this._fn = fn;
+    this._root = root;
     // The computed owns a SignalNode so that downstream effects/computeds
     // can subscribe to it using the same mechanism.
     this._signalNode = new SignalNode<T>(undefined as T);
+    this._signalNode._computed = this;
   }
 
   /** Subscriber interface — called when an upstream dependency changes. */
-  notify(): void {
+  notify(stale: boolean): void {
+    if (stale) this._stale = true;
     if (!this._dirty) {
       this._dirty = true;
-      // Propagate notification to our own subscribers. This lets effects
-      // that depend on this computed know they might need to re-run.
-      // We snapshot to avoid mutation during iteration.
+      // Propagate to our own subscribers. They cannot know yet whether our
+      // value will actually change, so they are told it only MIGHT have: they
+      // re-check us before doing any work, and skip it when we recompute to
+      // an equal value. We snapshot to avoid mutation during iteration.
       const subs = Array.from(this._signalNode._subscribers);
       for (let i = 0; i < subs.length; i++) {
-        subs[i].notify();
+        subs[i].notify(false);
       }
     }
   }
 
+  /**
+   * Bring the cached value up to date. A computed that was only told an
+   * upstream computed MIGHT have changed first refreshes those upstream
+   * computeds; if none of its sources actually changed since its last
+   * recompute, it keeps its value without running its function.
+   */
+  _refresh(): void {
+    // a disposed computed is frozen at its last value — its dependency
+    // subscriptions are gone, so recomputing would lose track of them.
+    if (!this._dirty || this._computing || this._disposed) return;
+    if (!this._stale && this._initialized) {
+      this._computing = true;
+      let changed: boolean;
+      try {
+        changed = sourcesChanged(this.dependencies, this._computedAt);
+      } finally {
+        this._computing = false;
+      }
+      if (!changed) {
+        this._dirty = false;
+        return;
+      }
+    }
+    this._recompute();
+  }
+
   /** Recompute (if dirty) and return the value. */
   _read(): T {
-    // a disposed computed is frozen at its last value — skip recompute (its
-    // dependency subscriptions are gone) but still let downstream track the
-    // internal node.
-    if (this._dirty && !this._computing && !this._disposed) {
-      this._recompute();
-    }
+    this._refresh();
     // Track via the internal signal node so downstream subscribers are
     // registered.
     return this._signalNode._read();
@@ -368,9 +423,7 @@ class ComputedNode<T> implements Subscriber {
 
   /** Read without tracking. */
   _peek(): T {
-    if (this._dirty && !this._computing && !this._disposed) {
-      this._recompute();
-    }
+    this._refresh();
     return this._signalNode._peek();
   }
 
@@ -380,6 +433,9 @@ class ComputedNode<T> implements Subscriber {
     this._disposed = true;
     unsubscribeFromDependencies(this);
   }
+
+  /** The disposer registered with `_root`, removed again on disposal. */
+  _rootDispose: (() => void) | null = null;
 
   /** Recompute the derived value. */
   _recompute(): void {
@@ -391,19 +447,25 @@ class ComputedNode<T> implements Subscriber {
     // Clean up old subscriptions so conditional branches are correct.
     unsubscribeFromDependencies(this);
 
+    const prevRoot = currentRoot;
+    currentRoot = this._root;
     pushSubscriber(this);
     try {
       const newValue = this._fn();
       this._dirty = false;
+      this._stale = false;
       if (!this._initialized || !Object.is(newValue, this._signalNode._value)) {
         this._initialized = true;
         // Directly set _value (don't use _write) because we already
         // propagated notifications in notify(). This avoids double-notify.
         this._signalNode._value = newValue;
+        this._signalNode._changedAt = ++changeEpoch;
       }
+      this._computedAt = changeEpoch;
     } finally {
       computeDepth--;
       popSubscriber();
+      currentRoot = prevRoot;
       this._computing = false;
     }
   }
@@ -423,16 +485,54 @@ class ComputedNode<T> implements Subscriber {
  * ```
  */
 export function computed<T>(fn: () => T): ReadonlySignal<T> {
-  const node = new ComputedNode<T>(fn);
+  const node = new ComputedNode<T>(fn, currentRoot);
   const read = makeCallable(node);
 
-  read.dispose = (): void => node._dispose();
+  const dispose = (): void => {
+    node._dispose();
+    unregisterFromRoot(node._root, node._rootDispose);
+  };
+  read.dispose = dispose;
 
   // if created inside a createRoot, tie this computed's teardown to the root so
   // a long-lived source signal no longer retains it after the root is disposed.
-  registerWithRoot(() => node._dispose());
+  if (node._root !== null) {
+    node._rootDispose = dispose;
+    node._root.disposers.add(dispose);
+  }
 
   return read;
+}
+
+/** Drop a disposer from its root once it has run, so roots do not accumulate. */
+function unregisterFromRoot(root: Root | null, dispose: (() => void) | null): void {
+  if (root !== null && dispose !== null) root.disposers.delete(dispose);
+}
+
+/**
+ * Whether any of `deps` changed after `since`. Upstream computeds are
+ * refreshed first — untracked, so the check itself subscribes nothing — which
+ * is what lets an equal recomputed value stop propagation. A computed that
+ * throws while refreshing counts as changed: the subscriber then runs and
+ * meets the error in its own context, exactly as before this check existed.
+ */
+function sourcesChanged(deps: Set<SignalNode<any>>, since: number): boolean {
+  pushSubscriber(null);
+  try {
+    for (const dep of deps) {
+      if (dep._computed !== null) {
+        try {
+          dep._computed._refresh();
+        } catch {
+          return true;
+        }
+      }
+      if (dep._changedAt > since) return true;
+    }
+    return false;
+  } finally {
+    popSubscriber();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -466,14 +566,42 @@ class EffectNode implements Subscriber {
    */
   _queued: boolean = false;
 
-  constructor(fn: () => void | (() => void), scheduler?: (run: () => void) => void) {
+  /**
+   * A direct source definitely changed since the last run. When only computed
+   * sources notified, the run first checks whether any of them actually
+   * changed value, and skips the work when none did.
+   */
+  _stale: boolean = true;
+
+  /** Epoch at the end of the last run; -1 before the first. */
+  _ranAt: number = -1;
+
+  /** The root this effect was created under (see currentRoot). */
+  _root: Root | null;
+
+  /** The disposer registered with `_root`, removed again on disposal. */
+  _rootDispose: (() => void) | null = null;
+
+  constructor(
+    fn: () => void | (() => void),
+    scheduler: ((run: () => void) => void) | undefined,
+    root: Root | null,
+  ) {
     this._fn = fn;
     this._scheduler = scheduler;
+    this._root = root;
   }
 
   /** Subscriber interface — called when an upstream dependency changes. */
-  notify(): void {
-    if (this._disposed || this._queued) {
+  notify(stale: boolean): void {
+    if (this._disposed) {
+      return;
+    }
+    // recorded even when already queued: a queued effect first notified
+    // through a computed must still run unconditionally if a plain signal it
+    // reads changes before it gets to run.
+    if (stale) this._stale = true;
+    if (this._queued) {
       return;
     }
     this._queued = true;
@@ -520,7 +648,27 @@ class EffectNode implements Subscriber {
       );
     }
 
+    // only computed sources notified: skip the run when none of them actually
+    // changed value. this check runs computed functions, so it sits inside the
+    // same depth guard as the run itself.
+    if (!this._stale && this._ranAt >= 0) {
+      syncRunDepth++;
+      let changed: boolean;
+      try {
+        changed = sourcesChanged(this.dependencies, this._ranAt);
+      } finally {
+        syncRunDepth--;
+      }
+      if (!changed) {
+        this._queued = false;
+        return;
+      }
+    }
+    this._stale = false;
+
     syncRunDepth++;
+    const prevRoot = currentRoot;
+    currentRoot = this._root;
     try {
       // Run previous cleanup function (like React useEffect cleanup).
       this._runCleanup();
@@ -543,7 +691,22 @@ class EffectNode implements Subscriber {
       let threw = false;
       try {
         const result = this._fn();
-        this._cleanupFn = typeof result === 'function' ? result : undefined;
+        if (this._disposed) {
+          // the body disposed its own effect (the `stop()` inside a watcher
+          // pattern). _dispose already ran the cleanup it could see, but not
+          // the one this run just returned, and every read after the stop()
+          // re-subscribed a dead effect that its sources would then retain.
+          unsubscribeFromDependencies(this);
+          if (typeof result === 'function') {
+            try {
+              result();
+            } catch (err) {
+              reportEffectError('Error in effect cleanup:', err);
+            }
+          }
+        } else {
+          this._cleanupFn = typeof result === 'function' ? result : undefined;
+        }
       } catch (err) {
         threw = true;
         if (err instanceof FlushGuardError) {
@@ -567,8 +730,10 @@ class EffectNode implements Subscriber {
             this.dependencies.add(dep);
           }
         }
+        this._ranAt = changeEpoch;
       }
     } finally {
+      currentRoot = prevRoot;
       syncRunDepth--;
     }
   }
@@ -579,6 +744,7 @@ class EffectNode implements Subscriber {
     this._runCleanup();
     unsubscribeFromDependencies(this);
     pendingEffects.delete(this);
+    unregisterFromRoot(this._root, this._rootDispose);
   }
 }
 
@@ -617,7 +783,7 @@ export interface EffectOptions {
  * ```
  */
 export function effect(fn: () => void | (() => void), options?: EffectOptions): () => void {
-  const node = new EffectNode(fn, options?.scheduler);
+  const node = new EffectNode(fn, options?.scheduler, currentRoot);
 
   // Run synchronously on creation to establish initial subscriptions. This is
   // deliberately NOT scheduled even when a scheduler is given: a binding must
@@ -625,8 +791,12 @@ export function effect(fn: () => void | (() => void), options?: EffectOptions): 
   node._run();
 
   const dispose = (): void => node._dispose();
-  // if created inside a createRoot, tie this effect's teardown to the root.
-  registerWithRoot(dispose);
+  // if created inside a createRoot, tie this effect's teardown to the root —
+  // unless the first run already disposed it.
+  if (node._root !== null && !node._disposed) {
+    node._rootDispose = dispose;
+    node._root.disposers.add(dispose);
+  }
   return dispose;
 }
 
@@ -652,14 +822,18 @@ export function effect(fn: () => void | (() => void), options?: EffectOptions): 
  * outer root does not implicitly dispose a sibling.
  */
 export function createRoot<T>(fn: (dispose: () => void) => T): T {
-  const root = { disposers: [] as (() => void)[] };
+  const root: Root = { disposers: new Set() };
   const prev = currentRoot;
   currentRoot = root;
   let disposed = false;
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
-    const ds = root.disposers.splice(0);
+    // an effect or computed disposed individually removes itself, so this
+    // holds only what is still live — a root that outlives many short-lived
+    // effects (branch toggles, list rows) does not accumulate their closures.
+    const ds = Array.from(root.disposers);
+    root.disposers.clear();
     for (let i = ds.length - 1; i >= 0; i--) {
       try {
         ds[i]();

@@ -25,7 +25,7 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
   import { signal, computed } from '@matthesketh/utopia-core';
 
   interface ChatMsg {

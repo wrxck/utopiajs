@@ -100,7 +100,7 @@ function argv(...rest: string[]): string[] {
 }
 
 function loggedText(): string {
-  return logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+  return logSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
 }
 
 // ---------------------------------------------------------------------------

@@ -20,8 +20,8 @@ export const TAG_NAME_CHAR_RE = /[a-zA-Z0-9\-_]/;
 /** Matches valid attribute-name characters: letters, digits, hyphens, underscores, colon, @, dot. */
 export const ATTR_NAME_CHAR_RE = /[a-zA-Z0-9\-_:@.]/;
 
-/** Matches characters that terminate an unquoted attribute value. */
-export const ATTR_VALUE_END_RE = /[\s/>]/;
+/** Matches characters that terminate an unquoted attribute value (`/` only before `>`). */
+export const ATTR_VALUE_END_RE = /[\s>]/;
 
 /** Matches a single whitespace character. */
 export const WHITESPACE_RE = /\s/;
@@ -43,6 +43,9 @@ export const BACKSLASH_RE = /\\/g;
 
 /** Matches single-quote characters (for escaping in string output). */
 export const SINGLE_QUOTE_RE = /'/g;
+
+/** Matches a `$event` reference in an inline handler (not `$events` or `$eventName`). */
+export const EVENT_REF_RE = /\$event\b/g;
 
 /** Matches HTML entities: named (&amp;), decimal (&#123;), or hex (&#xFF;). */
 export const HTML_ENTITY_RE = /&(?:#(\d+)|#x([0-9a-fA-F]+)|(\w+));/g;
@@ -414,9 +417,14 @@ class TemplateParser {
       this.pos = endIdx + 1;
       return value;
     }
-    // Unquoted value — read until whitespace or `>`.
+    // Unquoted value — read until whitespace, `>`, or a self-closing `/>`.
+    // A lone `/` belongs to the value, as in HTML: `href=/docs` used to stop
+    // at the slash and fail to parse.
     const start = this.pos;
-    while (this.pos < this.source.length && !ATTR_VALUE_END_RE.test(this.source[this.pos])) {
+    while (this.pos < this.source.length) {
+      const ch = this.source[this.pos];
+      if (ATTR_VALUE_END_RE.test(ch)) break;
+      if (ch === '/' && this.source[this.pos + 1] === '>') break;
       this.pos++;
     }
     return this.source.slice(start, this.pos);
@@ -670,7 +678,7 @@ class CodeGenerator {
 
     // Slot element — renders content from the parent's $slots.
     if (node.tag === 'slot') {
-      return this.genSlot(node);
+      return this.genSlot(node, scope);
     }
 
     // Component reference? (PascalCase)
@@ -702,7 +710,11 @@ class CodeGenerator {
       if (attr.value === null) {
         this.emit(`setAttr(${elVar}, '${escapeStr(attr.name)}', '')`);
       } else {
-        this.emit(`setAttr(${elVar}, '${escapeStr(attr.name)}', '${escapeStr(attr.value)}')`);
+        // decoded like text is: `title="Tom &amp; Jerry"` rendered the entity
+        // literally, and the server then escaped it a second time.
+        this.emit(
+          `setAttr(${elVar}, '${escapeStr(attr.name)}', '${escapeStr(decodeEntities(attr.value))}')`,
+        );
       }
     }
 
@@ -710,7 +722,12 @@ class CodeGenerator {
     for (const dir of node.directives) {
       if (dir.kind === 'if' || dir.kind === 'else' || dir.kind === 'else-if' || dir.kind === 'for')
         continue;
-      this.genDirective(elVar, dir, scope, mergedClassAttr?.value ?? null);
+      this.genDirective(
+        elVar,
+        dir,
+        scope,
+        mergedClassAttr?.value != null ? decodeEntities(mergedClassAttr.value) : null,
+      );
     }
 
     // Children — handles u-if/u-else pairing, deferred createFor/createIf calls.
@@ -817,7 +834,7 @@ class CodeGenerator {
         const body = [...guards, ...calls].join('; ');
         handlerExpr = `(_e) => { ${body} }`;
       } else if (isInlineExpr) {
-        const body = [...guards, ...calls, handler.replace(/\$event/g, '_e')].join('; ');
+        const body = [...guards, ...calls, handler.replace(EVENT_REF_RE, '_e')].join('; ');
         handlerExpr = `(_e) => { ${body} }`;
       } else {
         const body = [...guards, ...calls, `(${handler})(_e)`].join('; ');
@@ -826,7 +843,11 @@ class CodeGenerator {
     } else if (isInlineExpr) {
       // Inline expression without modifiers — wrap to defer evaluation and
       // support $event references.
-      handlerExpr = `(_e) => { ${handler.replace(/\$event/g, '_e')} }`;
+      handlerExpr = `(_e) => { ${handler.replace(EVENT_REF_RE, '_e')} }`;
+    } else if (handler.includes('.') && !IS_ARROW_FN.test(handler)) {
+      // a method reference (`counter.increment`) is called on its object;
+      // passed bare, the listener ran it with `this` undefined.
+      handlerExpr = `(_e) => ${handler}(_e)`;
     }
 
     const optionsStr =
@@ -909,6 +930,12 @@ class CodeGenerator {
     for (const mod of dir.modifiers) {
       if (mod.startsWith('duration-')) {
         const ms = mod.slice('duration-'.length);
+        // emitted into code verbatim, so it must be a plain number.
+        if (!/^\d+$/.test(ms)) {
+          throw new Error(
+            `Invalid u-transition modifier "${mod}": the duration must be whole milliseconds, e.g. duration-300`,
+          );
+        }
         durationOpt = `, duration: ${ms}`;
       }
     }
@@ -1161,30 +1188,94 @@ class CodeGenerator {
   /**
    * Generate code for a `<slot />` element.
    *
-   * Named slots use `<slot name="foo" />`, defaulting to "default".
-   * The generated code reads from `_ctx.$slots[name]()` if available,
-   * otherwise renders a comment placeholder.
+   * Named slots use `<slot name="foo" />`, defaulting to "default". The
+   * generated code reads from `_ctx.$slots[name]()` if available, otherwise
+   * renders the slot's own children as fallback content, otherwise a comment
+   * placeholder. (The children were silently discarded before.)
    */
-  private genSlot(node: ElementNode): string {
+  private genSlot(node: ElementNode, scope: LocalScope): string {
     const nameAttr = node.attrs.find((a) => a.name === 'name');
     const slotName = nameAttr?.value ?? 'default';
     const slotVar = this.freshVar();
     this.helpers.add('createComment');
 
+    const fallbackFn = this.genContentFactory(node.children, scope);
+    const fallback = fallbackFn ? `${fallbackFn}()` : `createComment('slot')`;
+    const key = escapeStr(slotName);
+
     if (slotName === 'default') {
-      // For the default slot, also check _ctx.children as a fallback.
-      // The router's layout system passes children as a Node prop rather
-      // than through the $slots mechanism.
+      // For the default slot, also accept a node passed as `_ctx.children`:
+      // hand-written layouts receive their page that way. The check reads
+      // the value's own shape — a DOM node's nodeType or a server VNode's
+      // type — because the server has no `Node` global, and `instanceof
+      // Node` threw a ReferenceError there for every default slot rendered
+      // without content.
       this.emit(
-        `const ${slotVar} = _ctx && _ctx.$slots && _ctx.$slots['default'] ? _ctx.$slots['default']() : (_ctx && _ctx.children instanceof Node ? _ctx.children : createComment('slot'))`,
+        `const ${slotVar} = _ctx && _ctx.$slots && _ctx.$slots['default'] ? _ctx.$slots['default']() : (_ctx && _ctx.children && (typeof _ctx.children.nodeType === 'number' || typeof _ctx.children.type === 'number') ? _ctx.children : ${fallback})`,
       );
     } else {
       this.emit(
-        `const ${slotVar} = _ctx && _ctx.$slots && _ctx.$slots['${escapeStr(slotName)}'] ? _ctx.$slots['${escapeStr(slotName)}']() : createComment('slot')`,
+        `const ${slotVar} = _ctx && _ctx.$slots && _ctx.$slots['${key}'] ? _ctx.$slots['${key}']() : ${fallback}`,
       );
     }
 
     return slotVar;
+  }
+
+  /**
+   * Generate a `() => Node` factory for a list of child nodes — a component's
+   * default slot content, or a `<slot>`'s fallback content — or null when
+   * there is nothing substantive to render.
+   *
+   * One element renders as itself; anything else is wrapped (a fragment
+   * under the `fragments` option, a `<div>` otherwise). The children go
+   * through genChildren, so a u-if / u-else-if / u-else chain among them is
+   * paired like anywhere else: generating them one by one rendered every
+   * u-else branch unconditionally alongside its u-if.
+   */
+  private genContentFactory(children: TemplateNode[], scope: LocalScope): string | null {
+    const substantive = children.filter(
+      (c) =>
+        c.type === NodeType.Element ||
+        c.type === NodeType.Interpolation ||
+        (c.type === NodeType.Text && c.content.trim() !== ''),
+    );
+    if (substantive.length === 0) return null;
+
+    const fnVar = this.freshVar();
+    this.emit(`const ${fnVar} = () => {`);
+    this.indentPush();
+    // a structural directive among the children emits a deferred
+    // createIf/createFor that references variables declared in THIS closure.
+    // give it its own frame so it is flushed inside the closure — otherwise
+    // it lands in the surrounding function, where those variables are not in
+    // scope, and every such component crashed with a ReferenceError.
+    this.deferredCallsStack.push([]);
+
+    let returnVar: string | null;
+    if (substantive.length === 1 && substantive[0].type === NodeType.Element) {
+      returnVar = this.genNode(substantive[0], scope);
+    } else {
+      const wrapVar = this.freshVar();
+      if (this.options.fragments) {
+        this.helpers.add('createFragment');
+        this.emit(`const ${wrapVar} = createFragment([])`);
+      } else {
+        this.helpers.add('createElement');
+        this.emit(`const ${wrapVar} = createElement('div')`);
+      }
+      this.genChildren(wrapVar, children, scope);
+      returnVar = wrapVar;
+    }
+
+    const deferred = this.deferredCallsStack.pop()!;
+    for (const line of deferred) {
+      this.emit(line);
+    }
+    this.emit(`return ${returnVar}`);
+    this.indentPop();
+    this.emit(`}`);
+    return fnVar;
   }
 
   // ---- Component generation -----------------------------------------------
@@ -1197,7 +1288,7 @@ class CodeGenerator {
 
     for (const a of node.attrs) {
       if (a.value !== null) {
-        propEntries.push(`'${escapeStr(a.name)}': '${escapeStr(a.value)}'`);
+        propEntries.push(`'${escapeStr(a.name)}': '${escapeStr(decodeEntities(a.value))}'`);
       } else {
         propEntries.push(`'${escapeStr(a.name)}': true`);
       }
@@ -1218,9 +1309,14 @@ class CodeGenerator {
         const value =
           handler === "''"
             ? 'undefined'
-            : IS_HANDLER_REF.test(handler) || IS_ARROW_FN.test(handler)
+            : IS_ARROW_FN.test(handler)
               ? handler
-              : `($event) => { ${handler} }`;
+              : IS_HANDLER_REF.test(handler)
+                ? handler.includes('.')
+                  ? // keep `this` for a method reference, as for DOM events.
+                    `(...args) => ${handler}(...args)`
+                  : handler
+                : `($event) => { ${handler} }`;
         propEntries.push(`'${escapeStr(propName)}': ${value}`);
       }
     }
@@ -1229,61 +1325,8 @@ class CodeGenerator {
     this.helpers.add('createComponent');
 
     // Compile children as a default slot factory if children are present.
-    const substantiveChildren = node.children.filter(
-      (c) =>
-        c.type === NodeType.Element ||
-        c.type === NodeType.Interpolation ||
-        (c.type === NodeType.Text && c.content.trim() !== ''),
-    );
-
-    if (substantiveChildren.length > 0) {
-      const slotFnVar = this.freshVar();
-      this.emit(`const ${slotFnVar} = () => {`);
-      this.indentPush();
-      // a structural directive among the slot children emits a deferred
-      // createIf/createFor that references variables declared in THIS closure.
-      // give it its own frame so it is flushed inside the closure — otherwise
-      // it lands in the surrounding function, where those variables are not in
-      // scope, and every such component crashed with a ReferenceError.
-      this.deferredCallsStack.push([]);
-
-      // Generate a wrapper for slot children.
-      let slotReturnVar: string | null;
-      if (substantiveChildren.length === 1 && substantiveChildren[0].type === NodeType.Element) {
-        slotReturnVar = this.genNode(substantiveChildren[0], scope);
-      } else if (this.options.fragments) {
-        // Multi-child slot content — a real fragment instead of a wrapper div.
-        this.helpers.add('createFragment');
-        const childVars: string[] = [];
-        for (const child of node.children) {
-          const childVar = this.genNode(child, scope);
-          if (childVar) childVars.push(childVar);
-        }
-        const fragVar = this.freshVar();
-        this.emit(`const ${fragVar} = createFragment([${childVars.join(', ')}])`);
-        slotReturnVar = fragVar;
-      } else {
-        this.helpers.add('createElement');
-        this.helpers.add('appendChild');
-        const fragVar = this.freshVar();
-        this.emit(`const ${fragVar} = createElement('div')`);
-        for (const child of node.children) {
-          const childVar = this.genNode(child, scope);
-          if (childVar) {
-            this.emit(`appendChild(${fragVar}, ${childVar})`);
-          }
-        }
-        slotReturnVar = fragVar;
-      }
-
-      const slotDeferred = this.deferredCallsStack.pop()!;
-      for (const line of slotDeferred) {
-        this.emit(line);
-      }
-      this.emit(`return ${slotReturnVar}`);
-      this.indentPop();
-      this.emit(`}`);
-
+    const slotFnVar = this.genContentFactory(node.children, scope);
+    if (slotFnVar) {
       this.emit(
         `const ${compVar} = createComponent(${node.tag}, ${propsStr}, { default: ${slotFnVar} })`,
       );

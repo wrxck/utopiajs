@@ -10,16 +10,28 @@
 
 import { createRoot, effect } from '@matthesketh/utopia-core';
 import {
+  appendChild,
+  createElement,
+  createTextNode,
   popOwner,
   pushOwner,
+  setAttr,
   startCapturingDisposers,
   startCapturingLifecycle,
   stopCapturingDisposers,
   stopCapturingLifecycle,
 } from '@matthesketh/utopia-runtime';
 
+import { compilePattern, matchRoute } from '@/matcher';
 import { currentRoute } from '@/router';
-import type { RouteMatch } from '@/types';
+import type { Route, RouteConfig, RouteMatch } from '@/types';
+
+/**
+ * Whether we are rendering in a browser. On the server the runtime import is
+ * swapped for the SSR runtime, the view renders its route once, and nothing
+ * subscribes to the router.
+ */
+const isBrowser = (): boolean => typeof window !== 'undefined';
 
 /** A DOM node with the runtime's optional teardown hook attached. */
 interface DisposableNode extends Node {
@@ -34,6 +46,65 @@ type ModuleImporter = () => Promise<Record<string, unknown>>;
 
 /** Cache for pre-loaded route modules. Keyed by the importer function ref. */
 const moduleCache = new Map<ModuleImporter, Record<string, unknown>>();
+
+/** Modules loaded for a server render, carried by the match they belong to. */
+interface LoadedModules {
+  page: Record<string, unknown>;
+  layout: Record<string, unknown> | null;
+}
+
+/**
+ * Server renders keep their modules on the match rather than in the shared
+ * cache: concurrent requests for the same route would otherwise consume each
+ * other's one-time cache entries, and a request that lost the race rendered an
+ * empty view.
+ */
+const serverModules = new WeakMap<RouteMatch, LoadedModules>();
+
+/**
+ * Render with the route for `url` as the current route — the server half of
+ * routing. Resolves `url` against `routes`, loads the page (and layout)
+ * modules, then runs `render` synchronously with that route current, so a
+ * `RouterView` inside it renders the page. The previous route is restored
+ * afterwards.
+ *
+ * Loading happens before the synchronous section, so concurrent requests
+ * cannot see each other's route.
+ *
+ * ```ts
+ * // entry-server.ts
+ * export function render(url: string) {
+ *   return withRoute(routes, url, () => renderToString(App));
+ * }
+ * ```
+ */
+export async function withRoute<T>(
+  routes: (Route | RouteConfig)[],
+  url: string,
+  render: () => T,
+): Promise<T> {
+  const compiled = routes.map((r): Route => {
+    if ('pattern' in r && r.pattern instanceof RegExp) return r as Route;
+    const { regex, params } = compilePattern(r.path);
+    return { ...r, pattern: regex, params };
+  });
+  const match = matchRoute(new URL(url, 'http://localhost'), compiled);
+  if (match) {
+    const [page, layout] = await Promise.all([
+      match.route.component(),
+      match.route.layout ? match.route.layout() : Promise.resolve(null),
+    ]);
+    serverModules.set(match, { page, layout });
+  }
+
+  const previous = currentRoute.peek();
+  currentRoute.set(match);
+  try {
+    return render();
+  } finally {
+    currentRoute.set(previous);
+  }
+}
 
 /**
  * Pre-load the current route's component (and layout) so that
@@ -92,8 +163,10 @@ export function createRouterView(): { render: () => Node } {
 
 /** Internal: creates the actual DOM node for the router view. */
 function createRouterViewNode(): Node {
-  const container = document.createElement('div');
-  container.setAttribute('data-utopia-router-view', '');
+  // built through the runtime, not `document`: on the server the runtime is
+  // the SSR runtime, and while hydrating these calls claim the server's nodes.
+  const container = createElement('div') as HTMLElement;
+  setAttr(container, 'data-utopia-router-view', '');
 
   let currentCleanup: (() => void) | null = null;
   let currentMatch: RouteMatch | null = null;
@@ -106,7 +179,7 @@ function createRouterViewNode(): Node {
   if (initialMatch) {
     const syncResult = tryRenderFromCache(initialMatch);
     if (syncResult) {
-      container.appendChild(syncResult.node);
+      appendChild(container, syncResult.node);
       currentCleanup = syncResult.cleanup;
       currentMatch = initialMatch;
     }
@@ -116,6 +189,10 @@ function createRouterViewNode(): Node {
     // still null.)
     showNotFound(container);
   }
+
+  // a server render is a single pass: nothing will ever navigate it, and a
+  // subscription to the module-level route signal would outlive the request.
+  if (!isBrowser()) return container;
 
   const dispose = effect(() => {
     const match = currentRoute();
@@ -154,8 +231,10 @@ function createRouterViewNode(): Node {
         currentCleanup = null;
       }
       clearContainer(container);
-      snapshotFragmentRoots(result.node);
-      container.appendChild(result.node);
+      // the runtime's insertion records a fragment's roots and renders a page
+      // whose root is a u-if / u-for anchor, which cannot render until it has
+      // a parent.
+      appendChild(container, result.node);
       currentCleanup = result.cleanup;
     });
   });
@@ -170,10 +249,10 @@ function createRouterViewNode(): Node {
 
 /** Append the "Page not found" placeholder to the container. */
 function showNotFound(container: HTMLElement): void {
-  const notFound = document.createElement('div');
-  notFound.setAttribute('data-utopia-not-found', '');
-  notFound.textContent = 'Page not found';
-  container.appendChild(notFound);
+  const notFound = createElement('div');
+  setAttr(notFound, 'data-utopia-not-found', '');
+  appendChild(notFound, createTextNode('Page not found'));
+  appendChild(container, notFound);
 }
 
 /** Result of loading a route component, ready for mounting. */
@@ -184,23 +263,15 @@ interface LoadResult {
 
 /**
  * A page compiled with the runtime's `fragments` option has a
- * DocumentFragment root, which empties on insertion. Mirror the runtime's
- * bookkeeping (the router deliberately has no runtime dependency): record
- * the fragment's children before inserting it, and detach by moving the
- * recorded roots back into the fragment.
+ * DocumentFragment root, which empties on insertion. The runtime's insertion
+ * records the fragment's children; detaching moves those recorded roots back
+ * into the fragment.
  */
 interface FragmentWithRoots extends Node {
   __roots?: Node[];
 }
 
 const FRAGMENT_TYPE = 11;
-
-/** Record a fragment's children just before insertion empties it. */
-function snapshotFragmentRoots(node: Node): void {
-  if (node.nodeType === FRAGMENT_TYPE && node.childNodes.length > 0) {
-    (node as FragmentWithRoots).__roots = Array.from(node.childNodes);
-  }
-}
 
 /** Detach a node from the DOM, fragment-aware. */
 function detachNode(node: Node): void {
@@ -242,7 +313,13 @@ function toLoadResult(node: Node, inner?: Node): LoadResult {
 
 /**
  * Render a matched route's page module, wrapped in its layout module when one
- * is present (the page is passed to the layout as `children`).
+ * is present.
+ *
+ * The layout receives the page as its default slot (and, for layouts written
+ * by hand, as a `children` prop). Either way the page renders when the layout
+ * reaches it, so nodes are built in document order — which is what lets a
+ * hydrating page claim the server's markup. The page used to be rendered
+ * before its layout, which claimed the layout's nodes as the page's.
  */
 function renderMatch(
   match: RouteMatch,
@@ -251,22 +328,28 @@ function renderMatch(
 ): LoadResult {
   // Extract the default export (the component function or class).
   const PageComponent = pageModule.default ?? pageModule;
-  const pageNode = renderComponent(PageComponent, {
-    params: match.params,
-    url: match.url,
-  });
-
-  let node: Node = pageNode;
-  if (layoutModule) {
-    const LayoutComponent = layoutModule.default ?? layoutModule;
-    node = renderComponent(LayoutComponent, {
+  let pageNode: Node | undefined;
+  const renderPage = (): Node =>
+    (pageNode ??= renderComponent(PageComponent, {
       params: match.params,
       url: match.url,
-      children: pageNode,
-    });
+    }));
+
+  if (!layoutModule) {
+    const node = renderPage();
+    return toLoadResult(node, node);
   }
 
-  return toLoadResult(node, pageNode);
+  const LayoutComponent = layoutModule.default ?? layoutModule;
+  const layoutProps: Record<string, unknown> = {
+    params: match.params,
+    url: match.url,
+    $slots: { default: renderPage },
+  };
+  Object.defineProperty(layoutProps, 'children', { get: renderPage, enumerable: true });
+  const node = renderComponent(LayoutComponent, layoutProps);
+  // a layout that never shows its page still owns it, exactly as before.
+  return toLoadResult(node, renderPage());
 }
 
 /**
@@ -274,6 +357,9 @@ function renderMatch(
  * Returns null if the route's modules are not cached.
  */
 function tryRenderFromCache(match: RouteMatch): LoadResult | null {
+  const loaded = serverModules.get(match);
+  if (loaded) return renderMatch(match, loaded.page, loaded.layout);
+
   const cachedPage = moduleCache.get(match.route.component);
   if (!cachedPage) return null;
 
@@ -368,11 +454,21 @@ interface SetupComponent extends ComponentLike {
  * context instead of the raw props (which would otherwise crash, since the
  * compiled per-instance render reads `ctx.__render`).
  */
+/** A rendered node — a DOM Node in the browser, a VNode on the server. */
+function isRenderedNode(value: unknown): value is Node {
+  if (typeof Node !== 'undefined') return value instanceof Node;
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    typeof (value as { type?: unknown }).type === 'number'
+  );
+}
+
 function invokeRender(component: unknown, props: Record<string, unknown>): Node {
   if (typeof component === 'function') {
     const result = component(props);
-    if (result instanceof Node) return result;
-    if (typeof result === 'string') return document.createTextNode(result);
+    if (isRenderedNode(result)) return result;
+    if (typeof result === 'string') return createTextNode(result);
     // a function that returned a definition object → render that.
     if (result && typeof (result as ComponentLike).render === 'function') {
       return invokeRender(result, props);
@@ -383,8 +479,11 @@ function invokeRender(component: unknown, props: Record<string, unknown>): Node 
   if (def && typeof def.render === 'function') {
     // per-instance component: run setup() to build the render context.
     if (typeof def.setup === 'function') {
+      // forward the slots: a per-instance layout reads its page from
+      // `$slots.default`, and an empty object here showed a blank layout.
       const ctx = def.setup(props);
-      return def.render({ ...ctx, $slots: {} } as Record<string, unknown>);
+      const slots = (props.$slots as Record<string, unknown> | undefined) ?? {};
+      return def.render({ ...ctx, $slots: slots } as Record<string, unknown>);
     }
     // module-scope component: render reads its script vars by closure; props
     // (params/url/children) are passed through for components that use them.
@@ -392,8 +491,8 @@ function invokeRender(component: unknown, props: Record<string, unknown>): Node 
   }
 
   // Fallback: empty div.
-  const div = document.createElement('div');
-  div.textContent = '[Component render error]';
+  const div = createElement('div');
+  appendChild(div, createTextNode('[Component render error]'));
   return div;
 }
 

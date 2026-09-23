@@ -42,11 +42,46 @@ export interface TransitionHooks {
  *          to coordinate enter/leave animations.
  */
 /**
+ * The longest `duration + delay` among an element's CSS transitions and
+ * animations, in ms — the time a phase can legitimately take.
+ */
+function cssTimeout(el: Element): number {
+  if (typeof getComputedStyle !== 'function') return 0;
+  const style = getComputedStyle(el);
+  const longest = (durations: string, delays: string): number => {
+    const d = toMs(durations);
+    const l = toMs(delays);
+    let max = 0;
+    for (let i = 0; i < d.length; i++) {
+      max = Math.max(max, d[i]! + (l[i % Math.max(l.length, 1)] ?? 0));
+    }
+    return max;
+  };
+  return Math.max(
+    longest(style.transitionDuration || '', style.transitionDelay || ''),
+    longest(style.animationDuration || '', style.animationDelay || ''),
+  );
+}
+
+/** Parse a CSS time list (`0.3s, 150ms`) into milliseconds. */
+function toMs(list: string): number[] {
+  if (!list) return [];
+  return list.split(',').map((t) => {
+    const v = t.trim();
+    const n = parseFloat(v);
+    if (Number.isNaN(n)) return 0;
+    return v.endsWith('ms') ? n : n * 1000;
+  });
+}
+
+/**
  * Run one transition phase (enter or leave): swap the `-from` class for the
  * `-to` class, then remove the phase classes and call `done` exactly once —
- * on `transitionend`, or after `duration` + 50ms as a safety net when
- * `transitionend` never fires (e.g. no CSS transition defined). Without a
- * configured duration there is no safety timeout.
+ * on `transitionend`, or after a safety timeout when `transitionend` never
+ * fires. The timeout is the configured `duration`, or else the element's own
+ * CSS transition/animation time, plus 50ms. It used to exist only with a
+ * configured duration, so a leave with no CSS transition defined never
+ * completed and the element was never removed.
  */
 function runPhase(
   el: Element,
@@ -75,15 +110,19 @@ function runPhase(
 
   el.addEventListener('transitionend', onEnd);
 
-  if (duration) {
-    timeoutId = setTimeout(onEnd, duration + 50);
-  }
+  const ms = duration ?? cssTimeout(el);
+  timeoutId = setTimeout(onEnd, ms > 0 ? ms + 50 : 0);
+}
+
+/** An element carrying the hooks its `u-transition` directive created. */
+interface TransitionElement extends Element {
+  __transition?: TransitionHooks;
 }
 
 export function createTransition(el: Element, opts: TransitionOptions): TransitionHooks {
   const name = opts.name;
 
-  return {
+  const hooks: TransitionHooks = {
     beforeEnter(el: Element) {
       el.classList.add(`${name}-enter-from`, `${name}-enter-active`);
     },
@@ -100,6 +139,30 @@ export function createTransition(el: Element, opts: TransitionOptions): Transiti
       runPhase(el, name, 'leave', opts.duration, done);
     },
   };
+  // the compiled `u-transition` directive discards the return value; the
+  // structural directives find the hooks on the element instead.
+  (el as TransitionElement).__transition = hooks;
+  return hooks;
+}
+
+/**
+ * Play the enter transition of a node a `u-if` branch or `u-for` row just
+ * inserted, when its `u-transition` directive attached one.
+ */
+export function transitionEnter(node: Node): void {
+  const hooks = (node as TransitionElement).__transition;
+  if (hooks) performEnter(node as Element, hooks);
+}
+
+/**
+ * Remove a node, first playing its leave transition when it has one. Returns
+ * true when removal was deferred to the end of the transition.
+ */
+export function transitionLeave(node: Node, remove: () => void): boolean {
+  const hooks = (node as TransitionElement).__transition;
+  if (!hooks || !(node as Element).isConnected) return false;
+  performLeave(node as Element, hooks, remove);
+  return true;
 }
 
 /**

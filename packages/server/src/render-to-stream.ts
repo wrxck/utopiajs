@@ -9,6 +9,9 @@ import {
   escapeComment,
   escapeHtml,
   escapeStyleContent,
+  optionMatches,
+  RAW_TEXT_ELEMENTS,
+  TEXT_SEPARATOR_HTML,
   validateAttr,
   validateTag,
   VOID_ELEMENTS,
@@ -67,16 +70,16 @@ function* documentChunks(vnode: VNode, styles: string[]): Generator<string> {
   if (styles.length > 0) {
     yield `<style>${escapeStyleContent(styles.join('\n'))}</style>`;
   }
-  yield* vnodeChunks(vnode, 0);
+  yield* vnodeChunks(vnode, 0, null);
 }
 
-function* vnodeChunks(node: VNode, depth: number): Generator<string> {
+function* vnodeChunks(node: VNode, depth: number, selectValue: string | null): Generator<string> {
   if (depth > MAX_VNODE_DEPTH) {
     throw new Error(`VNode tree exceeded maximum depth of ${MAX_VNODE_DEPTH}`);
   }
   switch (node.type) {
     case 1:
-      yield* elementChunks(node, depth);
+      yield* elementChunks(node, depth, selectValue);
       return;
     case 2:
       yield escapeHtml(node.text);
@@ -86,16 +89,39 @@ function* vnodeChunks(node: VNode, depth: number): Generator<string> {
       return;
     case 4:
       // VFragment — only ever a render root; serialize bare children.
-      for (const child of node.children) {
-        yield* vnodeChunks(child, depth + 1);
-      }
+      yield* childChunks(node.children, depth, selectValue, true);
       return;
   }
 }
 
-function* elementChunks(el: VElement, depth: number): Generator<string> {
+/** Mirror of renderToString's pushChildren — see there for the separators. */
+function* childChunks(
+  children: VNode[],
+  depth: number,
+  selectValue: string | null,
+  separateText: boolean,
+): Generator<string> {
+  let prevText = false;
+  for (const child of children) {
+    if (child.type === 2) {
+      if (prevText && separateText) yield TEXT_SEPARATOR_HTML;
+      prevText = true;
+      if (child.text === '') continue;
+    } else {
+      prevText = false;
+    }
+    yield* vnodeChunks(child, depth + 1, selectValue);
+  }
+}
+
+function* elementChunks(
+  el: VElement,
+  depth: number,
+  selectValue: string | null,
+): Generator<string> {
   // validate the tag once and reuse for both the opening and closing tag.
   const tag = validateTag(el.tag);
+  const lowerTag = tag.toLowerCase();
   let open = `<${tag}`;
 
   for (const [name, value] of Object.entries(el.attrs)) {
@@ -105,16 +131,28 @@ function* elementChunks(el: VElement, depth: number): Generator<string> {
       open += ` ${validateAttr(name)}="${escapeAttr(value)}"`;
     }
   }
+  if (
+    selectValue !== null &&
+    lowerTag === 'option' &&
+    !('selected' in el.attrs) &&
+    optionMatches(el, selectValue)
+  ) {
+    open += ' selected';
+  }
 
   yield open + '>';
 
   // void elements — no closing tag, no children.
-  if (VOID_ELEMENTS.has(el.tag.toLowerCase())) {
+  if (VOID_ELEMENTS.has(lowerTag)) {
     return;
   }
 
-  for (const child of el.children) {
-    yield* vnodeChunks(child, depth + 1);
+  if (el.html !== undefined) {
+    yield el.html;
+  } else {
+    const childSelect =
+      lowerTag === 'select' && el._modelValue !== undefined ? el._modelValue : selectValue;
+    yield* childChunks(el.children, depth, childSelect, !RAW_TEXT_ELEMENTS.has(lowerTag));
   }
 
   yield `</${tag}>`;

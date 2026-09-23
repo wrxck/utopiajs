@@ -17,12 +17,14 @@
   </div>
 </template>
 
-<script>
-  import { signal, computed } from '@matthesketh/utopia-core';
+<script lang="ts">
+  import { computed, signal } from '@matthesketh/utopia-core';
+  import { getRouteParam } from '@matthesketh/utopia-router';
 
-  // In a real app, this would come from route params
-  // For now, simulate with window.location
-  const slug = signal('hello-world');
+  // the slug follows the route, so the page stays correct when the router
+  // reuses this module for another post.
+  const param = getRouteParam('slug');
+  const slug = computed(() => param() ?? 'hello-world');
   const likeCount = signal(0);
 
   // Simulated blog data

@@ -67,6 +67,61 @@ function toFetchRequest(req: IncomingMessage, url: URL, method: string): Request
 }
 
 /**
+ * Write a fetch `Response` to a Node `ServerResponse`.
+ *
+ * - Every `Set-Cookie` is kept. `Object.fromEntries(headers.entries())` kept
+ *   only the last, so a route setting a session and a CSRF cookie lost one.
+ * - The body is streamed as bytes. Reading it with `text()` decoded binary
+ *   bodies (files, images) as UTF-8 and corrupted them, and buffered a
+ *   server-sent-events stream until it ended — so it never streamed.
+ * - A HEAD response carries no body.
+ */
+async function sendResponse(
+  res: ServerResponse,
+  response: Response,
+  method: string,
+): Promise<void> {
+  // guard against a handler returning a status outside the http range, which
+  // would otherwise throw ERR_HTTP_INVALID_STATUS_CODE.
+  const status =
+    Number.isInteger(response.status) && response.status >= 100 && response.status <= 599
+      ? response.status
+      : 500;
+
+  const headers: Record<string, string | string[]> = {};
+  for (const [name, value] of response.headers) {
+    if (name !== 'set-cookie') headers[name] = value;
+  }
+  const cookies =
+    typeof response.headers.getSetCookie === 'function' ? response.headers.getSetCookie() : [];
+  if (cookies.length > 0) headers['set-cookie'] = cookies;
+  res.writeHead(status, headers);
+
+  if (method === 'HEAD') {
+    res.end();
+    return;
+  }
+  if (!response.body) {
+    // a body-less Response, or a Response-like object that only offers text().
+    const text = typeof response.text === 'function' ? await response.text() : '';
+    res.end(text);
+    return;
+  }
+
+  const body = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
+  await new Promise<void>((resolve, reject) => {
+    body.on('error', reject);
+    res.on('error', reject);
+    // the client disconnected mid-stream: stop reading the handler's body.
+    res.on('close', () => {
+      if (!res.writableFinished) body.destroy();
+      resolve();
+    });
+    body.pipe(res);
+  });
+}
+
+/**
  * Create a Node.js HTTP request handler for SSR.
  *
  * The handler renders the component for the incoming URL and injects the
@@ -109,21 +164,18 @@ export function createHandler(
         );
 
         if (apiResponse) {
-          // guard against a handler returning a status outside the http range,
-          // which would otherwise throw ERR_HTTP_INVALID_STATUS_CODE.
-          const status =
-            Number.isInteger(apiResponse.status) &&
-            apiResponse.status >= 100 &&
-            apiResponse.status <= 599
-              ? apiResponse.status
-              : 500;
-          res.writeHead(status, Object.fromEntries(apiResponse.headers.entries()));
-          const body = await apiResponse.text();
-          res.end(body);
+          await sendResponse(res, apiResponse, method);
           return;
         }
       } catch (err) {
         console.error('[utopia] API route error:', err);
+        if (res.headersSent) {
+          // the body failed mid-stream: the status is gone, so end the
+          // connection rather than throw ERR_HTTP_HEADERS_SENT out of the
+          // handler (an unhandled rejection) and leave the client hanging.
+          res.destroy(err instanceof Error ? err : new Error(String(err)));
+          return;
+        }
         res.writeHead(500, { 'Content-Type': 'text/plain' });
         res.end('Internal Server Error');
         return;
