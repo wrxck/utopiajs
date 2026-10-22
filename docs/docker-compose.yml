@@ -9,6 +9,20 @@ services:
     ports:
       - "127.0.0.1:60620:80"
     restart: unless-stopped
+    # 127.0.0.1, not localhost: busybox wget tries ::1 first and nginx is ipv4-only
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+      - /var/tmp:rw,noexec,nosuid,nodev,size=16m
+      - /dev/shm:rw,noexec,nosuid,nodev,size=16m
+      - /var/cache/nginx:rw,noexec,nosuid,nodev,size=32m
+      - /run:rw,noexec,nosuid,nodev,size=8m
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -28,3 +42,4 @@ services:
         limits:
           cpus: "0.25"
           memory: 128M
+          pids: 200
